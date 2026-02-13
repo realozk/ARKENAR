@@ -24,6 +24,10 @@ jobs:
           - os: macos-latest
             binary_name: arkenar
             zip_name: arkenar-macos-amd64.tar.gz
+          - build: macos-arm
+            os: macos-latest
+            target: aarch64-apple-darwin
+            archive_name: arkenar-macos-arm64.tar.gz
 
     steps:
       - name: Checkout code

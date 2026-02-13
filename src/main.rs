@@ -38,7 +38,6 @@ use crate::utils::read_lines;
   Full combo:                     arkenar http://target.com -m advanced -v -t 10 --proxy http://127.0.0.1:8080 -H \"Cookie: sess=abc\" --scope --rate-limit 30 -o scan.json"
 )]
 pub struct Args {
-    /// Target URL to scan (positional).
     #[arg(required_unless_present_any = ["list", "update"])]
     pub target: Option<String>,
 
