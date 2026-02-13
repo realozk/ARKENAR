@@ -18,12 +18,9 @@
 <h4 align="center">A blazing fast, modern vulnerability scanner written in <a href="https://www.rust-lang.org" target="_blank">Rust</a>. </h4>
 
 <p align="center">
-  <a href="https://github.com/realozk/ARKENAR/releases">
-    <img src="https://img.shields.io/github/v/release/realozk/ARKENAR?style=for-the-badge&color=22c55e">
-  </a>
 
   <a href="https://github.com/realozk/ARKENAR/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/realozk/ARKENAR?style=for-the-badge&color=f59e0b">
+    <img src="https://img.shields.io/github/v/release/realozk/ARKENAR?style=for-the-badge&color=22c55e&v=1">
   </a>
 
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-3b82f6?style=for-the-badge">
