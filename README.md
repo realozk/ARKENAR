@@ -1,4 +1,4 @@
-<div align="center"> <img src="[/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg]" width="100%" alt="Arkenar Banner"> </div>
+<div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
 
 **Designed for pentesters and offensive security pros, Arkenar acts as a central orchestration layer. It combines Katana and Nuclei, while layering on its own custom mutation engine to catch complex logic flaws and injections that static templates might miss.**
 ​
