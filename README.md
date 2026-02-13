@@ -15,7 +15,7 @@
 
 • **Broad Coverage**: Targets OWASP Top 10 and infrastructure misconfigurations.
 ​
-<h4 align="center">A blazing fast, modern vulnerability scanner written in <a href="https://www.rust-lang.org" target="_blank">Rust</a>. 🦀</h4>
+<h4 align="center">A blazing fast, modern vulnerability scanner written in <a href="https://www.rust-lang.org" target="_blank">Rust</a>. </h4>
 
 <p align="center">
   <a href="https://github.com/realozk/ARKENAR/releases">
