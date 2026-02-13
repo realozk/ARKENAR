@@ -18,7 +18,7 @@
   </a>
 </p>
 
-<p align="center">
+
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
   <a href="#features">Features</a> •
@@ -29,7 +29,9 @@
 
 ##  Preview
 
-![Arkenar Demo](https://github.com/user-attachments/assets/a5b66c6c-761b-46bb-8a2b-02726d2e1977)
+<p align="center">![603C35E3-83BA-4984-BFCF-37E9B0F0A70E](https://github.com/user-attachments/assets/47ccbc02-57e2-4fcb-8f1d-8088aa9fdf80)
+![603C35E3-83BA-4984-BFCF-37E9B0F0A70E](https://github.com/user-attachments/assets/47ccbc02-57e2-4fcb-8f1d-8088aa9fdf80)
+
 
 
 ##  Installation
