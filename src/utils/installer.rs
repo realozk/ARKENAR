@@ -7,7 +7,7 @@ use std::process::Stdio;
 
 const KATANA_URL: &str = "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_windows_amd64.zip";
 const NUCLEI_URL: &str = "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_windows_amd64.zip";
-const ARKENAR_UPDATE_URL: &str = "https://github.com/RealOzk/ARKENAR/releases/latest/download/ARKENAR.exe";
+const ARKENAR_UPDATE_URL: &str = "https://github.com/RealOzk/ARKENAR/releases/latest/download/arkenar.exe";
 
 /// Verifies required tools are installed, downloading them if missing.
 pub async fn check_and_install_tools() {
