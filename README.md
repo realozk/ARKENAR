@@ -29,7 +29,7 @@
 
 ##  Preview
 
-![Arkenar Demo](https://via.placeholder.com/800x400.png?text=Place+Your+Screenshot+Here)
+![Arkenar Demo](![603C35E3-83BA-4984-BFCF-37E9B0F0A70E](https://github.com/user-attachments/assets/a5b66c6c-761b-4b6b-8a2b-02726d2e1977)=)
 *(Add a screenshot or GIF of your tool running here)*
 
 ##  Installation
