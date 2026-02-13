@@ -4,6 +4,11 @@
   <br>
 </h1>
 
+<p align="center">
+  <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" alt="Arkenar Demo">
+</p>
+
+
 <h4 align="center">A blazing fast, modern vulnerability scanner written in <a href="https://www.rust-lang.org" target="_blank">Rust</a>. 🦀</h4>
 
 <p align="center">
@@ -29,9 +34,6 @@
 
 ##  Preview
 
-<p align="center">
-  <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" alt="Arkenar Demo">
-</p>
 
 
 ##  Installation
