@@ -1,0 +1,28 @@
+[package]
+name = "arkenar"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+reqwest = { version = "0.11", features = ["json", "blocking", "socks"] }
+clap = { version = "4.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+env_logger = "0.10"
+regex = "1.5"
+rand = { version = "0.9.2", features = ["std", "thread_rng"] }
+async-trait = "0.1"
+futures = "0.3"
+url = "2.5"
+colored = "2.0"
+anyhow = "1.0"
+indicatif = "0.17"
+which = "8.0.0"
+zip = "0.6"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"

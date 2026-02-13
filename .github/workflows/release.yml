@@ -1,0 +1,70 @@
+name: Release ARKENAR
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary_name: arkenar
+            zip_name: arkenar-linux-amd64.tar.gz
+          - os: windows-latest
+            binary_name: arkenar.exe
+            zip_name: arkenar-windows-amd64.zip
+          - os: macos-latest
+            binary_name: arkenar
+            zip_name: arkenar-macos-amd64.tar.gz
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Build Release
+        run: cargo build --release
+
+      - name: Package Artifacts
+        shell: bash
+        run: |
+          mkdir Arkenar
+          cp target/release/${{ matrix.binary_name }} Arkenar/
+          
+          if [ -d "tools" ]; then
+            cp -r tools Arkenar/
+          else
+            mkdir Arkenar/tools
+          fi
+
+          cd Arkenar
+
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            7z a ../${{ matrix.zip_name }} *
+          else
+            tar -czvf ../${{ matrix.zip_name }} *
+          fi
+          
+          cd ..
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.zip_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
