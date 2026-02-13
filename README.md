@@ -21,13 +21,15 @@
   <a href="https://github.com/realozk/ARKENAR/releases">
     <img src="https://img.shields.io/github/v/release/realozk/ARKENAR?style=for-the-badge&color=22c55e">
   </a>
+
   <a href="https://github.com/realozk/ARKENAR/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/realozk/ARKENAR?style=for-the-badge&color=f59e0b">
   </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS?style=for-the-badge&color=3b82f6">
-  </a>
 
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-3b82f6?style=for-the-badge">
+</p>
+
+<p align="center">
   <a href="https://github.com/projectdiscovery/katana">
     <img src="https://img.shields.io/badge/Katana-ProjectDiscovery?style=for-the-badge&labelColor=1f6feb&color=0b1220&logo=github&logoColor=white">
   </a>
