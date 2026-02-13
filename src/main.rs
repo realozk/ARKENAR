@@ -39,7 +39,7 @@ use crate::utils::read_lines;
 )]
 pub struct Args {
     /// Target URL to scan (positional).
-    #[arg(required_unless_present = "list")]
+    #[arg(required_unless_present_any = ["list", "update"])]
     pub target: Option<String>,
 
     #[arg(short = 't', long, default_value_t = 50, help = "Number of concurrent threads")]
