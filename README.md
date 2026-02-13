@@ -29,9 +29,9 @@
 
 ##  Preview
 
-<p align="center">![603C35E3-83BA-4984-BFCF-37E9B0F0A70E](https://github.com/user-attachments/assets/47ccbc02-57e2-4fcb-8f1d-8088aa9fdf80)
-![603C35E3-83BA-4984-BFCF-37E9B0F0A70E](https://github.com/user-attachments/assets/47ccbc02-57e2-4fcb-8f1d-8088aa9fdf80)
-
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/47ccbc02-57e2-4fcb-8f1d-8088aa9dfdf80" alt="Arkenar Demo">
+</p>
 
 
 ##  Installation
