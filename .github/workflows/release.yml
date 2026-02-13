@@ -47,7 +47,7 @@ jobs:
           mkdir -p dist
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/ARKENAR.exe
-            cd dist && zip ../${{ matrix.archive_name }} ARKENAR.exe && cd ..
+            powershell Compress-Archive -Path dist/ARKENAR.exe -DestinationPath ${{ matrix.archive_name }} -Force
           else
             cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/arkenar
             tar -czf ${{ matrix.archive_name }} -C dist arkenar
