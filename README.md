@@ -48,10 +48,17 @@
 
 
 
-##  Installation
+##  Installation (Recommended)
 
-###  Windows (Recommended)
+###  Windows 
 You can install **Arkenar** instantly using our automated PowerShell script. Copy and paste this command into your terminal:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
+
+```
+### Linux & macOS
+Run the following command to download and install automatically:
+
+```bash
+curl -sL [https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh](https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh) | bash
