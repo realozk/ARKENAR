@@ -1,16 +1,13 @@
-name: Release ARKENAR
+name: Release
 
 on:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-
 jobs:
   build-and-package:
-    name: Build for ${{ matrix.os }}
+    name: Build for ${{ matrix.os }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -18,58 +15,49 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive_name: arkenar-linux-amd64.tar.gz
-
+            binary_name: arkenar
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive_name: arkenar-windows-amd64.zip
-
+            binary_name: arkenar.exe
           - os: macos-latest
             target: x86_64-apple-darwin
             archive_name: arkenar-macos-amd64.tar.gz
-
+            binary_name: arkenar
           - os: macos-latest
             target: aarch64-apple-darwin
             archive_name: arkenar-macos-arm64.tar.gz
+            binary_name: arkenar
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          targets: ${{ matrix.target }}
 
       - name: Build Release
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package Artifacts
         shell: bash
         run: |
-          mkdir Arkenar
-          cp target/release/${{ matrix.binary_name }} Arkenar/
-          
-          if [ -d "tools" ]; then
-            cp -r tools Arkenar/
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/ARKENAR.exe
+            cd dist && zip ../${{ matrix.archive_name }} ARKENAR.exe && cd ..
           else
-            mkdir Arkenar/tools
+            cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/arkenar
+            tar -czf ${{ matrix.archive_name }} -C dist arkenar
           fi
-
-          cd Arkenar
-
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            7z a ../${{ matrix.zip_name }} *
-          else
-            tar -czvf ../${{ matrix.zip_name }} *
-          fi
-          
-          cd ..
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.zip_name }}
+          files: |
+            ${{ matrix.archive_name }}
+            ${{ matrix.os == 'windows-latest' && 'dist/ARKENAR.exe' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
