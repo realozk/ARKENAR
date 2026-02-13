@@ -18,7 +18,7 @@
   </a>
 </p>
 
-<p align="center">
+
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
   <a href="#features">Features</a> •
@@ -29,8 +29,10 @@
 
 ##  Preview
 
-![Arkenar Demo](https://via.placeholder.com/800x400.png?text=Place+Your+Screenshot+Here)
-*(Add a screenshot or GIF of your tool running here)*
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/47ccbc02-57e2-4fcb-8f1d-8088aa9dfdf80" alt="Arkenar Demo">
+</p>
+
 
 ##  Installation
 
