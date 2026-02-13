@@ -16,19 +16,20 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            binary_name: arkenar
-            zip_name: arkenar-linux-amd64.tar.gz
+            target: x86_64-unknown-linux-gnu
+            archive_name: arkenar-linux-amd64.tar.gz
+
           - os: windows-latest
-            binary_name: arkenar.exe
-            zip_name: arkenar-windows-amd64.zip
+            target: x86_64-pc-windows-msvc
+            archive_name: arkenar-windows-amd64.zip
+
           - os: macos-latest
-            binary_name: arkenar
-            zip_name: arkenar-macos-amd64.tar.gz
-          - build: macos-arm
-            os: macos-latest
+            target: x86_64-apple-darwin
+            archive_name: arkenar-macos-amd64.tar.gz
+
+          - os: macos-latest
             target: aarch64-apple-darwin
             archive_name: arkenar-macos-arm64.tar.gz
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
