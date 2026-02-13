@@ -61,4 +61,4 @@ iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | i
 Run the following command to download and install automatically:
 
 ```bash
-curl -sL [https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh](https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh) | bash
+curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bash
