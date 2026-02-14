@@ -15,7 +15,6 @@
 
 • **Broad Coverage**: Targets OWASP Top 10 and infrastructure misconfigurations.
 ​
-<h4 align="center">A blazing fast, modern vulnerability scanner written in <a href="https://www.rust-lang.org" target="_blank">Rust</a>. </h4>
 
 <p align="center">
 
@@ -33,17 +32,22 @@
   <a href="https://github.com/projectdiscovery/nuclei">
     <img src="https://img.shields.io/badge/Nuclei-ProjectDiscovery?style=for-the-badge&labelColor=dc2626&color=0b1220&logo=github&logoColor=white">
   </a>
-</p>
 
-  <a href="#installation">Installation</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#features">Features</a> •
-  <a href="#disclaimer">Disclaimer</a>
-</p>
+## Table of Contents
+
+- [Preview](#preview)
+- [Installation](#installation-recommended)
+- [Usage](#usage)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Disclaimer](#disclaimer)
 
 ---
 
 ##  Preview
+
+<div align="center"> <img src="/media/arkenatee-ezgif.com-crop.gif" width="90%" alt="Arkenar Banner"> </div>
 
 
 
@@ -65,6 +69,45 @@ curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bas
 
 ---
 
+## Usage
+
+Running ARKENAR is simple. You can scan a single target or use a list of subdomains.
+
+macOS & Linux
+
+```bash
+# Basic single target scan
+arkenar [https://example.com](https://example.com)
+
+# Advanced scan with a list and custom rate limit
+arkenar -l subdomains.txt -o output.json --rate-limit 150
+```
+
+Windows (PowerShell / CMD)
+
+```bash 
+# Basic single target scan
+arkenar.exe [https://example.com](https://example.com)
+
+# Advanced scan with a list and output file
+arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
+```
+
+
+### Options
+
+| Flag | Description | Example |
+| :--- | :--- | :--- |
+| `-l`, `--list` | Path to a file containing a list of subdomains | `-l ~/Desktop/targets.txt` |
+| `-o`, `--output` | Save the scan results to a JSON file | `-o result.json` |
+| `-t`, `--threads` | Set the number of concurrent threads (Default: 50) | `-t 100` |
+| `--rate-limit` | Set the maximum requests per second | `--rate-limit 200` |
+| `--timeout` | Connection timeout in seconds | `--timeout 10` |
+| `-v`, `--verbose` | Enable verbose mode for detailed logs | `-v` |
+| `--update` | Update ARKENAR and external tools (Katana/Nuclei) | `--update` |
+
+---
+
 ## Troubleshooting
 
 ### Nuclei permission denied on macOS / Linux
@@ -75,6 +118,10 @@ If you see errors like `permission denied` when Nuclei tries to write its config
 sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
 sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
 ```
+
+or for more advanced scan 
+
+
 
 On Linux, the paths are typically:
 
@@ -89,3 +136,14 @@ If `arkenar --update` fails with `Permission denied`, the binary is in a protect
 
 ```bash
 sudo arkenar --update
+```
+
+## Contributing
+Contributions are welcome Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+This tool is for educational and authorized testing purposes only. The developer is not responsible for any misuse or damage caused by this tool. Always obtain proper authorization before scanning any target.
+
