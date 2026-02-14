@@ -44,9 +44,6 @@
 ---
 
 ##  Preview
-<a>
-<div align="center"> <img src="/media/{5B277726-B60E-49C4-94D1-C65AC058670F}.png" width="90%" alt="Arkenar Banner"> </div>
-<a/>
 
 <div align="center"> <img src="/media/arkenatee-ezgif.com-crop.gif" width="90%" alt="Arkenar Banner"> </div>
 
