@@ -45,7 +45,7 @@
 
 ##  Preview
 
-
+<div align="center"> <img src="/media/arkenatee-ezgif.com-crop.gif" width="90%" alt="Arkenar Banner"> </div>
 
 ##  Installation (Recommended)
 
