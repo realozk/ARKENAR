@@ -98,7 +98,7 @@ arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
 
 | Flag | Description | Example |
 | :--- | :--- | :--- |
-| `-l`, `--list` | Path to a file containing a list of subdomains | `-l subs.txt` |
+| `-l`, `--list` | Path to a file containing a list of subdomains | `-l ~/Desktop/targets.txt` |
 | `-o`, `--output` | Save the scan results to a JSON file | `-o result.json` |
 | `-t`, `--threads` | Set the number of concurrent threads (Default: 50) | `-t 100` |
 | `--rate-limit` | Set the maximum requests per second | `--rate-limit 200` |
