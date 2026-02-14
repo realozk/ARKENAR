@@ -1,21 +1,31 @@
 use std::fs;
-use std::io::{self, Cursor};
-use std::path::Path;
+use std::io::{self, Cursor, Read};
+use std::path::{Path, PathBuf};
 use colored::*;
 use tokio::process::Command;
 use std::process::Stdio;
+use flate2::read::GzDecoder;
+use tar::Archive;
 
 /// Returns the correct ARKENAR release asset name for the current OS/arch.
 fn get_arkenar_asset_name() -> &'static str {
     if cfg!(target_os = "windows") {
-        "ARKENAR.exe"
+        "arkenar-windows-amd64.zip"
     } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
-        "arkenar-macos-arm64"
+        "arkenar-macos-arm64.tar.gz"
     } else if cfg!(target_os = "macos") {
-        "arkenar-macos-amd64"
+        "arkenar-macos-amd64.tar.gz"
     } else {
-        // Linux x86_64 (default)
-        "arkenar-linux-amd64"
+        "arkenar-linux-amd64.tar.gz"
+    }
+}
+
+/// Returns the expected binary name inside the archive.
+fn get_arkenar_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "arkenar.exe"
+    } else {
+        "arkenar"
     }
 }
 
@@ -194,8 +204,9 @@ async fn update_katana() {
 async fn self_update() {
     print!("\r\n{}\r\n", "[*] Checking for ARKENAR self-update...".bright_cyan());
 
-    // ── 1. Detect ──────────────────────────────────────────────────────────
+    // 1. Detect
     let asset_name = get_arkenar_asset_name();
+    let binary_name = get_arkenar_binary_name();
     let download_url = format!(
         "https://github.com/RealOzk/ARKENAR/releases/latest/download/{}",
         asset_name
@@ -209,7 +220,7 @@ async fn self_update() {
         }
     };
 
-    // ── 2. Download ────────────────────────────────────────────────────────
+    // 2. Download
     print!("{}\r\n", format!("[*] Downloading {} ...", download_url).dimmed());
 
     let response = match reqwest::get(&download_url).await {
@@ -233,17 +244,32 @@ async fn self_update() {
         }
     };
 
-    // Write to a temporary file next to the current binary first, so the
-    // rename is guaranteed to be on the same filesystem.
+    // 3. Extract binary from archive
+    print!("{}\r\n", "[*] Extracting binary from archive...".blue());
+
+    let extracted = if asset_name.ends_with(".tar.gz") {
+        extract_binary_from_tar_gz(&bytes, binary_name)
+    } else {
+        extract_binary_from_zip(&bytes, binary_name)
+    };
+
+    let binary_bytes = match extracted {
+        Ok(b) => b,
+        Err(e) => {
+            print!("{}\r\n", format!("[!] Failed to extract binary: {}", e).red());
+            return;
+        }
+    };
+
+    // 4. Replace current binary
     let tmp_path = current_exe.with_extension("tmp");
     let backup_path = current_exe.with_extension("bak");
 
-    if let Err(e) = fs::write(&tmp_path, &bytes) {
+    if let Err(e) = fs::write(&tmp_path, &binary_bytes) {
         print!("{}\r\n", format!("[!] Failed to write temp binary: {}", e).red());
         return;
     }
 
-    // On Unix, ensure the new binary is executable.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -255,12 +281,10 @@ async fn self_update() {
         }
     }
 
-    // Remove stale backup, if any.
     if backup_path.exists() {
         let _ = fs::remove_file(&backup_path);
     }
 
-    // Rename current → backup.
     if let Err(e) = fs::rename(&current_exe, &backup_path) {
         if e.kind() == io::ErrorKind::PermissionDenied {
             print!("{}\r\n",
@@ -274,7 +298,6 @@ async fn self_update() {
         return;
     }
 
-    // Rename temp → target.
     if let Err(e) = fs::rename(&tmp_path, &current_exe) {
         if e.kind() == io::ErrorKind::PermissionDenied {
             print!("{}\r\n",
@@ -284,15 +307,63 @@ async fn self_update() {
         } else {
             print!("{}\r\n", format!("[!] Failed to install new binary: {}", e).red());
         }
-        // Attempt rollback.
         let _ = fs::rename(&backup_path, &current_exe);
         return;
     }
 
-    // ── 4. Cleanup ─────────────────────────────────────────────────────────
+    // 5. Cleanup
     let _ = fs::remove_file(&backup_path);
 
     print!("{}\r\n", "[+] ARKENAR binary updated successfully!".green().bold());
+}
+
+/// Extracts a named binary from a `.tar.gz` archive in memory.
+fn extract_binary_from_tar_gz(data: &[u8], binary_name: &str) -> io::Result<Vec<u8>> {
+    let decoder = GzDecoder::new(Cursor::new(data));
+    let mut archive = Archive::new(decoder);
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+
+        if file_name == binary_name {
+            let mut buf = Vec::new();
+            entry.read_to_end(&mut buf)?;
+            return Ok(buf);
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("binary '{}' not found in archive", binary_name),
+    ))
+}
+
+/// Extracts a named binary from a `.zip` archive in memory.
+fn extract_binary_from_zip(data: &[u8], binary_name: &str) -> io::Result<Vec<u8>> {
+    let cursor = Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        let name = PathBuf::from(file.name().to_string());
+        let file_name = name.file_name().unwrap_or_default().to_string_lossy();
+
+        if file_name == binary_name {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+            return Ok(buf);
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("binary '{}' not found in archive", binary_name),
+    ))
 }
 
 /// Downloads a zip archive and extracts tool binaries into the target directory.

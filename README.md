@@ -61,3 +61,31 @@ Run the following command to download and install automatically:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bash
+```
+
+---
+
+## Troubleshooting
+
+### Nuclei permission denied on macOS / Linux
+
+If you see errors like `permission denied` when Nuclei tries to write its config files, fix the ownership of its config directories:
+
+```bash
+sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
+sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
+```
+
+On Linux, the paths are typically:
+
+```bash
+sudo chown -R $(whoami) ~/.config/nuclei/
+sudo chown -R $(whoami) ~/.config/uncover/
+```
+
+### Self-update permission denied
+
+If `arkenar --update` fails with `Permission denied`, the binary is in a protected directory. Re-run with:
+
+```bash
+sudo arkenar --update
