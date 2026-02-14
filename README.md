@@ -139,7 +139,7 @@ sudo arkenar --update
 ```
 
 ## Contributing
-Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
+Contributions are welcome Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
