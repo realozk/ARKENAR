@@ -25,6 +25,7 @@ use crate::utils::read_lines;
     author = "RealOzk",
     version,
     about = "Advanced Web Vulnerability Scanner",
+    override_usage = "arkenar <target>  <options>",
     after_help = "\x1b[1;36mEXAMPLES:\x1b[0m
   Quick scan:                     arkenar http://target.com
   Verbose mode:                   arkenar http://target.com -v
