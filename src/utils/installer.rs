@@ -5,9 +5,58 @@ use colored::*;
 use tokio::process::Command;
 use std::process::Stdio;
 
-const KATANA_URL: &str = "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_windows_amd64.zip";
-const NUCLEI_URL: &str = "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_windows_amd64.zip";
-const ARKENAR_UPDATE_URL: &str = "https://github.com/RealOzk/ARKENAR/releases/latest/download/arkenar.exe";
+/// Returns the correct ARKENAR release asset name for the current OS/arch.
+fn get_arkenar_asset_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "ARKENAR.exe"
+    } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+        "arkenar-macos-arm64"
+    } else if cfg!(target_os = "macos") {
+        "arkenar-macos-amd64"
+    } else {
+        // Linux x86_64 (default)
+        "arkenar-linux-amd64"
+    }
+}
+
+/// Returns the platform-specific binary filename for a tool (e.g. `katana` → `katana.exe` on Windows).
+fn get_tool_binary_name(tool: &str) -> String {
+    if cfg!(target_os = "windows") {
+        format!("{}.exe", tool)
+    } else {
+        tool.to_string()
+    }
+}
+
+/// Returns the download URL for a given tool on the current platform.
+fn get_tool_download_url(tool: &str) -> &'static str {
+    match tool {
+        "katana" => {
+            if cfg!(target_os = "windows") {
+                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_windows_amd64.zip"
+            } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_macOS_arm64.zip"
+            } else if cfg!(target_os = "macos") {
+                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_macOS_amd64.zip"
+            } else {
+                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_linux_amd64.zip"
+            }
+        }
+        "nuclei" => {
+            if cfg!(target_os = "windows") {
+                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_windows_amd64.zip"
+            } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_macOS_arm64.zip"
+            } else if cfg!(target_os = "macos") {
+                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_macOS_amd64.zip"
+            } else {
+                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_linux_amd64.zip"
+            }
+        }
+        _ => panic!("Unknown tool: {}", tool),
+    }
+}
+
 
 /// Verifies required tools are installed, downloading them if missing.
 pub async fn check_and_install_tools() {
@@ -21,16 +70,19 @@ pub async fn check_and_install_tools() {
         }
     }
 
-    if !tools_dir.join("katana.exe").exists() {
+    let katana_bin = get_tool_binary_name("katana");
+    let nuclei_bin = get_tool_binary_name("nuclei");
+
+    if !tools_dir.join(&katana_bin).exists() {
         print!("{}\r\n", "[*] Katana not found. Downloading...".yellow());
-        download_and_extract(KATANA_URL, tools_dir).await;
+        download_and_extract(get_tool_download_url("katana"), tools_dir).await;
     } else {
         print!("{}\r\n", "[+] Katana found.".green());
     }
 
-    if !tools_dir.join("nuclei.exe").exists() {
+    if !tools_dir.join(&nuclei_bin).exists() {
         print!("{}\r\n", "[*] Nuclei not found. Downloading...".yellow());
-        download_and_extract(NUCLEI_URL, tools_dir).await;
+        download_and_extract(get_tool_download_url("nuclei"), tools_dir).await;
     } else {
         print!("{}\r\n", "[+] Nuclei found.".green());
     }
@@ -40,9 +92,7 @@ pub async fn check_and_install_tools() {
 
 /// Runs a full update cycle: Nuclei binary, templates, Katana, and ARKENAR self-update.
 pub async fn run_full_update() {
-    print!("{}\r\n", "══════════════════════════════════════════".bright_cyan().bold());
     print!("{}\r\n", "         ARKENAR Full Update".bright_cyan().bold());
-    print!("{}\r\n", "══════════════════════════════════════════".bright_cyan().bold());
 
     update_nuclei().await;
     update_nuclei_templates().await;
@@ -52,16 +102,18 @@ pub async fn run_full_update() {
     print!("\r\n{}\r\n", "[+] All updates completed successfully!".green().bold());
 }
 
+
 async fn update_nuclei() {
     print!("\r\n{}\r\n", "[*] Updating Nuclei...".bright_cyan());
 
-    let nuclei_path = Path::new("./tools/nuclei.exe");
+    let nuclei_bin = get_tool_binary_name("nuclei");
+    let nuclei_path = Path::new("./tools").join(&nuclei_bin);
     if !nuclei_path.exists() {
         print!("{}\r\n", "[!] Nuclei not found, skipping update.".yellow());
         return;
     }
 
-    match Command::new(nuclei_path)
+    match Command::new(&nuclei_path)
         .arg("-update")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -83,13 +135,14 @@ async fn update_nuclei() {
 async fn update_nuclei_templates() {
     print!("\r\n{}\r\n", "[*] Updating Nuclei Templates...".bright_cyan());
 
-    let nuclei_path = Path::new("./tools/nuclei.exe");
+    let nuclei_bin = get_tool_binary_name("nuclei");
+    let nuclei_path = Path::new("./tools").join(&nuclei_bin);
     if !nuclei_path.exists() {
         print!("{}\r\n", "[!] Nuclei not found, skipping template update.".yellow());
         return;
     }
 
-    match Command::new(nuclei_path)
+    match Command::new(&nuclei_path)
         .arg("-ut")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -111,13 +164,14 @@ async fn update_nuclei_templates() {
 async fn update_katana() {
     print!("\r\n{}\r\n", "[*] Updating Katana...".bright_cyan());
 
-    let katana_path = Path::new("./tools/katana.exe");
+    let katana_bin = get_tool_binary_name("katana");
+    let katana_path = Path::new("./tools").join(&katana_bin);
     if !katana_path.exists() {
         print!("{}\r\n", "[!] Katana not found, skipping update.".yellow());
         return;
     }
 
-    match Command::new(katana_path)
+    match Command::new(&katana_path)
         .arg("-update")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -136,8 +190,16 @@ async fn update_katana() {
     }
 }
 
+
 async fn self_update() {
     print!("\r\n{}\r\n", "[*] Checking for ARKENAR self-update...".bright_cyan());
+
+    // ── 1. Detect ──────────────────────────────────────────────────────────
+    let asset_name = get_arkenar_asset_name();
+    let download_url = format!(
+        "https://github.com/RealOzk/ARKENAR/releases/latest/download/{}",
+        asset_name
+    );
 
     let current_exe = match std::env::current_exe() {
         Ok(p) => p,
@@ -147,9 +209,10 @@ async fn self_update() {
         }
     };
 
-    print!("{}\r\n", format!("[*] Downloading from {}...", ARKENAR_UPDATE_URL).dimmed());
+    // ── 2. Download ────────────────────────────────────────────────────────
+    print!("{}\r\n", format!("[*] Downloading {} ...", download_url).dimmed());
 
-    let response = match reqwest::get(ARKENAR_UPDATE_URL).await {
+    let response = match reqwest::get(&download_url).await {
         Ok(r) => r,
         Err(e) => {
             print!("{}\r\n", format!("[!] Download failed: {}", e).red());
@@ -170,29 +233,69 @@ async fn self_update() {
         }
     };
 
+    // Write to a temporary file next to the current binary first, so the
+    // rename is guaranteed to be on the same filesystem.
+    let tmp_path = current_exe.with_extension("tmp");
     let backup_path = current_exe.with_extension("bak");
 
+    if let Err(e) = fs::write(&tmp_path, &bytes) {
+        print!("{}\r\n", format!("[!] Failed to write temp binary: {}", e).red());
+        return;
+    }
+
+    // On Unix, ensure the new binary is executable.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        if let Err(e) = fs::set_permissions(&tmp_path, perms) {
+            print!("{}\r\n", format!("[!] Failed to set permissions: {}", e).red());
+            let _ = fs::remove_file(&tmp_path);
+            return;
+        }
+    }
+
+    // Remove stale backup, if any.
     if backup_path.exists() {
         let _ = fs::remove_file(&backup_path);
     }
 
+    // Rename current → backup.
     if let Err(e) = fs::rename(&current_exe, &backup_path) {
-        print!("{}\r\n", format!("[!] Failed to rename current binary: {}", e).red());
+        if e.kind() == io::ErrorKind::PermissionDenied {
+            print!("{}\r\n",
+                "[!] Permission denied. Try re-running with: sudo arkenar --update"
+                    .red().bold()
+            );
+        } else {
+            print!("{}\r\n", format!("[!] Failed to rename current binary: {}", e).red());
+        }
+        let _ = fs::remove_file(&tmp_path);
         return;
     }
 
-    if let Err(e) = fs::write(&current_exe, &bytes) {
-        print!("{}\r\n", format!("[!] Failed to write new binary: {}", e).red());
+    // Rename temp → target.
+    if let Err(e) = fs::rename(&tmp_path, &current_exe) {
+        if e.kind() == io::ErrorKind::PermissionDenied {
+            print!("{}\r\n",
+                "[!] Permission denied. Try re-running with: sudo arkenar --update"
+                    .red().bold()
+            );
+        } else {
+            print!("{}\r\n", format!("[!] Failed to install new binary: {}", e).red());
+        }
+        // Attempt rollback.
         let _ = fs::rename(&backup_path, &current_exe);
         return;
     }
 
+    // ── 4. Cleanup ─────────────────────────────────────────────────────────
     let _ = fs::remove_file(&backup_path);
 
     print!("{}\r\n", "[+] ARKENAR binary updated successfully!".green().bold());
 }
 
-/// Downloads a zip archive and extracts `.exe` files into the target directory.
+/// Downloads a zip archive and extracts tool binaries into the target directory.
 async fn download_and_extract(url: &str, target_dir: &Path) {
     let response = match reqwest::get(url).await {
         Ok(r) => r,
@@ -226,17 +329,39 @@ async fn download_and_extract(url: &str, target_dir: &Path) {
             Ok(f) => f,
             Err(_) => continue,
         };
+
         let outpath = match file.enclosed_name() {
             Some(path) => target_dir.join(path),
             None => continue,
         };
 
-        if file.name().ends_with(".exe") {
+        // On Windows extract .exe files; on Unix extract files without extension
+        // (or any executable-looking binary).   keep the original logic but make
+        // it platform-aware: extract anything whose stem matches a known tool name.
+        let name = file.name().to_string();
+        let dominated_by_exe = name.ends_with(".exe");
+        let is_tool_binary = if cfg!(target_os = "windows") {
+            dominated_by_exe
+        } else {
+            // On Unix, tool binaries inside the zip typically have no extension.
+            let p = std::path::Path::new(&name);
+            p.extension().is_none() && !name.ends_with('/')
+        };
+
+        if is_tool_binary {
             match fs::File::create(&outpath) {
                 Ok(mut outfile) => {
                     if let Err(e) = io::copy(&mut file, &mut outfile) {
                         eprint!("{}\r\n", format!("[!] Failed to write binary: {}", e).red());
                         return;
+                    }
+
+                    // On Unix, make extracted binary executable.
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let perms = std::fs::Permissions::from_mode(0o755);
+                        let _ = fs::set_permissions(&outpath, perms);
                     }
                 }
                 Err(e) => {
