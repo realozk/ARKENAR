@@ -2,6 +2,12 @@
 name = "arkenar"
 version = "1.0.0"
 edition = "2021"
+description = "modern vulnerability scanner combining Katana and Nuclei."
+license = "MIT"
+repository = "https://github.com/Real0zk/ARKENAR"
+homepage = "https://github.com/Real0zk/ARKENAR"
+keywords = ["security", "scanner", "hacking", "cli", "rust"]
+categories = ["command-line-utilities", "development-tools::testing"]
 exclude = ["media/*"]
 
 [dependencies]
