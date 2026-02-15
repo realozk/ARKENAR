@@ -21,7 +21,7 @@ use crate::utils::payload_loader::PayloadLoader;
 /// The engine:
 /// 1. Takes targets from TargetManager or HttpRequest directly
 /// 2. Extracts all injection points using the mutator
-/// 3. Gets context-aware payloads for each injection point
+/// 3. Gets context aware payloads for each injection point
 /// 4. Mutates requests and sends them concurrently with precise timing
 /// 5. Passes responses to the detector for vulnerability classification
 pub struct ScanEngine {

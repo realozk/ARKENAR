@@ -100,7 +100,7 @@ pub async fn check_and_install_tools() {
     print!("{}\r\n", "[+] All dependencies ready.".green().bold());
 }
 
-/// Runs a full update cycle: Nuclei binary, templates, Katana, and ARKENAR self-update.
+/// Runs a full update cycle: Nuclei binary, templates, Katana, and ARKENAR self update.
 pub async fn run_full_update() {
     print!("{}\r\n", "         ARKENAR Full Update".bright_cyan().bold());
 
@@ -204,7 +204,6 @@ async fn update_katana() {
 async fn self_update() {
     print!("\r\n{}\r\n", "[*] Checking for ARKENAR self-update...".bright_cyan());
 
-    // 1. Detect
     let asset_name = get_arkenar_asset_name();
     let binary_name = get_arkenar_binary_name();
     let download_url = format!(
@@ -220,7 +219,6 @@ async fn self_update() {
         }
     };
 
-    // 2. Download
     print!("{}\r\n", format!("[*] Downloading {} ...", download_url).dimmed());
 
     let response = match reqwest::get(&download_url).await {
@@ -244,7 +242,6 @@ async fn self_update() {
         }
     };
 
-    // 3. Extract binary from archive
     print!("{}\r\n", "[*] Extracting binary from archive...".blue());
 
     let extracted = if asset_name.ends_with(".tar.gz") {
@@ -261,7 +258,6 @@ async fn self_update() {
         }
     };
 
-    // 4. Replace current binary
     let tmp_path = current_exe.with_extension("tmp");
     let backup_path = current_exe.with_extension("bak");
 
@@ -407,7 +403,7 @@ async fn download_and_extract(url: &str, target_dir: &Path) {
         };
 
         // On Windows extract .exe files; on Unix extract files without extension
-        // (or any executable-looking binary).   keep the original logic but make
+        // (or any executable looking binary).   keep the original logic but make
         // it platform-aware: extract anything whose stem matches a known tool name.
         let name = file.name().to_string();
         let dominated_by_exe = name.ends_with(".exe");
