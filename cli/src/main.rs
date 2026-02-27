@@ -1,8 +1,3 @@
-pub mod core;
-pub mod http;
-pub mod modules;
-pub mod utils;
-
 use clap::{CommandFactory, Parser};
 use colored::*;
 use std::io::Write;
@@ -10,14 +5,11 @@ use std::process;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::core::engine::ScanEngine;
-use crate::core::result_aggregator::{ResultAggregator, ScanResult};
-use crate::core::target_manager::TargetManager;
-use crate::http::HttpClient;
-use crate::modules::crawler::run_katana_crawler;
-use crate::modules::nuclei::run_nuclei_scan;
-use crate::utils::installer;
-use crate::utils::read_lines;
+use arkenar_core::{
+    ScanEngine, ResultAggregator, ScanResult, TargetManager,
+    HttpClient, run_katana_crawler, run_nuclei_scan,
+    installer, read_lines, parse_custom_headers,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -85,17 +77,6 @@ pub struct Args {
 
     #[arg(long, help = "Simulate scan without sending real requests")]
     pub dry_run: bool,
-}
-
-/// Parses raw `Key: Value` header strings into structured tuples.
-fn parse_custom_headers(raw: &[String]) -> Vec<(String, String)> {
-    raw.iter().filter_map(|h| {
-        let mut parts = h.splitn(2, ':');
-        let key = parts.next()?.trim().to_string();
-        let val = parts.next()?.trim().to_string();
-        if key.is_empty() { return None; }
-        Some((key, val))
-    }).collect()
 }
 
 #[tokio::main]
