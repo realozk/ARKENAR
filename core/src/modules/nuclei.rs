@@ -1,15 +1,20 @@
-use std::io::Write;
 use std::process::Stdio;
-use colored::*;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use crate::utils;
+use crate::SinkRef;
 
-pub async fn run_nuclei_scan(target: &str, mode: &str, verbose: bool , custom_tags: Option<&str>) -> anyhow::Result<()> {
+pub async fn run_nuclei_scan(
+    target: &str,
+    mode: &str,
+    verbose: bool,
+    custom_tags: Option<&str>,
+    sink: &SinkRef,
+) -> anyhow::Result<()> {
     let binary = match utils::get_binary_path("nuclei") {
         Some(path) => path,
         None => {
-            eprint!("{}\r\n", "[!] Error: 'nuclei' binary not found.".red());
+            sink.on_log("error", "[!] Error: 'nuclei' binary not found.");
             return Ok(());
         }
     };
@@ -19,12 +24,10 @@ pub async fn run_nuclei_scan(target: &str, mode: &str, verbose: bool , custom_ta
     let timeout = if is_simple { "5" } else { "10" };
     let concurrency = if is_simple { "25" } else { "50" };
 
-    print!("{}\r\n", format!("[*] Launching Nuclei on: {}", target).bright_cyan());
-    std::io::stdout().flush().ok();
+    sink.on_log("phase", &format!("[*] Launching Nuclei on: {}", target));
 
     if verbose {
-        print!("{}\r\n", format!("[DEBUG] , concurrency: {}",  concurrency).dimmed());
-        std::io::stdout().flush().ok();
+        sink.on_log("info", &format!("[DEBUG] concurrency: {}", concurrency));
     }
 
     let mut args = vec![
@@ -38,12 +41,10 @@ pub async fn run_nuclei_scan(target: &str, mode: &str, verbose: bool , custom_ta
 
     if let Some(tags) = custom_tags {
         if verbose {
-            print!("{}\r\n", format!("[*] Custom tags active: {}", tags).yellow());
-            std::io::stdout().flush().ok();
+            sink.on_log("info", &format!("[*] Custom tags active: {}", tags));
         }
         args.extend_from_slice(&["-tags", tags]);
     } else {
-        // No tags provided -> Apply Default Modes
         if is_simple {
             args.extend_from_slice(&["-type", "dns,http"]);
             args.extend_from_slice(&["-severity", "high,critical"]);
@@ -60,7 +61,7 @@ pub async fn run_nuclei_scan(target: &str, mode: &str, verbose: bool , custom_ta
     {
         Ok(c) => c,
         Err(e) => {
-            eprint!("{}\r\n", format!("[!] Failed to start Nuclei (is it installed?): {}", e).red().bold());
+            sink.on_log("error", &format!("[!] Failed to start Nuclei (is it installed?): {}", e));
             return Ok(());
         }
     };
@@ -101,40 +102,23 @@ pub async fn run_nuclei_scan(target: &str, mode: &str, verbose: bool , custom_ta
 
         if let Some(vuln_name) = name {
             count += 1;
-            let severity_colored = colorize_severity(severity_str);
-            print!(
-                "{} {} {} {} {}\r\n",
-                "[+]".green().bold(),
-                "NUCLEI:".white().bold(),
-                vuln_name.yellow().bold(),
-                severity_colored,
-                format!("@ {}", matched_at).dimmed()
-            );
+            sink.on_log("success", &format!(
+                "[+] NUCLEI: {} [{}] @ {}",
+                vuln_name, severity_str.to_uppercase(), matched_at
+            ));
             if verbose && !template_id.is_empty() {
-                print!("{}\r\n", format!("    [DEBUG] Template: {}", template_id).dimmed());
+                sink.on_log("info", &format!("    [DEBUG] Template: {}", template_id));
             }
-            std::io::stdout().flush().ok();
         }
     }
 
     let _ = child.wait().await;
 
     if count > 0 {
-        print!("{}\r\n", format!("[*] Nuclei finished. {} finding(s).", count).green().bold());
+        sink.on_log("success", &format!("[*] Nuclei finished. {} finding(s).", count));
     } else {
-        print!("{}\r\n", "[*] Nuclei finished. No findings.".dimmed());
+        sink.on_log("info", "[*] Nuclei finished. No findings.");
     }
-    std::io::stdout().flush().ok();
 
     Ok(())
-}
-
-fn colorize_severity(severity: &str) -> ColoredString {
-    match severity.to_lowercase().as_str() {
-        "critical" => format!("[{}]", severity.to_uppercase()).red().bold(),
-        "high" => format!("[{}]", severity.to_uppercase()).red(),
-        "medium" => format!("[{}]", severity.to_uppercase()).yellow(),
-        "low" => format!("[{}]", severity.to_uppercase()).blue(),
-        _ => format!("[{}]", severity.to_uppercase()).dimmed(),
-    }
 }

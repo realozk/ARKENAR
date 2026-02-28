@@ -1,46 +1,39 @@
 use std::collections::HashSet;
-use std::io::Write;
 use std::process::Stdio;
-use colored::*;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use serde_json::Value;
 use url::Url;
 use crate::utils;
+use crate::ScanConfig;
+use crate::SinkRef;
 
-fn katana_binary() -> String {
+fn katana_binary() -> anyhow::Result<String> {
     match utils::get_binary_path("katana") {
-        Some(path) => path,
+        Some(path) => Ok(path),
         None => {
-            eprint!("{}\r\n", "Error: 'katana' binary not found. Run the scanner once to auto-install.".red());
-            std::process::exit(1);
+            anyhow::bail!("'katana' binary not found. Run the scanner once to auto-install, or use the CLI to trigger auto-installation.");
         }
     }
 }
 
 pub async fn run_katana_crawler(
     target: &str,
-    mode: &str,
-    verbose: bool,
-    scope: bool,
+    config: &ScanConfig,
+    sink: &SinkRef,
 ) -> anyhow::Result<Vec<String>> {
-    let binary = katana_binary();
-    let is_simple = mode != "advanced";
-    let depth = if is_simple { "2" } else { "5" };
-    let max_urls: Option<usize> = if is_simple { Some(20) } else { None };
+    let binary = katana_binary()?;
+    let depth_str = config.crawler_depth.to_string();
+    let timeout_str = config.crawler_timeout.to_string();
+    let max_urls = config.crawler_max_urls;
 
-    if verbose {
-        print!("[*] Starting Katana on target: {} (depth: {})\r\n", target, depth);
+    if config.verbose {
+        sink.on_log("info", &format!("[*] Starting Katana on target: {} (depth: {}, timeout: {}s, max: {})", target, depth_str, timeout_str, max_urls));
     } else {
-        print!("[*] Starting Katana on target: {}\r\n", target);
+        sink.on_log("info", &format!("[*] Starting Katana on target: {}", target));
     }
-    std::io::stdout().flush().ok();
 
-    let mut args = vec!["-u", target, "-jsonl", "-silent", "-d", depth];
-
-    if is_simple {
-        args.extend_from_slice(&["-crawl-duration", "30"]);
-    }
+    let args = vec!["-u", target, "-jsonl", "-silent", "-d", &depth_str, "-crawl-duration", &timeout_str];
 
     let mut child = Command::new(binary)
         .args(&args)
@@ -79,7 +72,7 @@ pub async fn run_katana_crawler(
         });
 
         if let Some(url_str) = extracted {
-            if scope {
+            if config.scope {
                 if let Ok(parsed_url) = Url::parse(url_str) {
                     let url_domain = parsed_url.host_str().map(|h| h.to_lowercase());
                     if url_domain != target_domain {
@@ -89,26 +82,26 @@ pub async fn run_katana_crawler(
             }
 
             if seen.insert(url_str.to_string()) {
-                if verbose {
-                    print!("[+] Discovered: {}\r\n", url_str);
-                    std::io::stdout().flush().ok();
+                if config.verbose {
+                    sink.on_log("info", &format!("[+] Discovered: {}", url_str));
                 }
 
-                if let Some(limit) = max_urls {
-                    if seen.len() >= limit {
-                        print!("{}\r\n", format!("[*] Reached URL cap ({}) for simple mode. Stopping crawler.", limit).yellow());
-                        std::io::stdout().flush().ok();
-                        child.kill().await.ok();
-                        break;
-                    }
+                if seen.len() >= max_urls {
+                    sink.on_log("warn", &format!("[*] Reached URL cap ({}). Stopping crawler.", max_urls));
+                    child.kill().await.ok();
+                    break;
                 }
             }
         }
     }
 
     let _ = child.wait().await;
-    print!("[*] Katana finished. Total unique URLs: {}\r\n", seen.len());
-    std::io::stdout().flush().ok();
+    sink.on_log("info", &format!("[*] Katana finished. Total unique URLs: {}", seen.len()));
+
+    let has_injectable = seen.iter().any(|u| u.contains('?') && u.contains('='));
+    if !has_injectable && !seen.is_empty() {
+        sink.on_log("warn", "[!] No injection points (?key=value) discovered. Fuzzing engine may return 0 vulnerabilities.");
+    }
 
     Ok(seen.into_iter().collect())
 }

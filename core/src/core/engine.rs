@@ -127,6 +127,12 @@ fn extract_server(response: &reqwest::Response) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+fn headers_to_vec(headers: &HeaderMap) -> Vec<(String, String)> {
+    headers.iter().map(|(k, v)| {
+        (k.to_string(), v.to_str().unwrap_or("").to_string())
+    }).collect()
+}
+
 /// Scans a single HTTP request using mutation-based injection.
 /// All results are sent via `result_tx` for the aggregator to handle.
 async fn scan_single_request(
@@ -196,6 +202,9 @@ async fn scan_single_request(
                                     timing_ms: duration_ms,
                                     status_code,
                                     server,
+                                    method: mutated_request.method.to_string(),
+                                    request_headers: headers_to_vec(&mutated_request.headers),
+                                    request_body: if mutated_request.body.is_empty() { None } else { Some(mutated_request.body.clone()) },
                                 };
 
                                 let _ = result_tx.send(result).await;
@@ -252,6 +261,9 @@ async fn basic_scan(
             timing_ms: duration_ms,
             status_code,
             server,
+            method: request.method.to_string(),
+            request_headers: headers_to_vec(&request.headers),
+            request_body: if request.body.is_empty() { None } else { Some(request.body.clone()) },
         };
         let _ = result_tx.send(result).await;
     }

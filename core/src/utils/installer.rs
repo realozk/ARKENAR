@@ -76,7 +76,7 @@ pub async fn check_and_install_tools() {
     if !tools_dir.exists() {
         if let Err(e) = fs::create_dir_all(tools_dir) {
             eprint!("{}\r\n", format!("[!] Failed to create tools directory: {}", e).red());
-            std::process::exit(1);
+            return;
         }
     }
 

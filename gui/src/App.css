@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+/* ─── Arkenar Premium Design System — Linear-inspired ────────── */
+@theme {
+  /* Surfaces — warmer, slightly lifted dark palette */
+  --color-bg-root: #0a0a0c;
+  --color-bg-panel: #111114;
+  --color-bg-card: rgba(255, 255, 255, 0.035);
+  --color-bg-input: #151518;
+  --color-bg-hover: rgba(255, 255, 255, 0.06);
+  --color-bg-terminal: #08080a;
+
+  /* Borders — soft, glass-like */
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
+  --color-border-focus: rgba(0, 213, 190, 0.4);
+
+  /* Text — lifted for readability */
+  --color-text-primary: #e1e1e6;
+  --color-text-secondary: #94949e;
+  --color-text-muted: #64647a;
+  --color-text-ghost: #3e3e52;
+
+  /* Accent — teal/cyan */
+  --color-accent: #00d5be;
+  --color-accent-dim: rgba(0, 213, 190, 0.10);
+  --color-accent-hover: #00ecd3;
+  --color-accent-text: #00d5be;
+
+  /* Status */
+  --color-status-critical: #f43f5e;
+  --color-status-warning: #eab308;
+  --color-status-success: #10b981;
+  --color-status-info: #00d5be;
+  --color-status-idle: #444460;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-accent-glow: 0 0 24px rgba(0, 213, 190, 0.12), 0 0 48px rgba(0, 213, 190, 0.04);
+  --shadow-accent-btn: 0 0 20px rgba(0, 213, 190, 0.2), 0 0 40px rgba(0, 213, 190, 0.06);
+
+  /* Font stacks */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+/* ─── Base ────────────────────────────────────────────────────── */
+html {
+  background: var(--color-bg-root);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ─── Toggle ──────────────────────────────────────────────────── */
+.toggle-track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle-track.active {
+  background: var(--color-accent);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-track.active .toggle-thumb {
+  transform: translateX(14px);
+}
+
+/* ─── Terminal Lines ──────────────────────────────────────────── */
+.terminal-line {
+  line-height: 1.75;
+  letter-spacing: -0.01em;
+}
+
+.terminal-line.info {
+  color: var(--color-text-secondary);
+}
+
+.terminal-line.success {
+  color: var(--color-status-success);
+}
+
+.terminal-line.error {
+  color: var(--color-status-critical);
+}
+
+.terminal-line.warn {
+  color: var(--color-status-warning);
+}
+
+.terminal-line.phase {
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+
+/* ─── Selection ───────────────────────────────────────────────── */
+::selection {
+  background: rgba(0, 213, 190, 0.15);
+  color: var(--color-accent-hover);
+}
+
+/* ─── Input focus ring ────────────────────────────────────────── */
+input:focus {
+  box-shadow: 0 0 0 1px var(--color-border-focus);
+}
+
+/* ─── Stat value animation ────────────────────────────────────── */
+@keyframes count-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-value {
+  animation: count-in 0.3s ease-out;
+}
+
+/* ─── Neon label glow ─────────────────────────────────────────── */
+.neon-label {
+  text-shadow:
+    0 0 6px rgba(0, 213, 190, 0.3),
+    0 0 16px rgba(0, 213, 190, 0.08);
+}
+
+/* ─── Finding card hover glow ──────────────────────────────────── */
+.finding-card {
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.finding-card:hover {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 4px 24px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.06) !important;
+}

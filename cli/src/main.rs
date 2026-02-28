@@ -6,9 +6,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use arkenar_core::{
-    ScanEngine, ResultAggregator, ScanResult, TargetManager,
+    ConsoleSink, ScanConfig, ScanEngine, ResultAggregator, ScanResult, TargetManager,
     HttpClient, run_katana_crawler, run_nuclei_scan,
-    installer, read_lines, parse_custom_headers,
+    installer, read_lines, SinkRef,
 };
 
 #[derive(Parser, Debug)]
@@ -77,6 +77,15 @@ pub struct Args {
 
     #[arg(long, help = "Simulate scan without sending real requests")]
     pub dry_run: bool,
+
+    #[arg(long, default_value_t = 3, help = "Katana crawl depth")]
+    pub crawler_depth: u32,
+
+    #[arg(long, default_value_t = 60, help = "Katana crawl timeout in seconds")]
+    pub crawler_timeout: u64,
+
+    #[arg(long, default_value_t = 50, help = "Max URLs for Katana to discover")]
+    pub crawler_max_urls: usize,
 }
 
 #[tokio::main]
@@ -94,28 +103,55 @@ async fn main() {
         process::exit(0);
     }
 
+    // Create console sink for CLI output
+    let sink = ConsoleSink::new_ref();
+
+    // Convert clap Args → canonical ScanConfig
+    let config = ScanConfig {
+        target: args.target.clone().unwrap_or_default(),
+        list_file: args.list.clone().unwrap_or_default(),
+        mode: args.mode.clone(),
+        threads: args.threads,
+        timeout: args.timeout,
+        rate_limit: args.rate_limit,
+        output: args.output.clone(),
+        proxy: args.proxy.clone().unwrap_or_default(),
+        headers: args.headers.join(";"),
+        tags: args.tags.clone().unwrap_or_default(),
+        payloads: args.payloads.clone().unwrap_or_default(),
+        verbose: args.verbose,
+        scope: args.scope,
+        dry_run: args.dry_run,
+        enable_crawler: true,
+        enable_nuclei: true,
+        crawler_depth: args.crawler_depth,
+        crawler_timeout: args.crawler_timeout,
+        crawler_max_urls: args.crawler_max_urls,
+        ..ScanConfig::default()
+    };
+
     let mut targets: Vec<String> = Vec::new();
 
-    if let Some(ref list_path) = args.list {
-        match read_lines(list_path) {
+    if !config.list_file.is_empty() {
+        match read_lines(&config.list_file) {
             Ok(lines) => {
                 print!(
                     "{}\r\n",
-                    format!("[+] Loaded {} target(s) from {}", lines.len(), list_path)
+                    format!("[+] Loaded {} target(s) from {}", lines.len(), config.list_file)
                         .green().bold()
                 );
                 std::io::stdout().flush().ok();
                 targets.extend(lines);
             }
             Err(e) => {
-                eprint!("{}\r\n", format!("[!] Failed to read '{}': {}", list_path, e).red());
+                eprint!("{}\r\n", format!("[!] Failed to read '{}': {}", config.list_file, e).red());
                 process::exit(1);
             }
         }
     }
 
-    if let Some(ref t) = args.target {
-        targets.push(t.clone());
+    if !config.target.is_empty() {
+        targets.push(config.target.clone());
     }
 
     if targets.is_empty() {
@@ -135,7 +171,7 @@ async fn main() {
             );
             std::io::stdout().flush().ok();
         }
-        run_scan_sequence(target, &args).await;
+        run_scan_sequence(target, &config, &sink).await;
     }
 }
 
@@ -162,87 +198,81 @@ fn print_banner() {
 ///   1. Katana crawling — discovers URLs from the target.
 ///   2. Nuclei scanning — runs template-based vulnerability detection.
 ///   3. ARKENAR Engine — custom scan engine with mutation and result aggregation.
-async fn run_scan_sequence(target: &str, args: &Args) {
-    if args.dry_run {
-        println!("[DRY RUN] Would scan target: {}", target);
+async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
+    if config.dry_run {
+        sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", target));
         return;
     }
 
-    print_scan_config(target, args);
+    print_scan_config(target, config);
 
-    let custom_headers = parse_custom_headers(&args.headers);
+    let custom_headers = config.parsed_headers();
 
-    // ── Phase 1: Crawling ─────────────────────────────────────────────
-    print!("\r\n{}\r\n", "[*] Phase 1: Crawling...".bright_cyan().bold());
-    std::io::stdout().flush().ok();
+    // Phase 1: Crawling
+    sink.on_log("phase", "[*] Phase 1: Crawling...");
 
     let mut target_manager = TargetManager::new();
     target_manager.add_target(target.to_string());
 
-    match run_katana_crawler(target, &args.mode, args.verbose, args.scope).await {
+    match run_katana_crawler(target, config, sink).await {
         Ok(crawled) => {
-            print!(
-                "{}\r\n",
-                format!("[+] Discovered {} URL(s).", crawled.len()).green().bold()
-            );
-            std::io::stdout().flush().ok();
+            sink.on_log("success", &format!("[+] Discovered {} URL(s).", crawled.len()));
             for u in crawled {
                 target_manager.add_target(u);
             }
         }
         Err(e) => {
-            eprint!("{}\r\n", format!("[!] Crawler error: {}", e).red());
+            sink.on_log("error", &format!("[!] Crawler error: {}", e));
         }
     }
 
     // ── Phase 2: Nuclei ───────────────────────────────────────────────
-    print!("\r\n{}\r\n", "[*] Phase 2: Running Nuclei Scanner...".bright_cyan().bold());
-    std::io::stdout().flush().ok();
+    sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
 
-    if let Err(e) = run_nuclei_scan(target, &args.mode, args.verbose, args.tags.as_deref()).await {
-        eprint!("{}\r\n", format!("[!] Nuclei error: {}", e).red());
+    if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), sink).await {
+        sink.on_log("error", &format!("[!] Nuclei error: {}", e));
     }
 
     // ── Phase 3: ARKENAR Engine ───────────────────────────────────────
-    print!("\r\n{}\r\n", "[*] Phase 3: ARKENAR Engine...".bright_cyan().bold());
-    std::io::stdout().flush().ok();
+    sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
 
-    let http_client = Arc::new(HttpClient::new(args.timeout, args.proxy.as_deref(), &custom_headers));
+    let http_client = Arc::new(HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers));
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
-    let engine = ScanEngine::new(target_manager, Arc::clone(&http_client), args.threads);
-    let output_path = args.output.clone();
+    let engine = ScanEngine::new(target_manager, Arc::clone(&http_client), config.threads);
+    let output_path = config.output.clone();
 
     let (_, results) = tokio::join!(
         engine.run(result_tx),
-        ResultAggregator::run(result_rx, &output_path)
+        ResultAggregator::run(result_rx, &output_path, sink.clone(), config.webhook_url.clone())
     );
 
-    ResultAggregator::print_summary_report(&results);
+    ResultAggregator::report_summary(&results, sink);
 }
 
 /// Prints the scan configuration summary for a target.
-fn print_scan_config(target: &str, args: &Args) {
-    let mode_label = if args.mode == "advanced" { "Advanced (comprehensive)" } else { "Simple (fast)" };
-    let verbose_label = if args.verbose { "ON" } else { "OFF" };
+fn print_scan_config(target: &str, config: &ScanConfig) {
+    let mode_label = if config.mode == "advanced" { "Advanced (comprehensive)" } else { "Simple (fast)" };
+    let verbose_label = if config.verbose { "ON" } else { "OFF" };
 
     print!("{}\r\n", format!("[+] Target:     {}", target).green().bold());
-    print!("{}\r\n", format!("[+] Threads:    {}", args.threads).blue());
-    print!("{}\r\n", format!("[+] Timeout:    {}s", args.timeout).blue());
+    print!("{}\r\n", format!("[+] Threads:    {}", config.threads).blue());
+    print!("{}\r\n", format!("[+] Timeout:    {}s", config.timeout).blue());
     print!("{}\r\n", format!("[+] Mode:       {}", mode_label).magenta().bold());
     print!("{}\r\n", format!("[+] Verbose:    {}", verbose_label).magenta());
-    print!("{}\r\n", format!("[+] Output:     {}", args.output).blue());
-    print!("{}\r\n", format!("[+] Rate Limit: {} req/s", args.rate_limit).blue());
-    if let Some(ref proxy) = args.proxy {
-        print!("{}\r\n", format!("[+] Proxy:      {}", proxy).yellow());
+    print!("{}\r\n", format!("[+] Output:     {}", config.output).blue());
+    print!("{}\r\n", format!("[+] Rate Limit: {} req/s", config.rate_limit).blue());
+    if !config.proxy.is_empty() {
+        print!("{}\r\n", format!("[+] Proxy:      {}", config.proxy).yellow());
     }
-    if !args.headers.is_empty() {
-        print!("{}\r\n", format!("[+] Headers:    {} custom", args.headers.len()).yellow());
+    let header_list = config.header_list();
+    if !header_list.is_empty() {
+        print!("{}\r\n", format!("[+] Headers:    {} custom", header_list.len()).yellow());
     }
-    if args.scope {
+    if config.scope {
         print!("{}\r\n", "[+] Scope:      Same-domain only".yellow());
     }
-    if let Some(ref t) = args.tags {
-        print!("{}\r\n", format!("[+] Tags:       {}", t).yellow());
+    if !config.tags.is_empty() {
+        print!("{}\r\n", format!("[+] Tags:       {}", config.tags).yellow());
     }
     print!("{}\r\n", "──────────────────────────────────────────────────".dimmed());
     std::io::stdout().flush().ok();
