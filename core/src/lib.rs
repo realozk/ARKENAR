@@ -1,7 +1,6 @@
 pub mod core;
 pub mod http;
 pub mod modules;
-pub mod notifications;
 pub mod utils;
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +14,7 @@ pub use crate::modules::crawler::run_katana_crawler;
 pub use crate::modules::nuclei::run_nuclei_scan;
 pub use crate::utils::installer;
 pub use crate::utils::read_lines;
+pub use crate::core::state::ScanState;
 
 /// Shared scan configuration used by both CLI and GUI.
 #[derive(Debug, Clone, Serialize, Deserialize)]

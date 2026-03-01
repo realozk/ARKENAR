@@ -23,7 +23,9 @@ import {
   Check,
   AlertTriangle,
   Bug,
+  Download,
 } from "lucide-react";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 // ─── Types ───────
 interface ScanConfig {
@@ -382,6 +384,26 @@ function App() {
     }
   }, [addLog]);
 
+  const handleExportReport = useCallback(async () => {
+    try {
+      const outputPath = "arkenar_report.html";
+      const actualPath = await invoke<string>("generate_report", {
+        request: {
+          findings,
+          config,
+          elapsed: stats.elapsed,
+          output_path: outputPath
+        }
+      });
+      addLog("success", `Report saved to ${actualPath}`);
+      await openPath(actualPath);
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : (err as Error)?.message ?? "Unknown error";
+      addLog("error", `Failed to generate report: ${msg}`);
+      setErrorMsg(`Failed to generate report: ${msg}`);
+    }
+  }, [findings, config, stats.elapsed, addLog]);
+
   const canStart = (config.target.trim() !== "" || config.listFile.trim() !== "") && scanStatus !== "running";
 
   return (
@@ -613,12 +635,23 @@ function App() {
                   )}
                 </button>
               </div>
-              <button
-                onClick={() => { if (activeTab === "terminal") setLogs([]); else setFindings([]); }}
-                className="text-xs text-text-ghost hover:text-text-secondary transition-colors duration-200"
-              >
-                Clear
-              </button>
+              <div className="flex items-center gap-4">
+                {activeTab === "findings" && findings.length > 0 && (
+                  <button
+                    onClick={handleExportReport}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-text-primary hover:text-accent-text transition-colors duration-200 group"
+                  >
+                    <Download size={14} strokeWidth={2.5} className="text-text-ghost group-hover:text-accent-text transition-colors" />
+                    Export HTML
+                  </button>
+                )}
+                <button
+                  onClick={() => { if (activeTab === "terminal") setLogs([]); else setFindings([]); }}
+                  className="text-xs text-text-ghost hover:text-text-secondary transition-colors duration-200"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
 
             {/* Terminal View */}

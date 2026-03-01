@@ -2,6 +2,8 @@ pub mod engine;
 pub mod target_manager;
 pub mod result_aggregator;
 pub mod mutator;
+pub mod throttle;
+pub mod state;
 
 use serde::Serialize;
 

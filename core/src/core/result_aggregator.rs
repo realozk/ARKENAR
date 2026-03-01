@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::io::Write;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use url::Url;
 
 use crate::SinkRef;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub url: String,
     pub vuln_type: String,
@@ -61,7 +61,6 @@ impl ResultAggregator {
         mut receiver: mpsc::Receiver<ScanResult>,
         output_path: &str,
         sink: SinkRef,
-        webhook_url: Option<String>,
     ) -> Vec<ScanResult> {
         let mut file = match std::fs::OpenOptions::new()
             .create(true)
@@ -85,15 +84,6 @@ impl ResultAggregator {
             if !seen.insert(key) { continue; }
 
             sink.on_finding(&result);
-
-            // Fire webhook if configured
-            if let Some(ref url) = webhook_url {
-                let url = url.clone();
-                let r = result.clone();
-                tokio::spawn(async move {
-                    crate::notifications::send_webhook(&url, &r).await;
-                });
-            }
 
             if let Ok(line) = serde_json::to_string(&result) {
                 let _ = writeln!(file, "{}", line);

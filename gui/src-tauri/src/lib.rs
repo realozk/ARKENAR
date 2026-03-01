@@ -12,6 +12,9 @@ use arkenar_core::{
     run_katana_crawler, run_nuclei_scan,
 };
 
+mod reporting;
+mod notifications;
+
 
 #[derive(Clone, Serialize)]
 struct ScanLogEvent {
@@ -29,26 +32,27 @@ struct ScanStatsEvent {
     elapsed: String,
 }
 
-#[derive(Clone, Serialize)]
-struct ScanFindingEvent {
-    url: String,
-    vuln_type: String,
-    payload: String,
-    status_code: u16,
-    timing_ms: u128,
-    server: Option<String>,
-    curl_cmd: String,
+#[derive(Clone, Serialize, serde::Deserialize)]
+pub struct ScanFindingEvent {
+    pub url: String,
+    pub vuln_type: String,
+    pub payload: String,
+    pub status_code: u16,
+    pub timing_ms: u128,
+    pub server: Option<String>,
+    pub curl_cmd: String,
 }
 
 
 /// Sink implementation that emits Tauri events to the React frontend.
 struct TauriSink {
     app: AppHandle,
+    webhook_url: Option<String>,
 }
 
 impl TauriSink {
-    fn new_ref(app: AppHandle) -> SinkRef {
-        Arc::new(Self { app })
+    fn new_ref(app: AppHandle, webhook_url: Option<String>) -> SinkRef {
+        Arc::new(Self { app, webhook_url })
     }
 }
 
@@ -74,6 +78,15 @@ impl ScanEventSink for TauriSink {
             "{} detected → {} (payload: {})",
             result.vuln_type, result.url, result.payload
         ));
+
+        // Fire webhook if configured
+        if let Some(ref url) = self.webhook_url {
+            let url = url.clone();
+            let r = result.clone();
+            tokio::spawn(async move {
+                crate::notifications::send_webhook(&url, &r).await;
+            });
+        }
     }
 
     fn on_progress(&self, phase: &str, current: usize, total: usize) {
@@ -100,7 +113,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
     SCAN_ABORT.store(false, Ordering::SeqCst);
 
     // Create the TauriSink — all pipeline output goes through this
-    let sink = TauriSink::new_ref(app.clone());
+    let sink = TauriSink::new_ref(app.clone(), config.webhook_url.clone());
 
     // Resolve targets
     let mut targets: Vec<String> = Vec::new();
@@ -229,14 +242,13 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let sink_agg = sink.clone();
             let output_path = config.output.clone();
-            let webhook_url = config.webhook_url.clone();
 
             let engine_handle = tokio::spawn(async move {
                 engine.run(result_tx).await;
             });
 
             let aggregator_handle = tokio::spawn(async move {
-                ResultAggregator::run(result_rx, &output_path, sink_agg, webhook_url).await
+                ResultAggregator::run(result_rx, &output_path, sink_agg).await
             });
 
             let _ = engine_handle.await;
@@ -298,15 +310,48 @@ async fn check_tools() -> Result<String, String> {
     Ok("Tools verified.".to_string())
 }
 
+#[derive(serde::Deserialize)]
+struct ReportRequest {
+    findings: Vec<ScanFindingEvent>,
+    config: ScanConfig,
+    elapsed: String,
+    output_path: String,
+}
+
+#[tauri::command]
+async fn generate_report(app: tauri::AppHandle, request: ReportRequest) -> Result<String, String> {
+    use tauri::Manager;
+    
+    let mut report_path = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("Could not get download directory: {}", e))?;
+    
+    report_path.push(&request.output_path);
+
+    // Generate the HTML content
+    let html = reporting::generate_html_report(
+        &request.findings,
+        &request.config,
+        &request.elapsed,
+    );
+
+    std::fs::write(&report_path, &html)
+        .map_err(|e| format!("Failed to write report: {}", e))?;
+
+    Ok(report_path.to_string_lossy().into_owned())
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools])
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, generate_report])
         .setup(|app| {
             let handle = app.handle().clone();
-            let setup_sink = TauriSink::new_ref(handle.clone());
+            let setup_sink = TauriSink::new_ref(handle.clone(), None);
             // Auto-install Katana & Nuclei on startup (background)
             tauri::async_runtime::spawn(async move {
                 setup_sink.on_log("info", "Checking dependencies (Katana, Nuclei)...");

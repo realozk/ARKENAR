@@ -1,4 +1,4 @@
-use crate::ScanResult;
+use arkenar_core::ScanResult;
 
 /// Sends a webhook alert for a critical/high finding.
 /// Supports Discord, Slack, and generic JSON webhooks.

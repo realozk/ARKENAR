@@ -8,6 +8,8 @@ use reqwest::Method;
 use reqwest::header::HeaderMap;
 use url::Url;
 
+use crate::core::throttle::ThrottleController;
+
 use crate::core::mutator::{self, InjectionPoint};
 use crate::core::result_aggregator::ScanResult;
 use crate::core::target_manager::TargetManager;
@@ -29,6 +31,7 @@ pub struct ScanEngine {
     client: Arc<HttpClient>,
     payload_loader: Arc<PayloadLoader>,
     detector: Arc<VulnerabilityDetector>,
+    throttle: Arc<ThrottleController>,
     concurrency_limit: usize,
 }
 
@@ -44,6 +47,7 @@ impl ScanEngine {
             client,
             payload_loader: Arc::new(PayloadLoader::load()),
             detector: Arc::new(VulnerabilityDetector::new()),
+            throttle: Arc::new(ThrottleController::new()),
             concurrency_limit,
         }
     }
@@ -63,6 +67,7 @@ impl ScanEngine {
             let client = Arc::clone(&self.client);
             let payload_loader = Arc::clone(&self.payload_loader);
             let detector = Arc::clone(&self.detector);
+            let throttle = Arc::clone(&self.throttle);
             let tx = result_tx.clone();
             let concurrency = self.concurrency_limit;
 
@@ -82,6 +87,7 @@ impl ScanEngine {
                     client,
                     payload_loader,
                     detector,
+                    throttle,
                     tx,
                     concurrency,
                 ).await;
@@ -104,6 +110,7 @@ impl ScanEngine {
             Arc::clone(&self.client),
             Arc::clone(&self.payload_loader),
             Arc::clone(&self.detector),
+            Arc::clone(&self.throttle),
             result_tx,
             self.concurrency_limit,
         ).await;
@@ -140,6 +147,7 @@ async fn scan_single_request(
     client: Arc<HttpClient>,
     payload_loader: Arc<PayloadLoader>,
     detector: Arc<VulnerabilityDetector>,
+    throttle: Arc<ThrottleController>,
     result_tx: mpsc::Sender<ScanResult>,
     concurrency_limit: usize,
 ) {
@@ -166,11 +174,14 @@ async fn scan_single_request(
             let request = Arc::clone(&request);
             let client = Arc::clone(&client);
             let detector = Arc::clone(&detector);
+            let throttle = Arc::clone(&throttle);
             let result_tx = result_tx.clone();
             let payload_clone = payload.clone();
 
             async move {
                 let mutated_request = mutator::mutate_request(&request, &point, &payload);
+
+                throttle.wait().await;
 
                 let start = Instant::now();
                 let response_result = client.send_request(&mutated_request).await;
@@ -179,6 +190,7 @@ async fn scan_single_request(
                 match response_result {
                     Ok(response) => {
                         let status_code = response.status().as_u16();
+                        throttle.record_response(status_code);
                         let server = extract_server(&response);
                         let content_type = response.headers()
                             .get("content-type")

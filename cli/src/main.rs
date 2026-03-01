@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use arkenar_core::{
-    ConsoleSink, ScanConfig, ScanEngine, ResultAggregator, ScanResult, TargetManager,
+    ConsoleSink, ScanConfig, ScanEngine, ResultAggregator, ScanResult, ScanState, TargetManager,
     HttpClient, run_katana_crawler, run_nuclei_scan,
     installer, read_lines, SinkRef,
 };
@@ -86,6 +86,9 @@ pub struct Args {
 
     #[arg(long, default_value_t = 50, help = "Max URLs for Katana to discover")]
     pub crawler_max_urls: usize,
+
+    #[arg(long, help = "Resume a previously interrupted scan")]
+    pub resume: bool,
 }
 
 #[tokio::main]
@@ -106,7 +109,28 @@ async fn main() {
     // Create console sink for CLI output
     let sink = ConsoleSink::new_ref();
 
-    // Convert clap Args → canonical ScanConfig
+    // Handle --resume: load previous state and continue
+    if args.resume {
+        match ScanState::load(ScanState::default_path()) {
+            Some(state) => {
+                sink.on_log("success", &format!(
+                    "[+] Resuming scan with {} pending URL(s), {} prior result(s)",
+                    state.pending_urls.len(), state.completed_results.len()
+                ));
+                let config = state.config.clone();
+                for target in &state.pending_urls {
+                    run_scan_sequence(target, &config, &sink).await;
+                }
+                ScanState::delete(ScanState::default_path());
+                sink.on_log("success", "[+] Resumed scan complete.");
+            }
+            None => {
+                sink.on_log("error", "[!] No state file found. Nothing to resume.");
+            }
+        }
+        process::exit(0);
+    }
+
     let config = ScanConfig {
         target: args.target.clone().unwrap_or_default(),
         list_file: args.list.clone().unwrap_or_default(),
@@ -127,6 +151,7 @@ async fn main() {
         crawler_depth: args.crawler_depth,
         crawler_timeout: args.crawler_timeout,
         crawler_max_urls: args.crawler_max_urls,
+        resume: args.resume,
         ..ScanConfig::default()
     };
 
@@ -243,7 +268,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     let (_, results) = tokio::join!(
         engine.run(result_tx),
-        ResultAggregator::run(result_rx, &output_path, sink.clone(), config.webhook_url.clone())
+        ResultAggregator::run(result_rx, &output_path, sink.clone())
     );
 
     ResultAggregator::report_summary(&results, sink);

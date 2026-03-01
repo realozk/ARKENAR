@@ -26,3 +26,14 @@ agent-file-template.md
 
 .env
 *.pem
+node_modules/
+pnpm-lock.yaml 
+target/
+
+src-tauri/target/
+
+.vscode/
+.idea/
+
+.env
+.env.*
