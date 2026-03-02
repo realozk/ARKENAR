@@ -414,7 +414,7 @@ function App() {
           <Shield size={16} className="text-accent-text" strokeWidth={2.5} />
           <span className="text-sm font-semibold tracking-tight text-text-primary">Arkenar</span>
           <span className="rounded-md bg-accent-dim px-2 py-0.5 font-mono text-[11px] font-medium text-accent-text">
-            v1.0.0
+            v1.0.0 (beta)
           </span>
         </div>
         <div className="flex items-center gap-2.5">
