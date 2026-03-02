@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { openPath } from "@tauri-apps/plugin-opener";
 
-// ─── Types ───────
+// Types
 interface ScanConfig {
   target: string;
   listFile: string;
@@ -48,6 +48,7 @@ interface ScanConfig {
   crawlerDepth: number;
   crawlerMaxUrls: number;
   crawlerTimeout: number;
+  webhookUrl?: string;
 }
 
 type LogLevel = "info" | "success" | "error" | "warn" | "phase";
@@ -104,9 +105,9 @@ const DEFAULT_CONFIG: ScanConfig = {
   crawlerDepth: 3,
   crawlerMaxUrls: 50,
   crawlerTimeout: 60,
+  webhookUrl: "",
 };
 
-// ─── Primitives ──
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -222,8 +223,6 @@ function StatCard({ label, value, icon: Icon, accent }: {
   );
 }
 
-// ─── Finding Card 
-
 function FindingCard({ finding, index }: { finding: ScanFindingEvent; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -304,7 +303,6 @@ function FindingCard({ finding, index }: { finding: ScanFindingEvent; index: num
   );
 }
 
-// ─── App ─────────
 
 function App() {
   const [config, setConfig] = useState<ScanConfig>(DEFAULT_CONFIG);
@@ -327,7 +325,6 @@ function App() {
     setLogs((prev) => [...prev, { time, level, message }]);
   }, []);
 
-  // ── Tauri event listeners ──────────────────────────────────────
   useEffect(() => {
     const unlisteners: UnlistenFn[] = [];
 
@@ -408,7 +405,6 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col bg-bg-root">
-      {/* ── Header ────────────────────────────────────────────── */}
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle px-6">
         <div className="flex items-center gap-3">
           <Shield size={16} className="text-accent-text" strokeWidth={2.5} />
@@ -423,7 +419,6 @@ function App() {
         </div>
       </header>
 
-      {/* ── Error Banner ──────────────────────────────────────── */}
       {errorMsg && (
         <div className="flex items-center justify-between bg-status-critical/8 border-b border-status-critical/15 px-6 py-2.5">
           <span className="text-sm text-status-critical">{errorMsg}</span>
@@ -433,12 +428,9 @@ function App() {
         </div>
       )}
 
-      {/* ── Body  */}
       <div className="flex flex-1 overflow-hidden">
-        {/* ── Sidebar ─────────────────────────────────────────── */}
         <aside className="flex w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">
           <div className="px-5 pt-6 pb-5 space-y-6 flex-1">
-            {/* Target */}
             <div>
               <SectionLabel icon={Crosshair}>Target</SectionLabel>
               <TextInput value={config.target} onChange={(v) => update("target", v)} placeholder="https://example.com" mono />
@@ -475,6 +467,10 @@ function App() {
               <SectionLabel icon={Radar}>Integrations</SectionLabel>
               <ToggleRow label="Katana Crawler" desc="Discover URLs via crawling" checked={config.enableCrawler} onChange={(v) => update("enableCrawler", v)} />
               <ToggleRow label="Nuclei Scanner" desc="Template-based detection" checked={config.enableNuclei} onChange={(v) => update("enableNuclei", v)} />
+              <div className="mt-3">
+                <p className="text-xs text-text-muted mb-1.5">Webhook URL</p>
+                <TextInput value={config.webhookUrl || ""} onChange={(v) => update("webhookUrl", v)} placeholder="https://discord.com/api/webhooks/..." mono />
+              </div>
             </div>
 
             {/* Scan Options */}
@@ -565,7 +561,6 @@ function App() {
             )}
           </div>
 
-          {/* ── Action Button ─────────────────────────────────── */}
           <div className="p-5 border-t border-border-subtle">
             {scanStatus === "running" ? (
               <button
@@ -591,7 +586,6 @@ function App() {
           </div>
         </aside >
 
-        {/* ── Main Panel ──────────────────────────────────────── */}
         <main className="flex flex-1 flex-col overflow-hidden">
           {/* Stats */}
           <div className="shrink-0 p-6 pb-4">

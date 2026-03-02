@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gui",
+  "productName": "Arkenar",
   "version": "0.1.0",
   "identifier": "com.real0zk.arkenar",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "gui",
+        "title": "Arkenar",
         "width": 800,
         "height": 600
       }

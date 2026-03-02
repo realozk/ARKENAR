@@ -183,7 +183,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 sink.on_log("phase", &format!("━━━ Target {}/{}: {} ━━━", i + 1, total_targets, target));
             }
 
-            // ── Phase 1: Crawling ────────────────────────────
             let mut target_manager = TargetManager::new();
             target_manager.add_target(target.to_string());
 
@@ -211,7 +210,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 break;
             }
 
-            // ── Phase 2: Nuclei ──────────────────────────────
             if config.enable_nuclei {
                 sink.on_log("phase", "── Phase 2: Nuclei Scanner");
 
@@ -229,7 +227,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 break;
             }
 
-            // ── Phase 3: ARKENAR Engine ──────────────────────
             sink.on_log("phase", "── Phase 3: ARKENAR Engine");
             sink.on_log("info", &format!("Scanning with {} threads...", config.threads));
 
