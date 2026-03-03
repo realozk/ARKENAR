@@ -18,22 +18,23 @@ pub struct ThrottleController {
     delay_ms: AtomicU64,
     consecutive_blocks: AtomicU32,
     total_throttled: AtomicU64,
+    min_delay_ms: u64,
 }
 
 impl ThrottleController {
-    pub fn new() -> Self {
+    pub fn new(max_rps: u64) -> Self {
         Self {
             delay_ms: AtomicU64::new(0),
             consecutive_blocks: AtomicU32::new(0),
             total_throttled: AtomicU64::new(0),
+            min_delay_ms: if max_rps > 0 { 1000 / max_rps } else { 0 },
         }
     }
 
-    /// Sleeps for the current throttle delay. No-op when delay is 0.
     pub async fn wait(&self) {
-        let ms = self.delay_ms.load(Relaxed);
-        if ms > 0 {
-            sleep(Duration::from_millis(ms)).await;
+        let total = self.min_delay_ms + self.delay_ms.load(Relaxed);
+        if total > 0 {
+            sleep(Duration::from_millis(total)).await;
         }
     }
 

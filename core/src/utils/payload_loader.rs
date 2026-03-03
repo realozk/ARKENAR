@@ -87,6 +87,21 @@ impl PayloadLoader {
         loader
     }
 
+    pub fn load_with_extra(extra_path: Option<&str>) -> Self {
+        let mut loader = Self::load();
+        if let Some(path) = extra_path {
+            let extra = load_list_from_file(path);
+            if extra.is_empty() {
+                warn!("No payloads loaded from custom path: {}", path);
+            } else {
+                loader.xss_payloads.extend(extra.iter().cloned());
+                loader.sqli_payloads.extend(extra.iter().cloned());
+                loader.generic_payloads.extend(extra);
+            }
+        }
+        loader
+    }
+
     /// Loads payloads from custom file paths
     pub fn load_from_paths(
         xss_path: Option<&str>,

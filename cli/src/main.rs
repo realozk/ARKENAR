@@ -97,13 +97,15 @@ async fn main() {
     colored::control::set_virtual_terminal(true).ok();
 
     print_banner();
-    installer::check_and_install_tools().await;
-
     let args = Args::parse();
 
     if args.update {
         installer::run_full_update().await;
         process::exit(0);
+    }
+
+    if !args.dry_run {
+        installer::check_and_install_tools().await;
     }
 
     // Create console sink for CLI output
@@ -263,7 +265,13 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     let http_client = Arc::new(HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers));
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
-    let engine = ScanEngine::new(target_manager, Arc::clone(&http_client), config.threads);
+    let engine = ScanEngine::new(
+        target_manager,
+        Arc::clone(&http_client),
+        config.threads,
+        config.rate_limit,
+        if config.payloads.is_empty() { None } else { Some(&config.payloads) },
+    );
     let output_path = config.output.clone();
 
     let (_, results) = tokio::join!(

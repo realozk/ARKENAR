@@ -1,7 +1,10 @@
 use crate::http::{BodyType, HttpRequest};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::header::{HeaderName, HeaderValue, CONTENT_LENGTH};
 use serde_json::Value;
 use std::collections::HashSet;
+
+const MAX_JSON_DEPTH: usize = 32;
 
 
 /// Represents different points in an HTTP request where payloads can be injected
@@ -42,7 +45,15 @@ fn get_blacklisted_headers() -> HashSet<&'static str> {
 /// * `value` - The JSON value to traverse
 /// * `current_path` - The current path in the JSON tree (e.g., "user.profile")
 /// * `points` - Mutable vector to collect discovered injection points
-fn extract_json_paths_recursive(value: &Value, current_path: &str, points: &mut Vec<InjectionPoint>) {
+fn extract_json_paths_recursive(
+    value: &Value,
+    current_path: &str,
+    points: &mut Vec<InjectionPoint>,
+    depth: usize,
+) {
+    if depth > MAX_JSON_DEPTH {
+        return;
+    }
     match value {
         Value::Object(map) => {
             for (key, val) in map {
@@ -51,7 +62,7 @@ fn extract_json_paths_recursive(value: &Value, current_path: &str, points: &mut 
                 } else {
                     format!("{}.{}", current_path, key)
                 };
-                extract_json_paths_recursive(val, &new_path, points);
+                extract_json_paths_recursive(val, &new_path, points, depth + 1);
             }
         }
         Value::Array(arr) => {
@@ -61,10 +72,9 @@ fn extract_json_paths_recursive(value: &Value, current_path: &str, points: &mut 
                 } else {
                     format!("{}[{}]", current_path, index)
                 };
-                extract_json_paths_recursive(val, &new_path, points);
+                extract_json_paths_recursive(val, &new_path, points, depth + 1);
             }
         }
-        // Terminal values (string, number, bool, null) are injectable
         Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null => {
             if !current_path.is_empty() {
                 points.push(InjectionPoint::JsonField(current_path.to_string()));
@@ -105,7 +115,7 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
     match req.body_type {
         BodyType::Json => {
             if let Ok(json_value) = serde_json::from_str::<Value>(&req.body) {
-                extract_json_paths_recursive(&json_value, "", &mut points);
+                extract_json_paths_recursive(&json_value, "", &mut points, 0);
             }
         }
         BodyType::FormUrlEncoded => {
@@ -138,7 +148,7 @@ fn inject_into_json(value: &mut Value, path: &str, payload: &str) -> bool {
 }
 
 fn inject_into_json_recursive(value: &mut Value, parts: &[&str], index: usize, payload: &str) -> bool {
-    if index >= parts.len() {
+    if index >= parts.len() || index > MAX_JSON_DEPTH {
         return false;
     }
     
@@ -335,24 +345,10 @@ fn mutate_form_param(req: &mut HttpRequest, form_key: &str, payload: &str) {
     req.body = new_pairs.join("&");
 }
 
-/// Simple URL encoding for form parameters
 fn url_encode(input: &str) -> String {
-    let mut encoded = String::new();
-    for byte in input.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(byte as char);
-            }
-            b' ' => {
-                encoded.push('+');
-            }
-            _ => {
-                encoded.push('%');
-                encoded.push_str(&format!("{:02X}", byte));
-            }
-        }
-    }
-    encoded
+    utf8_percent_encode(input, NON_ALPHANUMERIC)
+        .to_string()
+        .replace("%20", "+")
 }
 
 /// Updates the Content-Length header based on the current body size

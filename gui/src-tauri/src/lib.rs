@@ -235,7 +235,13 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             let http_client = Arc::new(HttpClient::new(config.timeout, proxy_opt, &custom_headers));
 
             let (result_tx, result_rx) = mpsc::channel::<ScanResult>(200);
-            let engine = ScanEngine::new(target_manager, Arc::clone(&http_client), config.threads);
+            let engine = ScanEngine::new(
+                target_manager,
+                Arc::clone(&http_client),
+                config.threads,
+                config.rate_limit,
+                if config.payloads.is_empty() { None } else { Some(&config.payloads) },
+            );
 
             let sink_agg = sink.clone();
             let output_path = config.output.clone();

@@ -36,18 +36,19 @@ pub struct ScanEngine {
 }
 
 impl ScanEngine {
-    /// Creates a new `ScanEngine` with target manager
     pub fn new(
         target_manager: TargetManager,
         client: Arc<HttpClient>,
         concurrency_limit: usize,
+        rate_limit: u64,
+        custom_payloads: Option<&str>,
     ) -> Self {
         Self {
             target_manager,
             client,
-            payload_loader: Arc::new(PayloadLoader::load()),
+            payload_loader: Arc::new(PayloadLoader::load_with_extra(custom_payloads)),
             detector: Arc::new(VulnerabilityDetector::new()),
-            throttle: Arc::new(ThrottleController::new()),
+            throttle: Arc::new(ThrottleController::new(rate_limit)),
             concurrency_limit,
         }
     }
@@ -98,8 +99,10 @@ impl ScanEngine {
 
         drop(result_tx);
 
-        for task in tasks {
-            let _ = task.await;
+        for result in futures::future::join_all(tasks).await {
+            if let Err(e) = result {
+                warn!("Scan task panicked: {}", e);
+            }
         }
     }
 
@@ -305,7 +308,7 @@ mod tests {
     fn test_engine_creation() {
         let target_manager = TargetManager::new();
         let client = Arc::new(HttpClient::new(10, None, &vec![]));
-        let engine = ScanEngine::new(target_manager, client, 10);
+        let engine = ScanEngine::new(target_manager, client, 10, 0, None);
 
         assert_eq!(engine.concurrency_limit, 10);
     }
