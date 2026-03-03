@@ -37,3 +37,5 @@ src-tauri/target/
 
 .env
 .env.*
+
+gui/src-tauri/tools/
