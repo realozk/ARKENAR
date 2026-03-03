@@ -79,7 +79,6 @@ impl ScanEventSink for TauriSink {
             result.vuln_type, result.url, result.payload
         ));
 
-        // Fire webhook if configured
         if let Some(ref url) = self.webhook_url {
             let url = url.clone();
             let r = result.clone();
@@ -102,20 +101,148 @@ impl ScanEventSink for TauriSink {
 static SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
 static SCAN_ABORT: AtomicBool = AtomicBool::new(false);
 
+/// Returns an error if `val` contains shell metacharacters or path-traversal.
+fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
+    const FORBIDDEN: &[char] = &[';', '|', '&', '$', '>', '<', '`', '(', ')', '{', '}', '\n', '\r', '\0'];
+    if val.chars().any(|c| FORBIDDEN.contains(&c)) {
+        return Err(format!("Field '{}' contains forbidden characters.", name));
+    }
+    if val.contains("../") || val.contains("..\\") {
+        return Err(format!("Field '{}' contains a path-traversal sequence.", name));
+    }
+    Ok(())
+}
+
+/// Validates the `tags` field to prevent flag injection (e.g. `-exec`, `--config`).
+fn validate_tags_field(tags: &str) -> Result<(), String> {
+    if tags.is_empty() {
+        return Ok(());
+    }
+    for segment in tags.split(',') {
+        let s = segment.trim();
+        if s.starts_with('-') {
+            return Err("Tags must not contain CLI flags (e.g. -exec, --config).".to_string());
+        }
+    }
+    if !tags.chars().all(|c| c.is_alphanumeric() || matches!(c, ',' | '-' | '_' | ' ')) {
+        return Err("Field 'tags' contains invalid characters.".to_string());
+    }
+    Ok(())
+}
+
+/// Validates all user-supplied string fields in `ScanConfig` before any
+/// subprocess is spawned or network call is made.
+fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
+    validate_text_field("proxy",    &config.proxy)?;
+    validate_text_field("headers",  &config.headers)?;
+    validate_text_field("payloads", &config.payloads)?;
+    validate_text_field("output",   &config.output)?;
+    validate_text_field("target",   &config.target)?;
+    validate_text_field("listFile", &config.list_file)?;
+
+    if !config.target.is_empty() {
+        let lower = config.target.to_lowercase();
+        if !lower.starts_with("http://") && !lower.starts_with("https://") {
+            return Err("Target must start with http:// or https://.".to_string());
+        }
+    }
+
+    if !config.list_file.is_empty() {
+        if config.list_file.starts_with('/') || config.list_file.starts_with('~') || config.list_file.starts_with('\\') {
+            return Err("Target list path must be relative (no leading /, ~, or \\).".to_string());
+        }
+    }
+
+    if config.mode != "simple" && config.mode != "advanced" {
+        return Err("Invalid scan mode.".to_string());
+    }
+
+    if config.threads < 1 || config.threads > 500 {
+        return Err("Threads must be between 1 and 500.".to_string());
+    }
+    if config.timeout < 1 || config.timeout > 120 {
+        return Err("Timeout must be between 1 and 120 seconds.".to_string());
+    }
+    if config.rate_limit < 1 || config.rate_limit > 5000 {
+        return Err("Rate limit must be between 1 and 5000.".to_string());
+    }
+
+    validate_tags_field(&config.tags)?;
+
+    if let Some(ref wh) = config.webhook_url {
+        if !wh.is_empty() {
+            validate_webhook_url(wh)?;
+        }
+    }
+    Ok(())
+}
+
+/// Blocks SSRF by requiring HTTPS and rejecting RFC-1918 / loopback hosts.
+/// Uses the `url` crate for proper parsing instead of manual string splitting.
+fn validate_webhook_url(raw: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(raw)
+        .map_err(|_| "Webhook URL is not a valid URL.".to_string())?;
+
+    if parsed.scheme() != "https" {
+        return Err("Webhook URL must use HTTPS.".to_string());
+    }
+
+    let host = parsed.host_str()
+        .ok_or_else(|| "Webhook URL has no hostname.".to_string())?
+        .to_lowercase();
+
+    if host == "localhost"
+        || host == "ip6-localhost"
+        || host == "::1"
+        || host.ends_with(".local")
+        || host.ends_with(".internal")
+    {
+        return Err("Webhook URL cannot target a local network address.".to_string());
+    }
+
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        let is_private = match ip {
+            std::net::IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+            std::net::IpAddr::V6(v6) => v6.is_loopback(),
+        };
+        if is_private {
+            return Err("Webhook URL cannot target a private/loopback address.".to_string());
+        }
+    } else {
+        for prefix in &["127.", "10.", "0.", "169.254."] {
+            if host.starts_with(prefix) {
+                return Err("Webhook URL cannot target a private address.".to_string());
+            }
+        }
+        if host.starts_with("192.168.") {
+            return Err("Webhook URL cannot target a private address.".to_string());
+        }
+        if host.starts_with("172.") {
+            let second: Option<u8> = host.split('.').nth(1).and_then(|s| s.parse().ok());
+            if matches!(second, Some(16..=31)) {
+                return Err("Webhook URL cannot target a private address.".to_string());
+            }
+        }
+    }
+
+    Ok(())
+}
 
 #[tauri::command]
 async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
-    // Prevent duplicate scans
-    if SCAN_RUNNING.load(Ordering::SeqCst) {
+    if SCAN_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return Err("A scan is already running.".to_string());
     }
-    SCAN_RUNNING.store(true, Ordering::SeqCst);
+
+    if let Err(e) = validate_scan_config(&config) {
+        SCAN_RUNNING.store(false, Ordering::SeqCst);
+        return Err(e);
+    }
+
     SCAN_ABORT.store(false, Ordering::SeqCst);
 
-    // Create the TauriSink — all pipeline output goes through this
     let sink = TauriSink::new_ref(app.clone(), config.webhook_url.clone());
 
-    // Resolve targets
     let mut targets: Vec<String> = Vec::new();
 
     if !config.list_file.is_empty() {
@@ -140,7 +267,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         return Err("No targets specified.".to_string());
     }
 
-    // Spawn the scan in the background so the command returns immediately
     tokio::spawn(async move {
         let start_time = Instant::now();
         let total_targets = targets.len();
@@ -151,7 +277,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             config.mode, config.threads, config.timeout, config.rate_limit
         ));
 
-        // Dry run
         if config.dry_run {
             for t in &targets {
                 sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", t));
@@ -268,7 +393,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             }
         }
 
-        // Final stats
         let elapsed = format!("{:.1}s", start_time.elapsed().as_secs_f64());
         sink.on_log("phase", &format!("── Scan Complete ({})", elapsed));
 
@@ -315,6 +439,8 @@ async fn check_tools() -> Result<String, String> {
 
 #[tauri::command]
 async fn test_webhook(url: String) -> Result<(), String> {
+    validate_webhook_url(&url)?;
+
     let is_discord = url.contains("discord.com/api/webhooks");
     let is_slack = url.contains("hooks.slack.com");
 
@@ -333,13 +459,20 @@ async fn test_webhook(url: String) -> Result<(), String> {
         serde_json::json!({ "event": "test", "message": "Arkenar is connected!" })
     };
 
-    let client = reqwest::Client::new();
-    client
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+    let resp = client
         .post(&url)
         .json(&payload)
         .send()
         .await
         .map_err(|e| format!("Webhook test failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Webhook returned HTTP {}", resp.status().as_u16()));
+    }
 
     Ok(())
 }
@@ -356,14 +489,32 @@ struct ReportRequest {
 async fn generate_report(app: tauri::AppHandle, request: ReportRequest) -> Result<String, String> {
     use tauri::Manager;
     
-    let mut report_path = app
+    let download_dir = app
         .path()
         .download_dir()
         .map_err(|e| format!("Could not get download directory: {}", e))?;
-    
-    report_path.push(&request.output_path);
 
-    // Generate the HTML content
+    let raw_name = request.output_path.trim();
+    let safe_name: String = raw_name
+        .replace("..", "")
+        .replace('/', "")
+        .replace('\\', "");
+    let safe_name = safe_name.trim_start_matches(|c: char| c == '~' || c == '.');
+    let safe_name = if safe_name.is_empty() { "arkenar_report.html" } else { safe_name };
+
+    let mut report_path = download_dir.clone();
+    report_path.push(safe_name);
+
+    let canonical_dir = download_dir.canonicalize()
+        .map_err(|e| format!("Cannot resolve download directory: {}", e))?;
+    let resolved_parent = report_path.parent()
+        .ok_or_else(|| "Invalid report path.".to_string())?
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve report path: {}", e))?;
+    if !resolved_parent.starts_with(&canonical_dir) {
+        return Err("Report path escapes the download directory.".to_string());
+    }
+
     let html = reporting::generate_html_report(
         &request.findings,
         &request.config,
@@ -372,6 +523,15 @@ async fn generate_report(app: tauri::AppHandle, request: ReportRequest) -> Resul
 
     std::fs::write(&report_path, &html)
         .map_err(|e| format!("Failed to write report: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(
+            &report_path,
+            std::fs::Permissions::from_mode(0o600),
+        );
+    }
 
     Ok(report_path.to_string_lossy().into_owned())
 }
@@ -386,7 +546,6 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);
-            // Auto-install Katana & Nuclei on startup (background)
             tauri::async_runtime::spawn(async move {
                 setup_sink.on_log("info", "Checking dependencies (Katana, Nuclei)...");
                 installer::check_and_install_tools().await;

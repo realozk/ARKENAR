@@ -22,11 +22,25 @@ pub async fn send_webhook(webhook_url: &str, result: &ScanResult) {
         })
     } else if is_slack {
         serde_json::json!({
-            "text": format!(
-                " *{}* detected on `{}`\nPayload: `{}`\nStatus: {} | {}ms",
-                result.vuln_type, result.url, result.payload,
-                result.status_code, result.timing_ms
-            )
+            "blocks": [
+                {
+                    "type": "header",
+                    "text": { "type": "plain_text", "text": format!("\u{1f6a8} {} Detected", result.vuln_type) }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        { "type": "mrkdwn", "text": format!("*Target:*\n`{}`", result.url) },
+                        { "type": "mrkdwn", "text": format!("*Payload:*\n`{}`", result.payload) },
+                        { "type": "mrkdwn", "text": format!("*Status:* {}", result.status_code) },
+                        { "type": "mrkdwn", "text": format!("*Timing:* {}ms", result.timing_ms) },
+                    ]
+                },
+                {
+                    "type": "context",
+                    "elements": [{ "type": "mrkdwn", "text": "Arkenar Scanner" }]
+                }
+            ]
         })
     } else {
         serde_json::json!({
@@ -40,7 +54,14 @@ pub async fn send_webhook(webhook_url: &str, result: &ScanResult) {
         })
     };
 
-    let client = reqwest::Client::new();
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
     let _ = client.post(webhook_url)
         .json(&payload)
         .send()

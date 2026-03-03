@@ -18,9 +18,9 @@ function StatCard({ label, value, icon: Icon, accent }: {
     <div className="rounded-xl border border-border-subtle bg-bg-card p-5 transition-all duration-200 hover:bg-bg-hover hover:border-border-hover group">
       <div className="flex items-center gap-2 mb-3">
         <Icon size={14} className="text-text-muted group-hover:text-text-secondary transition-colors duration-200" strokeWidth={2} />
-        <span className="text-xs font-medium uppercase tracking-wider text-text-muted">{label}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">{label}</span>
       </div>
-      <span className={`stat-value font-mono text-3xl font-bold tracking-tight ${valueClass[accent ?? "default"]}`}>
+      <span className={`stat-value font-mono text-2xl font-bold tracking-tight ${valueClass[accent ?? "default"]}`}>
         {value}
       </span>
     </div>

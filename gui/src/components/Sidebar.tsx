@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Crosshair, FileText, Layers, Radar, Telescope, Zap,
-  Settings2, ChevronDown, Square, Play, Send, Trash2,
+  Settings2, ChevronDown, Square, Play, Send,
 } from "lucide-react";
 import type { ScanConfig, ScanStatus } from "../types";
 import { SectionLabel, TextInput, NumberInput, ToggleRow } from "./primitives";
@@ -10,7 +10,7 @@ import { SectionLabel, TextInput, NumberInput, ToggleRow } from "./primitives";
 function WebhookInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [testState, setTestState] = useState<"idle" | "sending" | "ok" | "err">("idle");
 
-  const handleTest = async () => {
+  const handleTest = useCallback(async () => {
     if (!value.trim()) return;
     setTestState("sending");
     try {
@@ -21,7 +21,7 @@ function WebhookInput({ value, onChange }: { value: string; onChange: (v: string
     } finally {
       setTimeout(() => setTestState("idle"), 2500);
     }
-  };
+  }, [value]);
 
   const btnLabel = { idle: "Test", sending: "Sending…", ok: "Sent ✓", err: "Failed ✗" }[testState];
   const btnClass = {
@@ -83,7 +83,7 @@ export function Sidebar({ config, scanStatus, onUpdate, onStartScan, onStopScan 
               <button
                 key={m}
                 onClick={() => onUpdate("mode", m)}
-                className={`flex-1 py-2 text-sm font-medium capitalize transition-all duration-200 ${config.mode === m
+                className={`flex-1 py-2.5 text-sm font-medium capitalize transition-all duration-200 ${config.mode === m
                   ? "bg-accent text-bg-root"
                   : "text-text-muted hover:text-text-secondary hover:bg-bg-hover"
                 }`}
@@ -130,7 +130,7 @@ export function Sidebar({ config, scanStatus, onUpdate, onStartScan, onStopScan 
         </div>
 
         {config.enableCrawler && (
-          <div>
+          <div className="animate-fade-slide-in">
             <SectionLabel icon={Radar}>Crawler</SectionLabel>
             <div className="grid grid-cols-3 gap-2.5">
               <div>
@@ -151,17 +151,17 @@ export function Sidebar({ config, scanStatus, onUpdate, onStartScan, onStopScan 
 
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex w-full items-center justify-between py-1.5 text-xs font-medium text-text-muted hover:text-text-secondary transition-colors duration-200"
+          className="flex w-full items-center justify-between py-2.5 px-3 rounded-lg text-xs font-medium text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-all duration-200"
         >
           <div className="flex items-center gap-2.5">
             <Settings2 size={14} strokeWidth={2} />
             <span>Advanced</span>
           </div>
-          <ChevronDown size={13} className={`transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`} />
+          <ChevronDown size={13} className={`transition-transform duration-300 ${showAdvanced ? "rotate-180" : ""}`} />
         </button>
 
         {showAdvanced && (
-          <div className="space-y-3.5 pl-0.5">
+          <div className="space-y-3.5 pl-0.5 animate-fade-slide-in">
             <div>
               <p className="text-xs text-text-muted mb-1.5">Proxy</p>
               <TextInput value={config.proxy} onChange={(v) => onUpdate("proxy", v)} placeholder="http://127.0.0.1:8080" mono />
@@ -191,7 +191,7 @@ export function Sidebar({ config, scanStatus, onUpdate, onStartScan, onStopScan 
         {scanStatus === "running" ? (
           <button
             onClick={onStopScan}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-status-critical/10 border border-status-critical/20 py-3 text-sm font-medium text-status-critical hover:bg-status-critical/15 transition-all duration-200 cursor-pointer"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-status-critical/10 border-2 border-status-critical/20 py-3.5 text-sm font-medium text-status-critical btn-danger-ghost animate-scan-pulse cursor-pointer"
           >
             <Square size={13} strokeWidth={2.5} />
             Stop Scan
@@ -200,7 +200,7 @@ export function Sidebar({ config, scanStatus, onUpdate, onStartScan, onStopScan 
           <button
             onClick={onStartScan}
             disabled={!canStart}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-[13px] font-semibold transition-all duration-200 ${canStart
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[13px] font-semibold transition-all duration-200 ${canStart
               ? "bg-accent text-bg-root hover:shadow-accent-btn hover:brightness-110 cursor-pointer"
               : "bg-bg-card text-text-ghost cursor-not-allowed"
             }`}

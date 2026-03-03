@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Shield, X } from "lucide-react";
@@ -11,7 +11,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
 
-
+const LOG_CAP = 2_000;
 
 function App() {
   const [config, setConfig] = useState<ScanConfig>(DEFAULT_CONFIG);
@@ -21,35 +21,55 @@ function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [findings, setFindings] = useState<ScanFindingEvent[]>([]);
   const [activeTab, setActiveTab] = useState<"terminal" | "findings">("terminal");
+  const mountedRef = useRef(true);
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     const now = new Date();
     const time = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setLogs((prev) => [...prev, { time, level, message }]);
+    setLogs((prev) => {
+      const next = [...prev, { time, level, message }];
+      return next.length > LOG_CAP ? next.slice(next.length - LOG_CAP) : next;
+    });
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     const unlisteners: UnlistenFn[] = [];
 
-    listen<ScanLogEvent>("scan-log", (event) => {
-      const { level, message } = event.payload;
-      const validLevel = (["info", "success", "error", "warn", "phase"].includes(level) ? level : "info") as LogLevel;
-      const now = new Date();
-      const time = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      setLogs((prev) => [...prev, { time, level: validLevel, message }]);
-    }).then((fn) => unlisteners.push(fn));
+    Promise.all([
+      listen<ScanLogEvent>("scan-log", (event) => {
+        if (!mountedRef.current) return;
+        const { level, message } = event.payload;
+        const validLevel = (["info", "success", "error", "warn", "phase"].includes(level) ? level : "info") as LogLevel;
+        const now = new Date();
+        const time = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        setLogs((prev) => {
+          const next = [...prev, { time, level: validLevel, message }];
+          return next.length > LOG_CAP ? next.slice(next.length - LOG_CAP) : next;
+        });
+      }),
+      listen<ScanStatsEvent>("scan-complete", (event) => {
+        if (!mountedRef.current) return;
+        setStats(event.payload);
+        setScanStatus("finished");
+      }),
+      listen<ScanFindingEvent>("scan-finding", (event) => {
+        if (!mountedRef.current) return;
+        setFindings((prev) => [...prev, event.payload]);
+        setActiveTab("findings");
+      }),
+    ]).then((fns) => {
+      if (mountedRef.current) {
+        unlisteners.push(...fns);
+      } else {
+        fns.forEach((fn) => fn());
+      }
+    });
 
-    listen<ScanStatsEvent>("scan-complete", (event) => {
-      setStats(event.payload);
-      setScanStatus("finished");
-    }).then((fn) => unlisteners.push(fn));
-
-    listen<ScanFindingEvent>("scan-finding", (event) => {
-      setFindings((prev) => [...prev, event.payload]);
-      setActiveTab("findings");
-    }).then((fn) => unlisteners.push(fn));
-
-    return () => { unlisteners.forEach((fn) => fn()); };
+    return () => {
+      mountedRef.current = false;
+      unlisteners.forEach((fn) => fn());
+    };
   }, []);
 
   const update = useCallback(<K extends keyof ScanConfig>(key: K, value: ScanConfig[K]) => {
@@ -126,9 +146,9 @@ function App() {
       </header>
 
       {errorMsg && (
-        <div className="flex items-center justify-between bg-status-critical/8 border-b border-status-critical/15 px-6 py-2.5">
+        <div className="animate-fade-slide-in flex items-center justify-between bg-status-critical/8 border-b border-status-critical/15 px-6 py-2.5">
           <span className="text-sm text-status-critical">{errorMsg}</span>
-          <button onClick={() => setErrorMsg(null)} className="text-status-critical/50 hover:text-status-critical transition-colors duration-200">
+          <button onClick={() => setErrorMsg(null)} className="p-1 text-status-critical/50 hover:text-status-critical transition-colors duration-200">
             <X size={15} />
           </button>
         </div>
