@@ -313,6 +313,37 @@ async fn check_tools() -> Result<String, String> {
     Ok("Tools verified.".to_string())
 }
 
+#[tauri::command]
+async fn test_webhook(url: String) -> Result<(), String> {
+    let is_discord = url.contains("discord.com/api/webhooks");
+    let is_slack = url.contains("hooks.slack.com");
+
+    let payload = if is_discord {
+        serde_json::json!({
+            "embeds": [{
+                "title": "\u{2705} Arkenar is connected!",
+                "description": "Your webhook is configured correctly. You will receive alerts here when vulnerabilities are found.",
+                "color": 52158,
+                "footer": { "text": "Arkenar Scanner" }
+            }]
+        })
+    } else if is_slack {
+        serde_json::json!({ "text": "\u{2705} *Arkenar is connected!* Your webhook is working correctly." })
+    } else {
+        serde_json::json!({ "event": "test", "message": "Arkenar is connected!" })
+    };
+
+    let client = reqwest::Client::new();
+    client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Webhook test failed: {}", e))?;
+
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 struct ReportRequest {
     findings: Vec<ScanFindingEvent>,
@@ -351,7 +382,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, generate_report])
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, generate_report, test_webhook])
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);
