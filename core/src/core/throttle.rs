@@ -45,14 +45,12 @@ impl ThrottleController {
             let blocks = self.consecutive_blocks.fetch_add(1, Relaxed) + 1;
             self.total_throttled.fetch_add(1, Relaxed);
 
-            // Exponential backoff: 50 * 2^(blocks-1), capped at MAX_DELAY_MS
             let new_delay = (INITIAL_BACKOFF_MS * (1u64 << (blocks - 1).min(6))).min(MAX_DELAY_MS);
             self.delay_ms.store(new_delay, Relaxed);
             true
         } else {
             self.consecutive_blocks.store(0, Relaxed);
 
-            // Gradual decay toward zero
             let current = self.delay_ms.load(Relaxed);
             if current > 0 {
                 let new_delay = current.saturating_sub(DECAY_MS);

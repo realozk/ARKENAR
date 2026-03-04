@@ -108,7 +108,6 @@ async fn main() {
         installer::check_and_install_tools().await;
     }
 
-    // Create console sink for CLI output
     let sink = ConsoleSink::new_ref();
 
     // Handle --resume: load previous state and continue
@@ -235,7 +234,6 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     let custom_headers = config.parsed_headers();
 
-    // Phase 1: Crawling
     sink.on_log("phase", "[*] Phase 1: Crawling...");
 
     let mut target_manager = TargetManager::new();
@@ -253,14 +251,12 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
         }
     }
 
-    // ── Phase 2: Nuclei ───────────────────────────────────────────────
     sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
 
     if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), sink).await {
         sink.on_log("error", &format!("[!] Nuclei error: {}", e));
     }
 
-    // ── Phase 3: ARKENAR Engine ───────────────────────────────────────
     sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
 
     let http_client = Arc::new(HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers));

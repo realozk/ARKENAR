@@ -67,7 +67,6 @@ impl VulnerabilityDetector {
             return Some(VulnerabilityType::SensitiveExposure);
         }
 
-        // Default: Safe
         None
     }
 

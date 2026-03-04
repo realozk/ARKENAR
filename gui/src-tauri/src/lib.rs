@@ -290,7 +290,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             return;
         }
 
-        // Parse headers
         let custom_headers = config.parsed_headers();
 
         let mut total_urls: usize = 0;

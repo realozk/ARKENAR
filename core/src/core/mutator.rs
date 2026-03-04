@@ -20,8 +20,6 @@ pub enum InjectionPoint {
     FormParam(String),
 }
 
-/// Headers that should be excluded from injection point extraction
-/// These are standard headers that shouldn't be fuzzed
 fn get_blacklisted_headers() -> HashSet<&'static str> {
     let mut blacklist = HashSet::new();
     blacklist.insert("host");
@@ -155,7 +153,6 @@ fn inject_into_json_recursive(value: &mut Value, parts: &[&str], index: usize, p
     let current_part = parts[index];
     
     if let Some(bracket_pos) = current_part.find('[') {
-        // Handle cases like "items[0]" or just "[0]"
         let field_name = &current_part[..bracket_pos];
         let rest = &current_part[bracket_pos..];
         
@@ -194,7 +191,6 @@ fn inject_into_json_recursive(value: &mut Value, parts: &[&str], index: usize, p
     }
     
     if index == parts.len() - 1 {
-        // Last part - inject payload here
         if let Some(target) = value.get_mut(current_part) {
             inject_payload_into_value(target, payload);
             return true;
@@ -246,19 +242,7 @@ fn inject_payload_into_value(value: &mut Value, payload: &str) {
     }
 }
 
-/// Creates a mutated copy of an HTTP request with a payload injected at the specified point
-/// 
-/// This function clones the original request and modifies only the specified
-/// injection point with the given payload. It also updates the Content-Length
-/// header if the body size changes
-/// 
-/// # Arguments
-/// * `req` - Reference to the original HTTP request
-/// * `point` - The injection point where the payload should be inserted
-/// * `payload` - The payload string to inject
-/// 
-/// # Returns
-/// A new `HttpRequest` with the payload injected at the specified point
+/// Creates a mutated copy of an HTTP request with a payload injected at the specified point.
 pub fn mutate_request(req: &HttpRequest, point: &InjectionPoint, payload: &str) -> HttpRequest {
     let mut new_request = req.clone();
     
