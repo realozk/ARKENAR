@@ -1,5 +1,7 @@
+import { useState, useCallback } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
-  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw,
+  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw, Plus, X, ListOrdered, FolderSearch,
 } from "lucide-react";
 import type { ScanConfig } from "../types";
 import { SectionLabel, TextInput, ToggleRow, SliderWithInput } from "./primitives";
@@ -10,10 +12,56 @@ interface SidebarProps {
   config: ScanConfig;
   onUpdate: <K extends keyof ScanConfig>(key: K, value: ScanConfig[K]) => void;
   onReset: () => void;
+  scanQueue?: string[];
+  onAddToQueue?: (targets: string[]) => void;
+  onRemoveFromQueue?: (index: number) => void;
 }
 
-export function Sidebar({ config, onUpdate, onReset }: SidebarProps) {
+export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueue, onRemoveFromQueue }: SidebarProps) {
+  const [queueInput, setQueueInput] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
+  const handleBrowseList = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: "Select Target List File"
+      });
+      if (selected && typeof selected === "string") {
+        onUpdate("listFile", selected);
+        onUpdate("target", "");
+      } else if (selected && Array.isArray(selected) && selected.length > 0) {
+        onUpdate("listFile", selected[0]);
+        onUpdate("target", "");
+      }
+    } catch (err) {
+      console.error("Failed to open dialog", err);
+    }
+  };
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      // In Tauri, drops provide the full path in the augmented File object
+      const path = (file as any).path || file.name;
+      onUpdate("listFile", path);
+      onUpdate("target", "");
+    }
+  }, [onUpdate]);
+
+  const handleAddToQueue = () => {
+    const targets = queueInput
+      .split("\n")
+      .map(t => t.trim())
+      .filter(t => t.startsWith("http://") || t.startsWith("https://"));
+    if (targets.length > 0 && onAddToQueue) {
+      onAddToQueue(targets);
+      setQueueInput("");
+    }
+  };
 
   return (
     <aside className="flex w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">
@@ -24,10 +72,26 @@ export function Sidebar({ config, onUpdate, onReset }: SidebarProps) {
           <TextInput value={config.target} onChange={(v) => onUpdate("target", v)} placeholder="https://example.com" mono />
         </div>
 
-        <div>
+        <div
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          className={`transition-all duration-300 rounded-xl p-3 -mx-3 ${isDragging ? "bg-accent/10 border border-accent border-dashed scale-[1.02]" : "border border-transparent"}`}
+        >
           <SectionLabel icon={FileText}>Target List</SectionLabel>
-          <TextInput value={config.listFile} onChange={(v) => onUpdate("listFile", v)} placeholder="targets.txt" mono />
-          <p className="mt-2 text-xs text-text-ghost leading-snug">One URL per line. Overrides single target.</p>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <TextInput value={config.listFile} onChange={(v) => onUpdate("listFile", v)} placeholder="Drop file or browse..." mono />
+            </div>
+            <button
+              onClick={handleBrowseList}
+              title="Browse for a target list file"
+              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
+            >
+              <FolderSearch size={16} strokeWidth={2.5} />
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-text-ghost leading-snug">Drag & drop a file, or click browse. Overrides single target.</p>
         </div>
 
         <div>
@@ -129,6 +193,42 @@ export function Sidebar({ config, onUpdate, onReset }: SidebarProps) {
           </div>
         </div>
 
+        {/* Feature 18: Scan Queue */}
+        <div>
+          <SectionLabel icon={ListOrdered}>Scan Queue</SectionLabel>
+          <div className="space-y-2">
+            <textarea
+              value={queueInput}
+              onChange={(e) => setQueueInput(e.target.value)}
+              placeholder={"https://target1.com\nhttps://target2.com"}
+              className="w-full bg-bg-input border border-border-subtle rounded-lg px-3 py-2 text-xs font-mono text-text-primary outline-none focus:border-border-focus transition-all duration-200 placeholder:text-text-ghost/50 resize-none h-16"
+            />
+            <button
+              onClick={handleAddToQueue}
+              disabled={!queueInput.trim()}
+              className={`flex items-center gap-1.5 w-full justify-center rounded-lg py-2 text-xs font-semibold transition-all duration-200 ${queueInput.trim() ? "bg-accent/15 text-accent-text border border-accent/20 hover:bg-accent/25" : "bg-bg-input text-text-ghost cursor-not-allowed border border-transparent"}`}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              Add to Queue
+            </button>
+            {scanQueue.length > 0 && (
+              <div className="space-y-1 mt-2">
+                <p className="text-[10px] text-text-ghost uppercase tracking-wider">Queued ({scanQueue.length})</p>
+                {scanQueue.map((target, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg bg-bg-input px-3 py-1.5 group">
+                    <span className="text-xs font-mono text-text-secondary truncate flex-1">{target}</span>
+                    <button
+                      onClick={() => onRemoveFromQueue?.(i)}
+                      className="opacity-0 group-hover:opacity-100 text-text-ghost hover:text-status-critical transition-all duration-200"
+                    >
+                      <X size={12} strokeWidth={2.5} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
       </div>
       <button

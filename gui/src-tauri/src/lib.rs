@@ -476,64 +476,8 @@ async fn test_webhook(url: String) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(serde::Deserialize)]
-struct ReportRequest {
-    findings: Vec<ScanFindingEvent>,
-    config: ScanConfig,
-    elapsed: String,
-    output_path: String,
-}
 
-#[tauri::command]
-async fn generate_report(app: tauri::AppHandle, request: ReportRequest) -> Result<String, String> {
-    use tauri::Manager;
-    
-    let download_dir = app
-        .path()
-        .download_dir()
-        .map_err(|e| format!("Could not get download directory: {}", e))?;
 
-    let raw_name = request.output_path.trim();
-    let safe_name: String = raw_name
-        .replace("..", "")
-        .replace('/', "")
-        .replace('\\', "");
-    let safe_name = safe_name.trim_start_matches(|c: char| c == '~' || c == '.');
-    let safe_name = if safe_name.is_empty() { "arkenar_report.html" } else { safe_name };
-
-    let mut report_path = download_dir.clone();
-    report_path.push(safe_name);
-
-    let canonical_dir = download_dir.canonicalize()
-        .map_err(|e| format!("Cannot resolve download directory: {}", e))?;
-    let resolved_parent = report_path.parent()
-        .ok_or_else(|| "Invalid report path.".to_string())?
-        .canonicalize()
-        .map_err(|e| format!("Cannot resolve report path: {}", e))?;
-    if !resolved_parent.starts_with(&canonical_dir) {
-        return Err("Report path escapes the download directory.".to_string());
-    }
-
-    let html = reporting::generate_html_report(
-        &request.findings,
-        &request.config,
-        &request.elapsed,
-    );
-
-    std::fs::write(&report_path, &html)
-        .map_err(|e| format!("Failed to write report: {}", e))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(
-            &report_path,
-            std::fs::Permissions::from_mode(0o600),
-        );
-    }
-
-    Ok(report_path.to_string_lossy().into_owned())
-}
 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -541,7 +485,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, generate_report, test_webhook])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook])
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);

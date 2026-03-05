@@ -54,6 +54,19 @@ export interface ScanFindingEvent {
   curl_cmd: string;
 }
 
+export interface ScanHistoryEntry {
+  id: string;
+  date: string;
+  target: string;
+  elapsed: string;
+  findingsCount: number;
+  criticalCount: number;
+  mediumCount: number;
+  safeCount: number;
+  urlsScanned: number;
+  targetsCount: number;
+}
+
 export const DEFAULT_CONFIG: ScanConfig = {
   target: "",
   listFile: "",

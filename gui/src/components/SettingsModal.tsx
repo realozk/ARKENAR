@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-    X, Palette, FolderOutput, Sliders, KeyRound, RotateCcw, Moon, Sun, Radar,
+    X, Palette, FolderOutput, KeyRound, RotateCcw, Moon, Sun, Radar,
 } from "lucide-react";
-import { SectionLabel, TextInput, SliderWithInput, ToggleRow } from "./primitives";
+import { SectionLabel, TextInput, SliderWithInput } from "./primitives";
 
 /* ── Persisted settings shape ─────────────────────────────────── */
 export interface AppSettings {
@@ -13,9 +13,6 @@ export interface AppSettings {
     defaultOutputPath: string;
     // Integrations
     globalWebhookUrl: string;
-    // Behaviour
-    autoOpenReport: boolean;
-    showTimestamps: boolean;
     // Crawler defaults
     defaultCrawlerDepth: number;
     defaultCrawlerTimeout: number;
@@ -27,8 +24,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     theme: "dark",
     defaultOutputPath: "scan_results.json",
     globalWebhookUrl: "",
-    autoOpenReport: true,
-    showTimestamps: true,
     defaultCrawlerDepth: 3,
     defaultCrawlerTimeout: 60,
     defaultCrawlerMaxUrls: 50,
@@ -39,7 +34,19 @@ const STORAGE_KEY = "arkenar_settings";
 export function loadSettings(): AppSettings {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            // Validate types to guard against corrupted localStorage
+            if (typeof parsed !== "object" || parsed === null) return { ...DEFAULT_SETTINGS };
+            const merged = { ...DEFAULT_SETTINGS, ...parsed };
+            // Type-check critical fields
+            if (typeof merged.accentColor !== "string" || !/^#[0-9a-fA-F]{6}$/.test(merged.accentColor)) merged.accentColor = DEFAULT_SETTINGS.accentColor;
+            if (merged.theme !== "dark" && merged.theme !== "light") merged.theme = DEFAULT_SETTINGS.theme;
+            if (typeof merged.defaultCrawlerDepth !== "number") merged.defaultCrawlerDepth = DEFAULT_SETTINGS.defaultCrawlerDepth;
+            if (typeof merged.defaultCrawlerTimeout !== "number") merged.defaultCrawlerTimeout = DEFAULT_SETTINGS.defaultCrawlerTimeout;
+            if (typeof merged.defaultCrawlerMaxUrls !== "number") merged.defaultCrawlerMaxUrls = DEFAULT_SETTINGS.defaultCrawlerMaxUrls;
+            return merged;
+        }
     } catch { /* ignore */ }
     return { ...DEFAULT_SETTINGS };
 }
@@ -102,7 +109,27 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
 
     // Close on backdrop click
     const handleOverlayClick = (e: React.MouseEvent) => {
-        if (e.target === overlayRef.current) onClose();
+        if (e.target === overlayRef.current) handleClose();
+    };
+
+    // Webhook validation
+    const webhookError = draft.globalWebhookUrl.trim() !== "" && !/^https:\/\/.+/.test(draft.globalWebhookUrl.trim())
+        ? "Webhook URL must start with https://" : null;
+
+    // Check for unsaved non-appearance changes
+    const hasUnsavedChanges = () => {
+        return draft.defaultOutputPath !== settings.defaultOutputPath
+            || draft.globalWebhookUrl !== settings.globalWebhookUrl
+            || draft.defaultCrawlerDepth !== settings.defaultCrawlerDepth
+            || draft.defaultCrawlerTimeout !== settings.defaultCrawlerTimeout
+            || draft.defaultCrawlerMaxUrls !== settings.defaultCrawlerMaxUrls;
+    };
+
+    const handleClose = () => {
+        if (hasUnsavedChanges()) {
+            if (!window.confirm("You have unsaved changes. Discard them?")) return;
+        }
+        onClose();
     };
 
     const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -141,7 +168,7 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                         <p className="text-xs text-text-muted mt-0.5">App-wide configuration</p>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={handleClose}
                         className="rounded-lg p-2 text-text-ghost hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-90"
                     >
                         <X size={17} strokeWidth={2.5} />
@@ -252,24 +279,8 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                 mono
                             />
                             <p className="mt-1.5 text-xs text-text-ghost">Pre-fills the webhook field for every new scan.</p>
+                            {webhookError && <p className="mt-1.5 text-xs text-status-critical">{webhookError}</p>}
                         </div>
-                    </section>
-
-                    {/* Behaviour */}
-                    <section>
-                        <SectionLabel icon={Sliders}>Behaviour</SectionLabel>
-                        <ToggleRow
-                            label="Auto-open report"
-                            desc="Open the HTML report automatically after export"
-                            checked={draft.autoOpenReport}
-                            onChange={(v) => set("autoOpenReport", v)}
-                        />
-                        <ToggleRow
-                            label="Show timestamps"
-                            desc="Display timestamps in the terminal output"
-                            checked={draft.showTimestamps}
-                            onChange={(v) => set("showTimestamps", v)}
-                        />
                     </section>
                 </div>
 
@@ -284,20 +295,21 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                     </button>
                     <div className="flex gap-2">
                         <button
-                            onClick={onClose}
+                            onClick={handleClose}
                             className="rounded-lg border border-border-subtle px-4 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:-translate-y-0.5 active:scale-95 shadow-sm"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleSave}
-                            className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-bg-root hover:brightness-110 transition-all duration-300 btn-glow shadow-sm"
+                            disabled={!!webhookError}
+                            className={`rounded-lg px-4 py-2 text-xs font-semibold text-bg-root transition-all duration-300 btn-glow shadow-sm ${webhookError ? 'bg-text-ghost cursor-not-allowed' : 'bg-accent hover:brightness-110'}`}
                         >
                             Save changes
                         </button>
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

@@ -436,10 +436,16 @@ select option {
 }
 
 /* ─── Neon label glow ─────────────────────────────────────────── */
+@keyframes neon-breathe {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
 .neon-label {
   text-shadow:
-    0 0 6px rgba(0, 213, 190, 0.3),
-    0 0 16px rgba(0, 213, 190, 0.08);
+    0 0 4px rgba(0, 213, 190, 0.12),
+    0 0 10px rgba(0, 213, 190, 0.05);
+  animation: neon-breathe 4s ease-in-out infinite;
 }
 
 /* ─── Finding card & Stat card hover glow ──────────────────────── */
