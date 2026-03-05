@@ -177,38 +177,6 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fix 11: Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in inputs
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (showSettings) return;
-
-      // Ctrl+Enter → Start scan
-      if (e.ctrlKey && e.key === "Enter" && scanStatus !== "running") {
-        e.preventDefault();
-        handleStartScan();
-        return;
-      }
-      // Escape → Stop scan
-      if (e.key === "Escape" && scanStatus === "running") {
-        e.preventDefault();
-        handleStopScan();
-        return;
-      }
-      // Ctrl+1/2/3 → Switch tabs
-      if (e.ctrlKey && e.key === "1") { e.preventDefault(); setActiveTab("terminal"); }
-      if (e.ctrlKey && e.key === "2") { e.preventDefault(); setActiveTab("findings"); }
-      if (e.ctrlKey && e.key === "3") { e.preventDefault(); setActiveTab("history"); }
-      // Ctrl+B → Toggle sidebar
-      if (e.ctrlKey && e.key === "b") { e.preventDefault(); setSidebarCollapsed(p => !p); }
-      // Ctrl+, → Open settings
-      if (e.ctrlKey && e.key === ",") { e.preventDefault(); setShowSettings(true); }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [scanStatus, showSettings]);
-
   const update = useCallback(<K extends keyof ScanConfig>(key: K, value: ScanConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -258,6 +226,40 @@ function App() {
     if (activeTab === "terminal") setLogs([]);
     else if (activeTab === "findings") setFindings([]);
   }, [activeTab]);
+
+  // Fix 11: Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (showSettings) return;
+
+      // Ctrl+Enter → Start scan
+      if (e.ctrlKey && e.key === "Enter" && scanStatus !== "running") {
+        e.preventDefault();
+        handleStartScan();
+        return;
+      }
+      // Escape → Stop scan
+      if (e.key === "Escape" && scanStatus === "running") {
+        e.preventDefault();
+        handleStopScan();
+        return;
+      }
+      // Ctrl+L → Clear current tab
+      if (e.ctrlKey && e.key === "l") { e.preventDefault(); handleClear(); }
+      // Ctrl+1/2/3 → Switch tabs
+      if (e.ctrlKey && e.key === "1") { e.preventDefault(); setActiveTab("terminal"); }
+      if (e.ctrlKey && e.key === "2") { e.preventDefault(); setActiveTab("findings"); }
+      if (e.ctrlKey && e.key === "3") { e.preventDefault(); setActiveTab("history"); }
+      // Ctrl+B → Toggle sidebar
+      if (e.ctrlKey && e.key === "b") { e.preventDefault(); setSidebarCollapsed(p => !p); }
+      // Ctrl+, → Open settings
+      if (e.ctrlKey && e.key === ",") { e.preventDefault(); setShowSettings(true); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [scanStatus, showSettings, handleStartScan, handleStopScan, handleClear]);
 
   const handleResetConfig = useCallback(() => setConfig(DEFAULT_CONFIG), []);
 
@@ -318,6 +320,7 @@ function App() {
           {scanStatus === "running" ? (
             <button
               onClick={handleStopScan}
+              title="Stop Scan (Esc)"
               className="flex items-center gap-1.5 rounded-lg bg-status-critical/10 border border-status-critical/20 px-3 py-1.5 text-xs font-semibold text-status-critical btn-danger-ghost animate-scan-pulse cursor-pointer"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>
@@ -327,6 +330,7 @@ function App() {
             <button
               onClick={handleStartScan}
               disabled={!config.target.trim() && !config.listFile.trim()}
+              title="Start Scan (Ctrl+Enter)"
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 btn-glow ${config.target.trim() || config.listFile.trim()
                 ? "bg-accent text-bg-root hover:brightness-110 cursor-pointer btn-glow-primary"
                 : "bg-bg-card text-text-ghost cursor-not-allowed"

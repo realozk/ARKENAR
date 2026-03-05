@@ -1,16 +1,18 @@
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState, useMemo, useCallback, memo } from "react";
 import {
   FlaskConical, Bug, Shield,
   AlertTriangle, ChevronDown, Copy, Check, Trash2,
   Search, Filter, ArrowUpDown, Clock, Download, ExternalLink, AlertOctagon,
 } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { LogEntry, ScanFindingEvent, ScanHistoryEntry } from "../types";
 import { CustomDropdown } from "./primitives";
 
 /** Fix 1: Detect suspicious shell metacharacters in curl commands */
 const SHELL_META = /[;&|`$(){}]/;
 
-function FindingCard({ finding, index }: { finding: ScanFindingEvent; index: number }) {
+function FindingCardInner({ finding, index }: { finding: ScanFindingEvent; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -93,6 +95,7 @@ function FindingCard({ finding, index }: { finding: ScanFindingEvent; index: num
     </div>
   );
 }
+const FindingCard = memo(FindingCardInner);
 
 interface TerminalViewProps {
   logs: LogEntry[];
@@ -108,6 +111,8 @@ interface TerminalViewProps {
 export function TerminalView({ logs, findings, activeTab, onTabChange, onClear, scanHistory, onClearHistory, onLoadFromHistory }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
+  const termSearchRef = useRef<HTMLInputElement>(null);
+  const findingsSearchRef = useRef<HTMLInputElement>(null);
 
   // Search/Filter/Sort state
   const [searchQuery, setSearchQuery] = useState("");
@@ -124,11 +129,11 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onClear, 
     }
   }, [logs, activeTab]);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 100;
     autoScrollRef.current = isAtBottom;
-  };
+  }, []);
 
   const processedFindings = useMemo(() => {
     let result = findings.map((f, i) => {
@@ -166,16 +171,28 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onClear, 
   }, [logs, termSearchQuery]);
 
   // Feature 16: Export findings to JSON
-  const handleExportJSON = () => {
-    const data = JSON.stringify(findings, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `arkenar-findings-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const handleExportJSON = useCallback(async () => {
+    const filePath = await save({
+      defaultPath: `arkenar-findings-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (filePath) {
+      await writeTextFile(filePath, JSON.stringify(findings, null, 2));
+    }
+  }, [findings]);
+
+  // Ctrl+F → Focus search bar of current tab
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "f") {
+        e.preventDefault();
+        if (activeTab === "terminal") termSearchRef.current?.focus();
+        else if (activeTab === "findings") findingsSearchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeTab]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden mx-6 mb-6 rounded-xl border border-border-subtle bg-bg-terminal">
@@ -262,15 +279,25 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onClear, 
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-ghost" />
             <input
+              ref={termSearchRef}
               type="text"
-              placeholder="Filter logs..."
+              placeholder="Filter logs... (Ctrl+F)"
               value={termSearchQuery}
               onChange={(e) => setTermSearchQuery(e.target.value)}
               className="w-full bg-bg-input border border-border-subtle rounded-lg pl-9 pr-4 py-1.5 text-xs text-text-primary outline-none focus:border-border-focus transition-all duration-200 placeholder:text-text-ghost/50"
             />
           </div>
           {termSearchQuery && (
-            <span className="text-[11px] text-text-ghost font-mono">{filteredLogs.length}/{logs.length}</span>
+            <>
+              <span className="text-[11px] text-text-ghost font-mono">{filteredLogs.length}/{logs.length}</span>
+              <button
+                onClick={() => setTermSearchQuery("")}
+                className="rounded-md p-1 text-text-ghost hover:text-text-primary hover:bg-bg-hover transition-all duration-150"
+                title="Clear search"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>
+              </button>
+            </>
           )}
         </div>
       )}
@@ -307,8 +334,9 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onClear, 
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-ghost" />
               <input
+                ref={findingsSearchRef}
                 type="text"
-                placeholder="Search URL, payload, vulnerability..."
+                placeholder="Search URL, payload, vulnerability... (Ctrl+F)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-bg-input border border-border-subtle rounded-lg pl-9 pr-4 py-2 text-xs text-text-primary outline-none focus:border-border-focus transition-all duration-200 placeholder:text-text-ghost/50"

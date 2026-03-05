@@ -11,11 +11,12 @@
     "fs:default",
     "dialog:default",
     {
-      "identifier": "fs:allow-write",
+      "identifier": "fs:allow-write-text-file",
       "allow": [
-        {
-          "path": "$DOWNLOAD/**"
-        }
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$HOME/**" }
       ]
     },
     {
