@@ -89,37 +89,52 @@ export function NumberInput({ value, onChange, min, max }: {
 export function SliderWithInput({ value, onChange, min = 0, max = 100, step = 1 }: {
   value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number;
 }) {
-  const percent = Math.max(0, Math.min(100, ((value - (min || 0)) / ((max || 100) - (min || 0))) * 100));
+  // The slider ceiling grows when the user types a value beyond the default max.
+  // This keeps the thumb accurate without hard-capping the text input.
+  const effectiveMax = Math.max(max, value);
+  const range = effectiveMax - min;
+  const percent = range > 0 ? Math.max(0, Math.min(100, ((value - min) / range) * 100)) : 0;
+  const isCustom = value > max;
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="relative flex-1 h-1.5 rounded-full bg-bg-input flex items-center">
-        {/* Active Track Fill */}
-        <div
-          className="absolute left-0 h-full rounded-full bg-accent transition-all duration-300 ease-out"
-          style={{ width: `${percent}%` }}
-        />
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 h-1.5 rounded-full bg-bg-input flex items-center">
+          {/* Active Track Fill */}
+          <div
+            className="absolute left-0 h-full rounded-full bg-accent transition-all duration-150 ease-out"
+            style={{ width: `${percent}%` }}
+          />
 
-        {/* Thumb */}
-        <div
-          className="absolute h-3 w-3 -ml-1.5 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)] transition-all duration-300 ease-out"
-          style={{ left: `${percent}%` }}
-        />
+          {/* Thumb */}
+          <div
+            className="absolute h-3 w-3 -ml-1.5 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)] transition-all duration-150 ease-out"
+            style={{ left: `${percent}%` }}
+          />
 
-        {/* Invisible Native Input */}
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer m-0"
-        />
+          {/* Invisible Native Input */}
+          <input
+            type="range"
+            min={min}
+            max={effectiveMax}
+            step={step}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer m-0"
+          />
+        </div>
+        {/* No `max` passed → user can type freely; slider adapts */}
+        <div className="w-20">
+          <NumberInput value={value} onChange={onChange} min={min} />
+        </div>
       </div>
-      <div className="w-20">
-        <NumberInput value={value} onChange={onChange} min={min} max={max} />
-      </div>
+
+      {/* Subtle hint when value exceeds the default slider range */}
+      {isCustom && (
+        <p className="text-[10px] text-accent-text/70 leading-none pl-0.5">
+          Custom — default max {max}
+        </p>
+      )}
     </div>
   );
 }

@@ -349,7 +349,7 @@ function App() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        <div className={`shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${sidebarCollapsed ? "w-0" : "w-[320px]"}`}>
+        <div className={`shrink-0 h-full transition-all duration-300 ease-in-out overflow-hidden ${sidebarCollapsed ? "w-0" : "w-[320px]"}`}>
           <Sidebar
             config={config}
             onUpdate={update}

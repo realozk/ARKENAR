@@ -40,7 +40,7 @@
   --shadow-accent-btn: 0 0 20px rgba(0, 213, 190, 0.2), 0 0 40px rgba(0, 213, 190, 0.06);
 
   /* Font stacks */
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 }
 
