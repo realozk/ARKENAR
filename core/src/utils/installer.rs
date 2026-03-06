@@ -100,7 +100,7 @@ pub async fn check_and_install_tools() {
     print!("{}\r\n", "[+] All dependencies ready.".green().bold());
 }
 
-/// Runs a full update cycle: Nuclei binary, templates, Katana, and ARKENAR self-update.
+/// Runs a full update cycle: Nuclei binary, templates, Katana, and ARKENAR self update.
 pub async fn run_full_update() {
     print!("{}\r\n", "         ARKENAR Full Update".bright_cyan().bold());
 

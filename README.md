@@ -32,6 +32,9 @@
   <a href="https://github.com/projectdiscovery/nuclei">
     <img src="https://img.shields.io/badge/Nuclei-ProjectDiscovery?style=for-the-badge&labelColor=dc2626&color=0b1220&logo=github&logoColor=white">
   </a>
+  <a href="https://crates.io/crates/arkenar">
+    <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
+</a>
 
 ## Table of Contents
 
