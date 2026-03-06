@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Shield, X, Settings, PanelLeftClose, PanelLeft } from "lucide-react";
+import { X, Settings, PanelLeftClose, PanelLeft, Info } from "lucide-react";
 
 import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry } from "./types";
 import { DEFAULT_CONFIG } from "./types";
-import { StatusDot } from "./components/primitives";
+import { StatusDot, ConfirmationModal, Logo } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
 import { SettingsModal, loadSettings, applyAccentColor, type AppSettings } from "./components/SettingsModal";
+import { InfoModal } from "./components/InfoModal";
+import { Starfield, Aurora } from "./components/VisualEffects";
+import { t } from "./utils/i18n";
 
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
@@ -31,7 +34,19 @@ function validateHistory(data: unknown): ScanHistoryEntry[] {
 
 function App() {
 
-  const [config, setConfig] = useState<ScanConfig>(DEFAULT_CONFIG);
+  const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
+  const [config, setConfig] = useState<ScanConfig>(() => {
+    const s = loadSettings();
+    return {
+      ...DEFAULT_CONFIG,
+      threads: s.defaultThreads,
+      timeout: s.defaultTimeout,
+      rateLimit: s.defaultRateLimit,
+      crawlerDepth: s.defaultCrawlerDepth,
+      crawlerTimeout: s.defaultCrawlerTimeout,
+      crawlerMaxUrls: s.defaultCrawlerMaxUrls,
+    };
+  });
   const [scanStatus, setScanStatus] = useState<ScanStatus>("idle");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [stats, setStats] = useState<ScanStatsEvent>({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
@@ -40,9 +55,17 @@ function App() {
   const [activeTab, setActiveTab] = useState<"terminal" | "findings" | "history">("terminal");
   const [scanProgress, setScanProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
+  const [showInfo, setShowInfo] = useState(false);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [scanQueue, setScanQueue] = useState<string[]>([]);
+  const [isHoldingSpace, setIsHoldingSpace] = useState(false);
+  const [isHoldingStop, setIsHoldingStop] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [holdTimeRemaining, setHoldTimeRemaining] = useState(2.0);
+  const [isCPressed, setIsCPressed] = useState(false);
+  const spaceTimerRef = useRef<number | null>(null);
+  const holdIntervalRef = useRef<number | null>(null);
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>(() => {
     try {
       const stored = localStorage.getItem(HISTORY_KEY);
@@ -61,7 +84,17 @@ function App() {
   useEffect(() => {
     applyAccentColor(appSettings.accentColor);
     document.documentElement.setAttribute("data-theme", appSettings.theme);
-  }, [appSettings.accentColor, appSettings.theme]);
+    document.documentElement.style.setProperty("--ui-scale", (appSettings.uiScale / 100).toString());
+    document.documentElement.lang = appSettings.language;
+    document.documentElement.dir = appSettings.language === "ar" ? "rtl" : "ltr";
+
+    if (appSettings.reduceMotion) {
+      document.documentElement.classList.add("reduce-motion");
+    } else {
+      document.documentElement.classList.remove("reduce-motion");
+    }
+  }, [appSettings.accentColor, appSettings.theme, appSettings.uiScale, appSettings.reduceMotion, appSettings.language]);
+
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     const now = new Date();
@@ -206,18 +239,19 @@ function App() {
 
   const handleStopScan = useCallback(async () => {
     try {
+      setScanStatus("stopping");
       await invoke("stop_scan");
       addLog("warn", "Stop signal sent. Aborting scan...");
       setScanQueue([]); // Clear queue on manual stop
     } catch (err: unknown) {
       const msg = typeof err === "string" ? err : (err as Error)?.message ?? "Unknown error";
       addLog("error", `Failed to stop: ${msg}`);
+      setScanStatus("running"); // Revert if failed
     }
   }, [addLog]);
 
-  // Fix 9: Confirmation for destructive actions
+  // Confirmation handles
   const handleClearHistory = useCallback(() => {
-    if (!window.confirm("Clear all scan history? This cannot be undone.")) return;
     setScanHistory([]);
     localStorage.removeItem(HISTORY_KEY);
   }, []);
@@ -225,43 +259,133 @@ function App() {
   const handleClear = useCallback(() => {
     if (activeTab === "terminal") setLogs([]);
     else if (activeTab === "findings") setFindings([]);
-  }, [activeTab]);
+    else if (activeTab === "history") handleClearHistory();
+  }, [activeTab, handleClearHistory]);
 
-  // Fix 11: Keyboard shortcuts
+  const requestClear = useCallback(() => {
+    // Only show modal if there's actually something to clear
+    if (activeTab === "terminal" && logs.length === 0) return;
+    if (activeTab === "findings" && findings.length === 0) return;
+    if (activeTab === "history" && scanHistory.length === 0) return;
+
+    setShowClearConfirm(true);
+  }, [activeTab, logs.length, findings.length, scanHistory.length]);
+
+  // --- Integrated Keyboard Shortcuts & Modern Actions ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (showSettings) return;
+      if (showSettings) return; // Don't trigger shortcuts if settings modal is open
 
-      // Ctrl+Enter → Start scan
-      if (e.ctrlKey && e.key === "Enter" && scanStatus !== "running") {
-        e.preventDefault();
-        handleStartScan();
+      const key = e.key.toLowerCase();
+
+      // Basic Tab Switching (T, F, H)
+      if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (key === 't') { setActiveTab("terminal"); return; }
+        if (key === 'f') { setActiveTab("findings"); return; }
+        if (key === 'h') { setActiveTab("history"); return; }
+        if (key === 'c') {
+          setIsCPressed(true);
+          requestClear();
+          setTimeout(() => setIsCPressed(false), 300);
+          return;
+        }
+      }
+
+      // Space Long Press (2s) for Start/Stop
+      if (e.code === "Space" && !e.repeat) {
+        e.preventDefault(); // Prevent scrolling
+
+        if (scanStatus === "stopping") return;
+
+        const isRunning = scanStatus === "running";
+
+        if (isRunning) {
+          setIsHoldingStop(true);
+        } else {
+          setIsHoldingSpace(true);
+        }
+
+        setHoldTimeRemaining(2.0);
+
+        if (spaceTimerRef.current) clearTimeout(spaceTimerRef.current);
+        if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+
+        holdIntervalRef.current = window.setInterval(() => {
+          setHoldTimeRemaining(prev => Math.max(0, prev - 0.1));
+        }, 100);
+
+        spaceTimerRef.current = window.setTimeout(() => {
+          if (isRunning) {
+            handleStopScan();
+            setIsHoldingStop(false);
+          } else {
+            handleStartScan();
+            setIsHoldingSpace(false);
+          }
+          if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
+        }, 2000);
         return;
       }
+
+      // Ctrl Combinations
+      if (e.ctrlKey) {
+        if (e.key === "t") {
+          e.preventDefault();
+          setSidebarCollapsed(false); // Ensure sidebar is visible
+          setTimeout(() => document.getElementById("target-input")?.focus(), 100);
+          return;
+        }
+        if (e.key === "Enter" && scanStatus !== "running") { e.preventDefault(); handleStartScan(); }
+        if (e.key === "l") { e.preventDefault(); setIsCPressed(true); handleClear(); setTimeout(() => setIsCPressed(false), 300); }
+        if (e.key === "1") { e.preventDefault(); setActiveTab("terminal"); }
+        if (e.key === "2") { e.preventDefault(); setActiveTab("findings"); }
+        if (e.key === "3") { e.preventDefault(); setActiveTab("history"); }
+        if (e.key === "b") { e.preventDefault(); setSidebarCollapsed(p => !p); }
+        if (e.key === ",") { e.preventDefault(); setShowSettings(true); }
+      }
+
       // Escape → Stop scan
-      if (e.key === "Escape" && scanStatus === "running") {
-        e.preventDefault();
-        handleStopScan();
-        return;
-      }
-      // Ctrl+L → Clear current tab
-      if (e.ctrlKey && e.key === "l") { e.preventDefault(); handleClear(); }
-      // Ctrl+1/2/3 → Switch tabs
-      if (e.ctrlKey && e.key === "1") { e.preventDefault(); setActiveTab("terminal"); }
-      if (e.ctrlKey && e.key === "2") { e.preventDefault(); setActiveTab("findings"); }
-      if (e.ctrlKey && e.key === "3") { e.preventDefault(); setActiveTab("history"); }
-      // Ctrl+B → Toggle sidebar
-      if (e.ctrlKey && e.key === "b") { e.preventDefault(); setSidebarCollapsed(p => !p); }
-      // Ctrl+, → Open settings
-      if (e.ctrlKey && e.key === ",") { e.preventDefault(); setShowSettings(true); }
+      if (e.key === "Escape" && scanStatus === "running") { handleStopScan(); }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [scanStatus, showSettings, handleStartScan, handleStopScan, handleClear]);
 
-  const handleResetConfig = useCallback(() => setConfig(DEFAULT_CONFIG), []);
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        setIsHoldingSpace(false);
+        setIsHoldingStop(false);
+        setHoldTimeRemaining(2.0);
+        if (spaceTimerRef.current) {
+          clearTimeout(spaceTimerRef.current);
+          spaceTimerRef.current = null;
+        }
+        if (holdIntervalRef.current) {
+          clearInterval(holdIntervalRef.current);
+          holdIntervalRef.current = null;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings]);
+
+  const handleResetConfig = useCallback(() => {
+    setConfig({
+      ...DEFAULT_CONFIG,
+      threads: appSettings.defaultThreads,
+      timeout: appSettings.defaultTimeout,
+      rateLimit: appSettings.defaultRateLimit,
+      crawlerDepth: appSettings.defaultCrawlerDepth,
+      crawlerTimeout: appSettings.defaultCrawlerTimeout,
+      crawlerMaxUrls: appSettings.defaultCrawlerMaxUrls,
+    });
+  }, [appSettings]);
+
 
   // Feature 13: Click history entry to load its target
   const handleLoadFromHistory = useCallback((target: string) => {
@@ -283,61 +407,86 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col bg-bg-root">
-      <header className="relative flex h-12 shrink-0 items-center justify-between border-b border-border-subtle px-6">
-        <div className="flex items-center gap-2">
+    <div className="flex h-screen flex-col bg-bg-root overflow-hidden">
+      {appSettings.enableStars && <Starfield />}
+      <Aurora />
+
+      <header className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
+        <div className="flex items-center gap-4">
           <button
             onClick={() => setSidebarCollapsed(p => !p)}
             title={sidebarCollapsed ? "Show sidebar (Ctrl+B)" : "Hide sidebar (Ctrl+B)"}
-            className="flex items-center rounded-lg p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-105 active:scale-95"
+            className="flex items-center rounded-xl p-2.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-95 border border-transparent hover:border-border-subtle"
           >
-            {sidebarCollapsed ? <PanelLeft size={17} strokeWidth={2.5} /> : <PanelLeftClose size={17} strokeWidth={2.5} />}
+            {sidebarCollapsed ? <PanelLeft size={22} strokeWidth={2} /> : <PanelLeftClose size={22} strokeWidth={2} />}
+          </button>
+          <button
+            onClick={() => setShowInfo(true)}
+            title="Info"
+            className="flex items-center gap-2 rounded-xl py-2.5 px-3.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-95 border border-transparent hover:border-border-subtle"
+          >
+            <Info size={22} strokeWidth={2} />
           </button>
           <button
             onClick={() => setShowSettings(true)}
-            title="Settings (Ctrl+,)"
-            className="flex items-center gap-2 rounded-lg py-1.5 px-2.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-105 active:scale-95"
+            title={appSettings.language === "ar" ? "الإعدادات (Ctrl+,)" : "Settings (Ctrl+,)"}
+            className="flex items-center gap-2 rounded-xl py-2.5 px-4 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-95 border border-transparent hover:border-border-subtle"
           >
-            <Settings size={17} strokeWidth={2.5} />
-            <span className="text-sm font-medium">Settings</span>
+            <Settings size={22} strokeWidth={2} />
+            <span className="text-base font-semibold">{t("settings", appSettings.language)}</span>
           </button>
         </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-3 pointer-events-none">
-          <Shield size={18} className="text-accent-text" strokeWidth={3} />
-          <span className="text-sm font-semibold tracking-tight text-text-primary">Arkenar</span>
-          <span className="rounded-md bg-accent-dim px-2 py-0.5 font-mono text-[11px] font-medium text-accent-text">
-            v1.0.0 (beta)
-          </span>
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+          <Logo size="sm" className="opacity-100 scale-[1.35]" />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-5">
           {scanQueue.length > 0 && (
-            <span className="rounded-full bg-accent-dim px-2.5 py-0.5 text-[11px] font-bold text-accent-text font-mono">
-              Queue: {scanQueue.length}
+            <span className="rounded-full bg-accent-dim px-3 py-1 text-xs font-bold text-accent-text font-mono border border-accent/20">
+              {t("queue", appSettings.language)}: {scanQueue.length}
             </span>
           )}
-          <StatusDot status={scanStatus} />
-          <span className="text-xs font-medium text-text-secondary capitalize">{scanStatus}</span>
-          {scanStatus === "running" ? (
+          <div className="flex items-center gap-2">
+            <StatusDot status={scanStatus} className="h-3 w-3" />
+            <span className="text-sm font-semibold text-text-secondary capitalize tracking-tight">
+              {t(scanStatus === "error" ? "scanError" : scanStatus, appSettings.language)}
+            </span>
+          </div>
+          {scanStatus === "running" || scanStatus === "stopping" ? (
             <button
               onClick={handleStopScan}
-              title="Stop Scan (Esc)"
-              className="flex items-center gap-1.5 rounded-lg bg-status-critical/10 border border-status-critical/20 px-3 py-1.5 text-xs font-semibold text-status-critical btn-danger-ghost animate-scan-pulse cursor-pointer"
+              disabled={scanStatus === "stopping"}
+              className={`relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${scanStatus === "stopping"
+                ? "bg-bg-card text-status-warning cursor-not-allowed border border-status-warning/30"
+                : `bg-status-critical text-white hover:brightness-110 btn-glow shadow-[0_0_20px_rgba(244,63,94,0.4)] ${isHoldingStop ? "animate-pulse scale-110" : ""}`
+                }`}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1" /></svg>
-              Stop
+              {isHoldingStop && (
+                <div
+                  className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
+                  style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
+                />
+              )}
+              <div className={`h-2.5 w-2.5 rounded-full ${scanStatus === "stopping" ? "bg-status-warning animate-pulse" : "bg-white animate-pulse"}`} />
+              {scanStatus === "stopping" ? t("stopping", appSettings.language) : t("stopScan", appSettings.language)}
+              {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
             </button>
           ) : (
             <button
               onClick={handleStartScan}
-              disabled={!config.target.trim() && !config.listFile.trim()}
-              title="Start Scan (Ctrl+Enter)"
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-200 btn-glow ${config.target.trim() || config.listFile.trim()
-                ? "bg-accent text-bg-root hover:brightness-110 cursor-pointer btn-glow-primary"
-                : "bg-bg-card text-text-ghost cursor-not-allowed"
+              disabled={!config.target && !config.listFile}
+              className={`relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${config.target || config.listFile
+                ? `bg-accent text-bg-root btn-glow ${isHoldingSpace ? "animate-loading-swipe scale-110 shadow-accent/40" : "hover:brightness-110"}`
+                : "bg-bg-card text-text-ghost cursor-not-allowed border border-border-subtle/50"
                 }`}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9" /></svg>
-              Start Scan
+              {isHoldingSpace && (
+                <div
+                  className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
+                  style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
+                />
+              )}
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
+              {isHoldingSpace ? `${t("ready", appSettings.language)} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan", appSettings.language)}
             </button>
           )}
         </div>
@@ -361,19 +510,26 @@ function App() {
             scanQueue={scanQueue}
             onAddToQueue={handleAddToQueue}
             onRemoveFromQueue={handleRemoveFromQueue}
+            language={appSettings.language}
           />
         </div>
         <main className="flex flex-1 flex-col overflow-hidden">
-          <TopStats stats={stats} scanStatus={scanStatus} scanProgress={scanProgress} />
+          <TopStats
+            stats={stats}
+            scanStatus={scanStatus}
+            scanProgress={scanProgress}
+            language={appSettings.language}
+          />
           <TerminalView
             logs={logs}
             findings={findings}
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            onClear={handleClear}
+            onRequestClear={requestClear}
+            isClearGlowing={isCPressed}
             scanHistory={scanHistory}
-            onClearHistory={handleClearHistory}
             onLoadFromHistory={handleLoadFromHistory}
+            language={appSettings.language}
           />
         </main>
       </div>
@@ -385,6 +541,26 @@ function App() {
           onClose={() => setShowSettings(false)}
         />
       )}
+
+      {showInfo && (
+        <InfoModal onClose={() => setShowInfo(false)} language={appSettings.language} />
+      )}
+
+      <ConfirmationModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleClear}
+        title={
+          activeTab === "terminal" ? t("clearTerminalTitle", appSettings.language) :
+            activeTab === "findings" ? t("clearFindingsTitle", appSettings.language) : t("clearHistoryTitle", appSettings.language)
+        }
+        message={
+          activeTab === "terminal" ? t("clearTerminalMsg", appSettings.language) :
+            activeTab === "findings" ? t("clearFindingsMsg", appSettings.language) : t("clearHistoryMsg", appSettings.language)
+        }
+        confirmText={t("yesUnderstand", appSettings.language)}
+        cancelText={t("noDoNotClear", appSettings.language)}
+      />
     </div>
   );
 }

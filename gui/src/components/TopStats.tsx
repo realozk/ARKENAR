@@ -1,5 +1,6 @@
 import { Crosshair, Globe, Shield, Eye, Network, Timer } from "lucide-react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
+import { t } from "../utils/i18n";
 
 function StatCard({ label, value, icon: Icon, accent }: {
   label: string;
@@ -20,7 +21,7 @@ function StatCard({ label, value, icon: Icon, accent }: {
         <Icon size={16} className="text-text-muted group-hover:text-text-secondary transition-colors duration-200" strokeWidth={2.5} />
         <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">{label}</span>
       </div>
-      <span className={`stat-value font-mono text-2xl font-bold tracking-tight ${valueClass[accent ?? "default"]}`}>
+      <span className={`stat-value font-mono text-2xl font-bold tracking-tight ${valueClass[accent ?? "default"]}`} dir="ltr">
         {value}
       </span>
     </div>
@@ -32,7 +33,7 @@ interface ScanProgressBarProps {
   status: ScanStatus;
 }
 
-function ScanProgressBar({ progress, status }: ScanProgressBarProps) {
+function ScanProgressBar({ progress, status, language }: ScanProgressBarProps & { language: "en" | "ar" }) {
   if (status === "idle") return null;
 
   const isRunning = status === "running";
@@ -52,11 +53,11 @@ function ScanProgressBar({ progress, status }: ScanProgressBarProps) {
       <div className={`relative h-3.5 flex-1 rounded-full ${trackColor} transition-all duration-500`}>
         {/* Filled portion with overflow-hidden to clip the shimmer */}
         <div
-          className={`progress-bar-fill absolute top-0 bottom-0 left-0 rounded-full transition-all duration-700 ease-out flex items-center justify-end overflow-hidden ${fillColor} ${isFinished ? "progress-bar-done" : ""} ${isRunning ? "progress-bar-running progress-bar-shimmer-bg" : ""}`}
+          className={`progress-bar-fill absolute top-0 bottom-0 ${language === "ar" ? "right-0" : "left-0"} rounded-full transition-all duration-700 ease-out flex items-center justify-end overflow-hidden ${fillColor} ${isFinished ? "progress-bar-done" : ""} ${isRunning ? "progress-bar-running progress-bar-shimmer-bg" : ""}`}
           style={{ width: `${progress}%` }}
         >
           {progress >= 8 && (
-            <span className="pr-1.5 font-mono text-[10px] font-black text-bg-root drop-shadow-sm z-10 leading-none mt-px tracking-tight">
+            <span className={`${language === "ar" ? "pl-1.5" : "pr-1.5"} font-mono text-[10px] font-black text-bg-root drop-shadow-sm z-10 leading-none mt-px tracking-tight`}>
               {Math.round(progress)}%
             </span>
           )}
@@ -73,23 +74,27 @@ function ScanProgressBar({ progress, status }: ScanProgressBarProps) {
   );
 }
 
-export function TopStats({ stats, scanStatus, scanProgress }: {
+export function TopStats({ stats, scanStatus, scanProgress, language = "en" }: {
   stats: ScanStatsEvent;
   scanStatus: ScanStatus;
   scanProgress: number;
+  language?: "en" | "ar";
 }) {
+  const lang = language || "en";
+
   return (
     <div className="shrink-0 p-6 pb-4 space-y-3">
       <div className="grid grid-cols-6 gap-3">
-        <StatCard label="Targets" value={stats.targets} icon={Crosshair} />
-        <StatCard label="URLs" value={stats.urls} icon={Globe} />
-        <StatCard label="Critical" value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} />
-        <StatCard label="Medium" value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} />
-        <StatCard label="Safe" value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} />
-        <StatCard label="Elapsed" value={stats.elapsed} icon={Timer} />
+        {/* Arabic-first localization for stats */}
+        <StatCard label={t("targets", lang)} value={stats.targets} icon={Crosshair} />
+        <StatCard label={t("urls", lang)} value={stats.urls} icon={Globe} />
+        <StatCard label={t("critical", lang)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} />
+        <StatCard label={t("medium", lang)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} />
+        <StatCard label={t("safe", lang)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} />
+        <StatCard label={t("elapsed", lang)} value={stats.elapsed} icon={Timer} />
       </div>
 
-      <ScanProgressBar progress={scanProgress} status={scanStatus} />
+      <ScanProgressBar progress={scanProgress} status={scanStatus} language={lang} />
     </div>
   );
 }

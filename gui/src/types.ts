@@ -22,7 +22,7 @@ export interface ScanConfig {
 }
 
 export type LogLevel = "info" | "success" | "error" | "warn" | "phase";
-export type ScanStatus = "idle" | "running" | "finished" | "error";
+export type ScanStatus = "idle" | "running" | "finished" | "error" | "stopping";
 
 export interface LogEntry {
   time: string;

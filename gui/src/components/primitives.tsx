@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { Trash2 } from "lucide-react";
 import type { ScanStatus } from "../types";
 
 export function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -14,19 +15,21 @@ export function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: 
   );
 }
 
-export function StatusDot({ status }: { status: ScanStatus }) {
+export function StatusDot({ status, className = "" }: { status: ScanStatus; className?: string }) {
   const colors: Record<ScanStatus, string> = {
     idle: "bg-status-idle",
     running: "bg-status-info animate-pulse",
     finished: "bg-status-success",
     error: "bg-status-critical",
+    stopping: "bg-status-warning animate-pulse",
   };
-  return <span className={`inline-block h-2.5 w-2.5 rounded-full ${colors[status]}`} />;
+
+  return <span className={`inline-block h-2.5 w-2.5 rounded-full ${colors[status]} ${className}`} />;
 }
 
-export function SectionLabel({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) {
+export function SectionLabel({ icon: Icon, children, className = "mb-3" }: { icon: React.ElementType; children: React.ReactNode; className?: string }) {
   return (
-    <div className="flex items-center gap-2.5 mb-3">
+    <div className={`flex items-center gap-2.5 ${className}`}>
       <Icon size={16} className="text-accent-text neon-label" strokeWidth={3} />
       <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted neon-label">
         {children}
@@ -35,19 +38,22 @@ export function SectionLabel({ icon: Icon, children }: { icon: React.ElementType
   );
 }
 
-export function TextInput({ value, onChange, placeholder, mono }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean;
+export function TextInput({ value, onChange, placeholder, mono, id, dir }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; id?: string; dir?: "ltr" | "rtl";
 }) {
   return (
     <input
+      id={id}
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full rounded-lg border border-border-subtle bg-bg-input px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-ghost focus:outline-none ${mono ? "font-mono text-[13px]" : ""}`}
+      dir={dir || (mono ? "ltr" : undefined)}
+      className={`w-full rounded-lg border border-border-subtle bg-bg-input px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-ghost focus:outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/40 transition-all duration-200 ${mono ? "font-mono text-[13px]" : ""}`}
     />
   );
 }
+
 
 export function NumberInput({ value, onChange, min, max }: {
   value: number; onChange: (v: number) => void; min?: number; max?: number;
@@ -97,7 +103,7 @@ export function SliderWithInput({ value, onChange, min = 0, max = 100, step = 1 
   const isCustom = value > max;
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5" dir="ltr">
       <div className="flex items-center gap-4">
         <div className="relative flex-1 h-1.5 rounded-full bg-bg-input flex items-center">
           {/* Active Track Fill */}
@@ -209,8 +215,8 @@ export function CustomDropdown<T extends string>({
                   setIsOpen(false);
                 }}
                 className={`block w-full text-left px-3 py-2 text-xs transition-colors duration-150 ${value === option.value
-                    ? "bg-accent/10 text-accent-text font-medium"
-                    : "text-text-primary hover:bg-bg-hover"
+                  ? "bg-accent/10 text-accent-text font-medium"
+                  : "text-text-primary hover:bg-bg-hover"
                   }`}
               >
                 {option.label}
@@ -220,5 +226,114 @@ export function CustomDropdown<T extends string>({
         </div>
       )}
     </div>
+  );
+}
+interface ConfirmationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  type?: "danger" | "warning" | "info";
+}
+
+export function ConfirmationModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText = "Yes, I understand",
+  cancelText = "No, do not clear",
+  type = "danger"
+}: ConfirmationModalProps) {
+  const [render, setRender] = useState(isOpen);
+  const [isClosing, setIsClosing] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setRender(true);
+      setIsClosing(false);
+    } else if (render) {
+      setIsClosing(true);
+      const timer = setTimeout(() => setRender(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, render]);
+
+  if (!render) return null;
+
+  const handleClose = () => {
+    onClose();
+  };
+
+  return (
+    <div
+      className={`fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
+      onClick={(e) => e.target === e.currentTarget && handleClose()}
+    >
+      <div className={`relative w-full max-w-sm overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-2xl ${isClosing ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`p-2 rounded-lg ${type === "danger" ? "bg-status-critical/10 text-status-critical" :
+              type === "warning" ? "bg-status-warning/10 text-status-warning" : "bg-accent/10 text-accent-text"
+              }`}>
+              <Trash2 size={20} strokeWidth={2.5} />
+            </div>
+            <h3 className="text-lg font-bold text-text-primary">{title}</h3>
+          </div>
+          <p className="text-sm text-text-secondary leading-relaxed mb-6">
+            {message}
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                onConfirm();
+                handleClose();
+              }}
+              className="w-full rounded-lg bg-status-critical py-2.5 text-sm font-bold text-white hover:brightness-110 transition-all duration-300 btn-glow shadow-sm"
+            >
+              {confirmText}
+            </button>
+            <button
+              onClick={handleClose}
+              className="w-full rounded-lg bg-bg-card border border-border-subtle py-2.5 text-sm font-bold text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-300"
+            >
+              {cancelText}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+export function Logo({ className = "", size = "md" }: { className?: string; size?: "sm" | "md" | "lg" }) {
+  const art = `      :::      :::::::::  :::    ::: :::::::::: ::::    :::     :::     ::::::::: 
+    :+: :+:    :+:    :+: :+:   :+:  :+:        :+:+:   :+:   :+: :+:   :+:    :+: 
+   +:+   +:+   +:+    +:+ +:+  +:+   +:+        :+:+:+  +:+  +:+   +:+  +:+    +:+ 
+  +#++:++#++:  +#++:++#:  +#++:++    +#++:++    +#+ +:+ +#+ +#++:++#++: +#++:++#:  
+  +#+     +#+  +#+    +#+ +#+  +#+   +#+        +#+  +#+#+# +#+     +#+ +#+    +#+ 
+  #+#     #+#  #+#    #+# #+#   #+#  #+#        #+#   #+#+# #+#     #+# #+#    #+# 
+  ###     ###  ###    ### ###    ### ########## ###    #### ###     ### ###    ### `;
+
+  const fontSize = size === "sm" ? "2.5px" : size === "lg" ? "6.5px" : "4px";
+
+  return (
+    <pre
+      dir="ltr"
+      className={`font-mono leading-[1.1] select-none pointer-events-none text-text-primary font-bold whitespace-pre text-center ${className}`}
+      style={{
+        fontSize,
+        letterSpacing: "0.1em",
+        transform: "skewX(-15deg)",
+        textShadow: "0 0 1px currentColor, 0 0 12px var(--color-accent-dim)"
+      }}
+    >
+      {art}
+    </pre>
   );
 }
