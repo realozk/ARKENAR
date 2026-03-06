@@ -100,13 +100,32 @@ impl ResultAggregator {
         if vulns.is_empty() {
             sink.on_log("success", "[+] No vulnerabilities found.");
         } else {
-            sink.on_log("warn", &format!("[+] {} finding(s) discovered:", vulns.len()));
+            let critical: Vec<&&ScanResult> = vulns.iter().filter(|r| {
+                let v = r.vuln_type.to_lowercase();
+                v.contains("sqli") || v.contains("sql")
+            }).collect();
+            let medium_count = vulns.len() - critical.len();
+
+            sink.on_log("phase", "");
+            sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            sink.on_log("phase", &format!("  SCAN RESULTS — {} finding(s)", vulns.len()));
+            sink.on_log("phase", &format!("  {} Critical  |  {} Medium", critical.len(), medium_count));
+            sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
             for (i, v) in vulns.iter().enumerate() {
-                sink.on_log("error", &format!(
-                    "  #{} {} → {} (payload: {})",
-                    i + 1, v.vuln_type, v.url, v.payload
+                let severity = {
+                    let vl = v.vuln_type.to_lowercase();
+                    if vl.contains("sqli") || vl.contains("sql") { "CRITICAL" } else { "MEDIUM" }
+                };
+                let level = if severity == "CRITICAL" { "error" } else { "warn" };
+                sink.on_log(level, &format!(
+                    "  #{} [{}] {} → {}",
+                    i + 1, severity, v.vuln_type, v.url
                 ));
             }
+
+            sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            sink.on_log("phase", "");
         }
     }
 }
