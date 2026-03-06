@@ -156,6 +156,10 @@ export const translations = {
         clearHistoryMsg: "This will permanently erase your entire scan history. This action cannot be undone.",
         yesUnderstand: "Yes, I understand",
         noDoNotClear: "No, do not clear",
+        vulnInfoLabel: "Vulnerability Info",
+        vulnDescription: "Description",
+        vulnImpact: "Impact",
+        vulnRemediation: "Remediation",
     },
     ar: {
         terminal: "الطرفية",
@@ -314,6 +318,10 @@ export const translations = {
         clearHistoryMsg: "سيتم مسح سجل الفحص بالكامل نهائياً. لا يمكن التراجع عن هذا الإجراء.",
         yesUnderstand: "نعم، أفهم ذلك",
         noDoNotClear: "لا، إلغاء الإجراء",
+        vulnInfoLabel: "معلومات الثغرة",
+        vulnDescription: "الوصف",
+        vulnImpact: "التأثير",
+        vulnRemediation: "الإصلاح",
     }
 };
 

@@ -110,7 +110,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "arkenar-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "arkenar-core",
  "assert_cmd",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "arkenar-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1713,7 +1713,7 @@ dependencies = [
 
 [[package]]
 name = "gui"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "arkenar-core",
  "reqwest 0.11.27",

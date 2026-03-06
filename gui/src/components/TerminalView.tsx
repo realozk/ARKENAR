@@ -13,13 +13,145 @@ import { t } from "../utils/i18n";
 /** Fix 1: Detect suspicious shell metacharacters in curl commands */
 const SHELL_META = /[;&|`$(){}]/;
 
+interface VulnInfo {
+  description: string;
+  impact: string;
+  remediation: string;
+}
+
+function getVulnInfo(vulnType: string, language: "en" | "ar"): VulnInfo {
+  const v = vulnType.toLowerCase();
+  const isAr = language === "ar";
+
+  if (v.includes("sqli") || v.includes("sql injection")) {
+    return isAr ? {
+      description: "حقن SQL يسمح للمهاجم بالتلاعب في استعلامات قاعدة البيانات عبر إدخال بيانات غير موثوقة.",
+      impact: "سرقة البيانات الحساسة، تجاوز المصادقة، حذف أو تعديل البيانات، وفي بعض الحالات تنفيذ أوامر على الخادم.",
+      remediation: "استخدم Prepared Statements والاستعلامات المعلّمة. تحقق من صحة المدخلات وفلترتها على جانب الخادم.",
+    } : {
+      description: "SQL Injection allows an attacker to manipulate database queries by injecting untrusted input into SQL statements.",
+      impact: "Sensitive data theft, authentication bypass, data deletion or modification, and in some cases remote command execution.",
+      remediation: "Use prepared statements and parameterized queries. Validate and sanitize all user input server-side.",
+    };
+  }
+
+  if (v.includes("xss") || v.includes("cross-site scripting")) {
+    return isAr ? {
+      description: "XSS يسمح للمهاجم بحقن سكريبت ضار في صفحات الويب التي يشاهدها المستخدمون الآخرون.",
+      impact: "سرقة الجلسات وملفات تعريف الارتباط، انتحال هوية المستخدم، وإعادة التوجيه إلى مواقع خبيثة.",
+      remediation: "طبّق HTML encoding على المخرجات. نفّذ Content Security Policy (CSP) وتحقق من جميع المدخلات.",
+    } : {
+      description: "Cross-Site Scripting (XSS) allows an attacker to inject malicious scripts into web pages viewed by other users.",
+      impact: "Session and cookie theft, user impersonation, page defacement, and redirection to malicious sites.",
+      remediation: "Apply output encoding (HTML encoding) and implement Content Security Policy (CSP). Validate and sanitize all input.",
+    };
+  }
+
+  if (v.includes("lfi") || v.includes("local file inclusion")) {
+    return isAr ? {
+      description: "إدراج الملفات المحلية (LFI) يسمح للمهاجم بتضمين ملفات من الخادم في استجابة التطبيق.",
+      impact: "قراءة ملفات حساسة كـ /etc/passwd، كشف كود المصدر، وقد يؤدي إلى تنفيذ أوامر عن بُعد.",
+      remediation: "تحقق من مسارات الملفات وفلترتها. لا تسمح للمستخدم بتحديد مسارات مباشرة واستخدم القوائم البيضاء.",
+    } : {
+      description: "Local File Inclusion (LFI) allows an attacker to include files from the server itself in the application response.",
+      impact: "Reading sensitive files like /etc/passwd, source code disclosure, and potentially leading to remote code execution.",
+      remediation: "Validate and filter file paths. Avoid user-controlled file paths and use an allowlist of permitted files.",
+    };
+  }
+
+  if (v.includes("rfi") || v.includes("remote file inclusion")) {
+    return isAr ? {
+      description: "إدراج الملفات عن بُعد (RFI) يسمح للمهاجم بتحميل وتنفيذ ملفات من خادم خارجي.",
+      impact: "تنفيذ أوامر عشوائية على الخادم، اختراق كامل للنظام، نشر برمجيات خبيثة.",
+      remediation: "أوقف تشغيل allow_url_include في PHP. تحقق من جميع مسارات الملفات واستخدم القوائم البيضاء.",
+    } : {
+      description: "Remote File Inclusion (RFI) allows an attacker to load and execute files from an external server.",
+      impact: "Arbitrary code execution on the server, full system compromise, and malware deployment.",
+      remediation: "Disable allow_url_include in PHP. Validate all file paths and use an allowlist of permitted resources.",
+    };
+  }
+
+  if (v.includes("ssrf") || v.includes("server-side request forgery")) {
+    return isAr ? {
+      description: "SSRF يجبر الخادم على إرسال طلبات HTTP إلى موارد داخلية أو خارجية يحددها المهاجم.",
+      impact: "الوصول إلى الخدمات الداخلية المحمية، قراءة بيانات Cloud الوصفية، والتحرك الجانبي داخل الشبكة.",
+      remediation: "تحقق وفلتر جميع عناوين URL المقدمة من المستخدم. استخدم قوائم بيضاء للنطاقات وابتعد عن عناوين IP الداخلية.",
+    } : {
+      description: "Server-Side Request Forgery (SSRF) forces the server to make HTTP requests to internal or external resources controlled by the attacker.",
+      impact: "Access to protected internal services, cloud metadata exfiltration, and lateral movement within the network.",
+      remediation: "Validate and sanitize all user-supplied URLs. Use an allowlist of permitted domains and block internal IP ranges.",
+    };
+  }
+
+  if (v.includes("rce") || v.includes("remote code execution") || v.includes("command injection")) {
+    return isAr ? {
+      description: "تنفيذ الأوامر عن بُعد (RCE) يسمح للمهاجم بتنفيذ أوامر عشوائية على الخادم مباشرةً.",
+      impact: "اختراق كامل للخادم، سرقة البيانات، نشر برمجيات الفدية، والسيطرة التامة على النظام.",
+      remediation: "لا تمرر مدخلات المستخدم مباشرة إلى أوامر النظام. استخدم APIs آمنة وطبّق مبدأ الحد الأدنى من الصلاحيات.",
+    } : {
+      description: "Remote Code Execution (RCE) allows an attacker to run arbitrary commands directly on the server.",
+      impact: "Full server compromise, data theft, ransomware deployment, and complete system takeover.",
+      remediation: "Never pass user input directly to system commands. Use safe APIs instead of shell commands and apply least-privilege principles.",
+    };
+  }
+
+  if (v.includes("open redirect") || v.includes("redirect")) {
+    return isAr ? {
+      description: "إعادة التوجيه المفتوحة تسمح للمهاجم بإعادة توجيه المستخدمين إلى مواقع خارجية خبيثة.",
+      impact: "هجمات التصيد الاحتيالي، سرقة بيانات الاعتماد، والإضرار بسمعة الموقع.",
+      remediation: "تحقق من عناوين URL عند إعادة التوجيه. استخدم قائمة بيضاء للوجهات المسموح بها.",
+    } : {
+      description: "Open Redirect allows an attacker to redirect users to arbitrary external websites.",
+      impact: "Phishing attacks, credential theft, and reputational damage to the affected site.",
+      remediation: "Validate redirect URLs against an allowlist of permitted destinations. Avoid user-controlled redirect parameters.",
+    };
+  }
+
+  if (v.includes("idor") || v.includes("insecure direct object")) {
+    return isAr ? {
+      description: "IDOR يسمح للمهاجم بالوصول إلى موارد مستخدمين آخرين بتعديل المعرّفات.",
+      impact: "الوصول غير المصرح به للبيانات الحساسة، تعديل أو حذف بيانات المستخدمين الآخرين.",
+      remediation: "طبّق التحقق من الصلاحيات على مستوى الكائنات. استخدم معرّفات UUID وتحقق دائماً من ملكية المورد.",
+    } : {
+      description: "IDOR (Insecure Direct Object Reference) allows an attacker to access other users' resources by manipulating object identifiers.",
+      impact: "Unauthorized access to sensitive data, modification or deletion of other users' data.",
+      remediation: "Enforce object-level authorization checks. Use unpredictable identifiers (UUIDs) and always verify resource ownership.",
+    };
+  }
+
+  if (v.includes("path traversal") || v.includes("directory traversal")) {
+    return isAr ? {
+      description: "اختراق المسار يسمح للمهاجم بالوصول إلى ملفات ومجلدات خارج الدليل المسموح به.",
+      impact: "قراءة ملفات حساسة من نظام الملفات كملفات الإعداد وكلمات المرور والمفاتيح الخاصة.",
+      remediation: "قم بتطهير مسارات الملفات وإزالة تسلسلات '../'. استخدم realpath() للتحقق من حدود الدليل المسموح به.",
+    } : {
+      description: "Path Traversal allows an attacker to access files and directories outside the intended root directory.",
+      impact: "Reading sensitive files from the filesystem, including configuration files, passwords, and private keys.",
+      remediation: "Sanitize file paths by removing '../' sequences. Use realpath() to ensure the path stays within the allowed directory.",
+    };
+  }
+
+  // Generic fallback
+  return isAr ? {
+    description: "تم اكتشاف ثغرة أمنية محتملة في هذه النقطة. يُنصح بمراجعة الكود المرتبط بها بشكل دقيق.",
+    impact: "قد تتفاوت درجة التأثير بحسب طبيعة الثغرة وموضعها في التطبيق.",
+    remediation: "راجع وثائق OWASP ذات الصلة وطبّق أفضل الممارسات الأمنية على هذه النقطة.",
+  } : {
+    description: "A potential security vulnerability was detected at this endpoint. Manual review of the related code is recommended.",
+    impact: "Impact may vary depending on the nature and location of the vulnerability within the application.",
+    remediation: "Consult the relevant OWASP documentation and apply security best practices to this endpoint.",
+  };
+}
+
 function FindingCardInner({ finding, index, language }: { finding: ScanFindingEvent; index: number; language: "en" | "ar" }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [vulnInfoExpanded, setVulnInfoExpanded] = useState(false);
 
   const isCritical = finding.vuln_type.toLowerCase().includes("sqli") || finding.vuln_type.toLowerCase().includes("sql");
   const severityClass = isCritical ? "text-status-critical bg-status-critical/10" : "text-status-warning bg-status-warning/10";
   const hasSuspiciousChars = SHELL_META.test(finding.curl_cmd);
+  const vulnInfo = getVulnInfo(finding.vuln_type, language);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -91,6 +223,36 @@ function FindingCardInner({ finding, index, language }: { finding: ScanFindingEv
                 {copied ? <Check size={16} strokeWidth={2.5} className="text-status-success" /> : <Copy size={16} strokeWidth={2.5} />}
               </button>
             </div>
+          </div>
+
+          {/* Vulnerability Info */}
+          <div className={`rounded-lg border overflow-hidden ${isCritical ? "border-status-critical/30" : "border-status-warning/30"}`}>
+            <button
+              className={`flex w-full items-center gap-2.5 px-3 py-2.5 ${language === "ar" ? "flex-row-reverse" : ""} hover:bg-bg-hover transition-colors duration-200`}
+              onClick={(e) => { e.stopPropagation(); setVulnInfoExpanded(!vulnInfoExpanded); }}
+            >
+              <Shield size={14} className={isCritical ? "text-status-critical" : "text-status-warning"} strokeWidth={2.5} />
+              <span className={`flex-1 text-xs font-semibold ${isCritical ? "text-status-critical" : "text-status-warning"} ${language === "ar" ? "text-right" : ""}`}>
+                {t("vulnInfoLabel", language)}
+              </span>
+              <ChevronDown size={14} className={`text-text-ghost transition-transform duration-300 ${vulnInfoExpanded ? "rotate-180" : ""}`} />
+            </button>
+            {vulnInfoExpanded && (
+              <div className={`animate-fade-slide-in border-t ${isCritical ? "border-status-critical/20" : "border-status-warning/20"} bg-bg-root px-4 pb-4 pt-3 space-y-3`}>
+                <div className={language === "ar" ? "text-right" : ""}>
+                  <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">{t("vulnDescription", language)}</span>
+                  <p className="mt-1 text-[13px] text-text-secondary leading-relaxed">{vulnInfo.description}</p>
+                </div>
+                <div className={language === "ar" ? "text-right" : ""}>
+                  <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">{t("vulnImpact", language)}</span>
+                  <p className="mt-1 text-[13px] text-text-secondary leading-relaxed">{vulnInfo.impact}</p>
+                </div>
+                <div className={language === "ar" ? "text-right" : ""}>
+                  <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">{t("vulnRemediation", language)}</span>
+                  <p className="mt-1 text-[13px] text-text-secondary leading-relaxed">{vulnInfo.remediation}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
