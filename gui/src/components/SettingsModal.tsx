@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-    X, Palette, FolderOutput, KeyRound, RotateCcw, Moon, Sun, Radar,
+    X, Palette, FolderOutput, Sliders, KeyRound, RotateCcw, Moon, Sun, Radar,
 } from "lucide-react";
 import { SectionLabel, TextInput, SliderWithInput } from "./primitives";
 
@@ -9,6 +9,10 @@ export interface AppSettings {
     // Appearance
     accentColor: string;
     theme: "dark" | "light";
+    // Scanner defaults
+    defaultThreads: number;
+    defaultTimeout: number;
+    defaultRateLimit: number;
     // Paths
     defaultOutputPath: string;
     // Integrations
@@ -17,16 +21,24 @@ export interface AppSettings {
     defaultCrawlerDepth: number;
     defaultCrawlerTimeout: number;
     defaultCrawlerMaxUrls: number;
+    // Behaviour
+    autoOpenReport: boolean;
+    showTimestamps: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
     accentColor: "#00d5be",
     theme: "dark",
+    defaultThreads: 50,
+    defaultTimeout: 5,
+    defaultRateLimit: 100,
     defaultOutputPath: "scan_results.json",
     globalWebhookUrl: "",
     defaultCrawlerDepth: 3,
     defaultCrawlerTimeout: 60,
     defaultCrawlerMaxUrls: 50,
+    autoOpenReport: true,
+    showTimestamps: true,
 };
 
 const STORAGE_KEY = "arkenar_settings";
@@ -233,21 +245,21 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                         </div>
                     </section>
 
-                    {/* Crawler defaults */}
+                    {/* Scanner defaults */}
                     <section>
-                        <SectionLabel icon={Radar}>Crawler Defaults</SectionLabel>
-                        <div className="grid grid-cols-3 gap-2.5">
+                        <SectionLabel icon={Sliders}>Scanner Defaults</SectionLabel>
+                        <div className="space-y-5">
                             <div>
-                                <p className="text-xs text-text-muted mb-1.5">Depth</p>
-                                <SliderWithInput value={draft.defaultCrawlerDepth} onChange={(v) => set("defaultCrawlerDepth", v)} min={1} max={10} />
+                                <p className="text-xs text-text-muted mb-2">Default Threads</p>
+                                <SliderWithInput value={draft.defaultThreads} onChange={(v) => set("defaultThreads", v)} min={1} max={500} />
                             </div>
                             <div>
-                                <p className="text-xs text-text-muted mb-1.5">Timeout (s)</p>
-                                <SliderWithInput value={draft.defaultCrawlerTimeout} onChange={(v) => set("defaultCrawlerTimeout", v)} min={10} max={300} />
+                                <p className="text-xs text-text-muted mb-2">Default Timeout (s)</p>
+                                <SliderWithInput value={draft.defaultTimeout} onChange={(v) => set("defaultTimeout", v)} min={1} max={120} />
                             </div>
                             <div>
-                                <p className="text-xs text-text-muted mb-1.5">Max URLs</p>
-                                <SliderWithInput value={draft.defaultCrawlerMaxUrls} onChange={(v) => set("defaultCrawlerMaxUrls", v)} min={5} max={500} />
+                                <p className="text-xs text-text-muted mb-2">Default Rate Limit (req/s)</p>
+                                <SliderWithInput value={draft.defaultRateLimit} onChange={(v) => set("defaultRateLimit", v)} min={1} max={5000} />
                             </div>
                         </div>
                     </section>
