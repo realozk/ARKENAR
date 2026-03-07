@@ -24,7 +24,7 @@ export function StatusDot({ status, className = "" }: { status: ScanStatus; clas
     stopping: "bg-status-warning animate-pulse",
   };
 
-  return <span className={`inline-block h-2.5 w-2.5 rounded-full ${colors[status]} ${className}`} />;
+  return <span className={`inline-block h-2.5 w-2.5 rounded-full transition-all duration-700 ${colors[status]} ${className}`} />;
 }
 
 export function SectionLabel({ icon: Icon, children, className = "mb-3" }: { icon: React.ElementType; children: React.ReactNode; className?: string }) {
@@ -149,7 +149,7 @@ export function ToggleRow({ label, desc, checked, onChange }: {
   label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="group hover-row-glow flex items-center justify-between gap-3 py-3 px-2 -mx-2 cursor-pointer">
+    <div className="group hover-row-glow flex items-center justify-between gap-3 py-3 pl-3 pr-4 -mx-2 cursor-pointer">
       <div className="min-w-0" onClick={() => onChange(!checked)}>
         <span className="text-sm text-text-primary group-hover:text-accent-text transition-colors duration-200">{label}</span>
         {desc && <p className="text-xs text-text-muted mt-0.5 leading-snug">{desc}</p>}

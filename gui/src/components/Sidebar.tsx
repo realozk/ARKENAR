@@ -1,10 +1,10 @@
 import { useState, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw, Plus, X, ListOrdered, FolderSearch,
+  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw, Plus, X, ListOrdered, FolderSearch, ClipboardPaste,
 } from "lucide-react";
 import type { ScanConfig } from "../types";
-import { SectionLabel, TextInput, ToggleRow, SliderWithInput } from "./primitives";
+import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
 import { t } from "../utils/i18n";
 
 interface SidebarProps {
@@ -62,6 +62,18 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
     }
   };
 
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        onUpdate("target", text.trim());
+        onUpdate("listFile", "");
+      }
+    } catch (err) {
+      console.error("Paste failed", err);
+    }
+  };
+
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">
       <div className="px-5 pt-6 pb-5 space-y-6 flex-1">
@@ -69,7 +81,18 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         {/* Target Section */}
         <div>
           <SectionLabel icon={Crosshair}>{t("target", language)}</SectionLabel>
-          <TextInput id="target-input" value={config.target} onChange={(v) => onUpdate("target", v)} placeholder="https://example.com" mono />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <TextInput id="target-input" value={config.target} onChange={(v) => onUpdate("target", v)} placeholder="https://example.com" mono />
+            </div>
+            <button
+              onClick={handlePaste}
+              title={t("paste", language)}
+              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
+            >
+              <ClipboardPaste size={16} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
 
         {/* Target List Section */}
@@ -166,38 +189,40 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         {/* Performance Section */}
         <div className="space-y-4">
           <SectionLabel icon={Zap}>{t("performance", language)}</SectionLabel>
-          <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-xs text-text-muted mb-2">{t("threads", language)}</p>
-              <SliderWithInput value={config.threads} onChange={(v) => onUpdate("threads", v)} min={1} max={200} />
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("threads", language)}</p>
+              <NumberInput value={config.threads} onChange={(v: number) => onUpdate("threads", v)} min={1} max={500} />
             </div>
             <div>
-              <p className="text-xs text-text-muted mb-2">{t("timeout", language)} (s)</p>
-              <SliderWithInput value={config.timeout} onChange={(v) => onUpdate("timeout", v)} min={1} max={60} />
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("timeout", language)} (s)</p>
+              <NumberInput value={config.timeout} onChange={(v: number) => onUpdate("timeout", v)} min={1} max={60} />
             </div>
-            <div>
-              <p className="text-xs text-text-muted mb-2">{t("rateLimit", language)} (req/s)</p>
-              <SliderWithInput value={config.rateLimit} onChange={(v) => onUpdate("rateLimit", v)} min={1} max={1000} />
+            <div className="col-span-2">
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("rateLimit", language)} (req/s)</p>
+              <NumberInput value={config.rateLimit} onChange={(v: number) => onUpdate("rateLimit", v)} min={1} max={5000} />
             </div>
           </div>
         </div>
 
         {/* Crawler Config */}
-        <div className={`grid transition-all duration-300 ease-in-out ${config.enableCrawler ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
-          <div className="overflow-hidden space-y-4">
-            <SectionLabel icon={Radar}>{t("crawler", language)}</SectionLabel>
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs text-text-muted mb-2">{t("depth", language)}</p>
-                <SliderWithInput value={config.crawlerDepth} onChange={(v) => onUpdate("crawlerDepth", v)} min={1} max={10} />
-              </div>
-              <div>
-                <p className="text-xs text-text-muted mb-2">{t("timeout", language)} (s)</p>
-                <SliderWithInput value={config.crawlerTimeout} onChange={(v) => onUpdate("crawlerTimeout", v)} min={10} max={300} />
-              </div>
-              <div>
-                <p className="text-xs text-text-muted mb-2">{t("maxUrls", language)}</p>
-                <SliderWithInput value={config.crawlerMaxUrls} onChange={(v) => onUpdate("crawlerMaxUrls", v)} min={5} max={500} />
+        <div className={`grid transition-all duration-300 ease-in-out ${config.enableCrawler ? "grid-rows-[1fr] mt-2 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+          <div className="overflow-hidden">
+            <div className="pt-4 space-y-4">
+              <SectionLabel icon={Radar}>{t("crawler", language)}</SectionLabel>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("depth", language)}</p>
+                  <NumberInput value={config.crawlerDepth} onChange={(v: number) => onUpdate("crawlerDepth", v)} min={1} max={10} />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("timeout", language)} (s)</p>
+                  <NumberInput value={config.crawlerTimeout} onChange={(v: number) => onUpdate("crawlerTimeout", v)} min={10} max={300} />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("maxUrls", language)}</p>
+                  <NumberInput value={config.crawlerMaxUrls} onChange={(v: number) => onUpdate("crawlerMaxUrls", v)} min={5} max={1000} />
+                </div>
               </div>
             </div>
           </div>

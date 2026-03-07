@@ -1,4 +1,5 @@
 import { Crosshair, Globe, Shield, Eye, Network, Timer } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
 import { t } from "../utils/i18n";
 
@@ -34,7 +35,24 @@ interface ScanProgressBarProps {
 }
 
 function ScanProgressBar({ progress, status, language }: ScanProgressBarProps & { language: "en" | "ar" }) {
-  if (status === "idle") return null;
+  const [visible, setVisible] = useState(status !== "idle");
+  const [exiting, setExiting] = useState(false);
+  const prevStatus = useRef(status);
+
+  useEffect(() => {
+    if (status === "idle" && prevStatus.current !== "idle") {
+      // Animate out first, then unmount
+      setExiting(true);
+      const t = window.setTimeout(() => { setVisible(false); setExiting(false); }, 420);
+      return () => clearTimeout(t);
+    } else if (status !== "idle") {
+      setVisible(true);
+      setExiting(false);
+    }
+    prevStatus.current = status;
+  }, [status]);
+
+  if (!visible) return null;
 
   const isRunning = status === "running";
   const isFinished = status === "finished";
@@ -48,7 +66,7 @@ function ScanProgressBar({ progress, status, language }: ScanProgressBarProps & 
       : "bg-accent";
 
   return (
-    <div className="flex items-center gap-3 w-full mt-1.5 opacity-95">
+    <div className={`flex items-center gap-3 w-full mt-1.5 opacity-95 transition-all duration-400 ${exiting ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
       {/* Wrapper without overflow-hidden so the internal box-shadow can spread */}
       <div className={`relative h-3.5 flex-1 rounded-full ${trackColor} transition-all duration-500`}>
         {/* Filled portion with overflow-hidden to clip the shimmer */}

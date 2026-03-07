@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { SectionLabel, TextInput, SliderWithInput, Toggle, ConfirmationModal } from "./primitives";
 import {
     X, Palette, FolderOutput, Sliders, KeyRound, RotateCcw, Moon, Sun, Radar,
-    Accessibility, Sparkles, Move, ZoomIn, Globe, Check, ExternalLink, Info
+    Accessibility, Sparkles, Move, ZoomIn, Globe, Check, ExternalLink, Info,
+    Volume2
 } from "lucide-react";
 import { t } from "../utils/i18n";
+import { playSound } from "../utils/audio";
 
 
 /* ── Persisted settings shape ─────────────────────────────────── */
@@ -32,6 +34,13 @@ export interface AppSettings {
     reduceMotion: boolean;
     uiScale: number;
     language: "en" | "ar";
+    // Audio
+    soundEnabled: boolean;
+    soundVolume: number;
+    soundOnStart: boolean;
+    soundOnComplete: boolean;
+    soundOnFinding: boolean;
+    soundOnClear: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -51,6 +60,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     reduceMotion: false,
     uiScale: 100,
     language: "en",
+    soundEnabled: true,
+    soundVolume: 75,
+    soundOnStart: true,
+    soundOnComplete: true,
+    soundOnFinding: false,
+    soundOnClear: true,
 };
 
 const STORAGE_KEY = "arkenar_settings";
@@ -72,6 +87,12 @@ export function loadSettings(): AppSettings {
             if (typeof merged.uiScale !== "number") merged.uiScale = DEFAULT_SETTINGS.uiScale;
             if (typeof merged.enableStars !== "boolean") merged.enableStars = DEFAULT_SETTINGS.enableStars;
             if (typeof merged.reduceMotion !== "boolean") merged.reduceMotion = DEFAULT_SETTINGS.reduceMotion;
+            if (typeof merged.soundEnabled !== "boolean") merged.soundEnabled = DEFAULT_SETTINGS.soundEnabled;
+            if (typeof merged.soundVolume !== "number") merged.soundVolume = DEFAULT_SETTINGS.soundVolume;
+            if (typeof merged.soundOnStart !== "boolean") merged.soundOnStart = DEFAULT_SETTINGS.soundOnStart;
+            if (typeof merged.soundOnComplete !== "boolean") merged.soundOnComplete = DEFAULT_SETTINGS.soundOnComplete;
+            if (typeof merged.soundOnFinding !== "boolean") merged.soundOnFinding = DEFAULT_SETTINGS.soundOnFinding;
+            if (typeof merged.soundOnClear !== "boolean") merged.soundOnClear = DEFAULT_SETTINGS.soundOnClear;
             return merged;
 
         }
@@ -117,6 +138,33 @@ const ACCENT_PRESETS = [
     { label: "Lime", color: "#84cc16" },
 ];
 
+interface ToggleRowProps {
+    label: string;
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    onTest?: () => void;
+    testLabel?: string;
+}
+
+function ToggleRow({ label, checked, onChange, onTest, testLabel }: ToggleRowProps) {
+    return (
+        <div className="flex items-center justify-between py-1.5 group/row">
+            <div className="flex items-center gap-2">
+                <span className="text-xs text-text-secondary">{label}</span>
+                {onTest && checked && (
+                    <button
+                        onClick={onTest}
+                        className="opacity-0 group-hover/row:opacity-100 px-1.5 py-0.5 rounded bg-accent/10 text-[9px] font-bold text-accent-text hover:bg-accent/20 transition-all duration-200"
+                    >
+                        {testLabel || "Test"}
+                    </button>
+                )}
+            </div>
+            <Toggle checked={checked} onChange={onChange} />
+        </div>
+    );
+}
+
 /* ── Modal ────────────────────────────────────────────────────── */
 interface SettingsModalProps {
     settings: AppSettings;
@@ -157,7 +205,13 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
             || draft.defaultTimeout !== settings.defaultTimeout
             || draft.defaultRateLimit !== settings.defaultRateLimit
             || draft.autoOpenReport !== settings.autoOpenReport
-            || draft.showTimestamps !== settings.showTimestamps;
+            || draft.showTimestamps !== settings.showTimestamps
+            || draft.soundEnabled !== settings.soundEnabled
+            || draft.soundVolume !== settings.soundVolume
+            || draft.soundOnStart !== settings.soundOnStart
+            || draft.soundOnComplete !== settings.soundOnComplete
+            || draft.soundOnFinding !== settings.soundOnFinding
+            || draft.soundOnClear !== settings.soundOnClear;
     };
 
     const handleFinalClose = () => {
@@ -181,8 +235,8 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
             }
             const next = { ...prev, [key]: val };
 
-            // Auto-apply appearance changes instantly
-            if (key === "accentColor" || key === "theme" || key === "uiScale" || key === "language") {
+            // Auto-apply appearance and sound changes instantly
+            if (key === "accentColor" || key === "theme" || key === "uiScale" || key === "language" || key.startsWith("sound")) {
                 saveSettings(next);
                 onSave(next); // This pushes the state to App.tsx, triggering the live DOM update
             }
@@ -259,7 +313,7 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
 
                         <div className="mb-6 flex flex-col items-center">
                             <p className="text-xs text-text-muted mb-3">{t("theme", draft.language)}</p>
-                            <div className="relative flex w-56 rounded-xl bg-bg-input p-1.5 border border-border-subtle shadow-inner" dir="ltr">
+                            <div className="relative flex w-60 rounded-xl bg-bg-input p-1.5 border border-border-subtle shadow-inner" dir="ltr">
                                 <div
                                     className="absolute inset-y-1.5 left-1.5 w-[calc((100%-12px)/4)] rounded-lg bg-accent transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] shadow-md"
                                     style={{
@@ -268,7 +322,6 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                                 draft.theme === "cosmic" ? "2" : "3"
                                             } * 100%))`,
                                     }}
-
                                 />
                                 <button
                                     onClick={() => set("theme", "dark")}
@@ -323,6 +376,77 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                         title={t("customColor", draft.language)}
                                     />
                                     <span className="font-mono text-[11px] text-text-muted">{draft.accentColor}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Audio & Notifications */}
+                    <section>
+                        <SectionLabel icon={Volume2}>{t("audioNotifications", draft.language)}</SectionLabel>
+                        <div className="space-y-2">
+                            <div className="rounded-xl border border-border-subtle bg-bg-card p-3 transition-all duration-300 hover:bg-bg-hover">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded-lg bg-accent/10 text-accent-text group-hover:scale-110 transition-transform duration-300">
+                                            <Volume2 size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-text-primary">{t("enableSounds", draft.language)}</p>
+                                            <p className="text-[11px] text-text-muted">{t("enableSoundsDesc", draft.language)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="pr-1">
+                                        <Toggle checked={draft.soundEnabled} onChange={(v) => set("soundEnabled", v)} />
+                                    </div>
+                                </div>
+
+                                <div className={`grid transition-all duration-300 ease-in-out ${draft.soundEnabled ? "grid-rows-[1fr] mt-4 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                                    <div className="overflow-hidden space-y-4">
+                                        <div className="pt-2 border-t border-border-subtle/30">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-[11px] font-bold text-text-ghost uppercase tracking-wider">{t("volume", draft.language)}</p>
+                                                <span className="text-[11px] font-mono text-accent-text">{draft.soundVolume}%</span>
+                                            </div>
+                                            <SliderWithInput
+                                                value={draft.soundVolume}
+                                                onChange={(v) => set("soundVolume", v)}
+                                                min={0}
+                                                max={100}
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1 pl-2 border-l-2 border-accent/20 ml-2" dir={draft.language === "ar" ? "rtl" : "ltr"}>
+                                            <ToggleRow
+                                                label={t("soundOnStart", draft.language)}
+                                                checked={draft.soundOnStart}
+                                                onChange={(v) => set("soundOnStart", v)}
+                                                onTest={() => playSound("start", true, draft.soundVolume)}
+                                                testLabel={t("testSound", draft.language)}
+                                            />
+                                            <ToggleRow
+                                                label={t("soundOnComplete", draft.language)}
+                                                checked={draft.soundOnComplete}
+                                                onChange={(v) => set("soundOnComplete", v)}
+                                                onTest={() => playSound("complete", true, draft.soundVolume)}
+                                                testLabel={t("testSound", draft.language)}
+                                            />
+                                            <ToggleRow
+                                                label={t("soundOnFinding", draft.language)}
+                                                checked={draft.soundOnFinding}
+                                                onChange={(v) => set("soundOnFinding", v)}
+                                                onTest={() => playSound("finding", true, draft.soundVolume)}
+                                                testLabel={t("testSound", draft.language)}
+                                            />
+                                            <ToggleRow
+                                                label={t("soundOnClear", draft.language)}
+                                                checked={draft.soundOnClear}
+                                                onChange={(v) => set("soundOnClear", v)}
+                                                onTest={() => playSound("clear", true, draft.soundVolume)}
+                                                testLabel={t("testSound", draft.language)}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

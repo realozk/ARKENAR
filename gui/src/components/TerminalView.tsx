@@ -28,15 +28,20 @@ function FindingCardInner({ finding, index, language }: { finding: ScanFindingEv
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const alignClass = language === "ar" ? "text-right" : "text-left";
+
   return (
     <div
       className="finding-card animate-fade-slide-in rounded-xl border border-border-subtle bg-bg-card cursor-pointer"
-      onClick={() => setExpanded(!expanded)}
+      onClick={() => {
+        if (window.getSelection()?.toString()) return;
+        setExpanded(!expanded);
+      }}
     >
-      <div className={`flex items-center gap-3 px-5 py-4 ${language === "ar" ? "flex-row-reverse" : ""}`}>
+      <div className="flex items-center gap-3 px-5 py-4">
         <span className="font-mono text-xs text-text-ghost select-none w-6 shrink-0">#{index + 1}</span>
         <AlertTriangle size={17} className={isCritical ? "text-status-critical" : "text-status-warning"} strokeWidth={2.5} />
-        <span className={`text-sm font-semibold text-text-primary truncate flex-1 ${language === "ar" ? "text-right" : ""}`}>{finding.vuln_type}</span>
+        <span className="text-sm font-semibold text-text-primary truncate flex-1 text-start">{finding.vuln_type}</span>
         <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase ${severityClass}`}>
           {isCritical ? t("critical", language) : t("medium", language)}
         </span>
@@ -46,31 +51,41 @@ function FindingCardInner({ finding, index, language }: { finding: ScanFindingEv
       {expanded && (
         <div className="animate-fade-slide-in px-5 pb-4 pt-0 border-t border-border-subtle space-y-3">
           <div className="grid grid-cols-2 gap-x-5 gap-y-2.5 text-xs pt-3">
-            <div className={language === "ar" ? "text-right" : ""}>
+            <div className="text-start">
               <span className="text-text-muted">{t("target", language)}</span>
-              <p className="text-text-secondary font-mono text-[13px] truncate mt-0.5 text-left" dir="ltr">{finding.url}</p>
+              <p className={`text-text-secondary font-mono text-[13px] truncate mt-0.5 ${alignClass}`} dir="ltr">
+                {finding.url}
+              </p>
             </div>
-            <div className={language === "ar" ? "text-right" : ""}>
+            <div className="text-start">
               <span className="text-text-muted">{t("payload", language)}</span>
-              <p className="text-text-secondary font-mono text-[13px] truncate mt-0.5 text-left" dir="ltr">{finding.payload || "—"}</p>
+              <p className={`text-text-secondary font-mono text-[13px] truncate mt-0.5 ${alignClass}`} dir="ltr">
+                {finding.payload || "—"}
+              </p>
             </div>
-            <div className={language === "ar" ? "text-right" : ""}>
+            <div className="text-start">
               <span className="text-text-muted">{t("status", language)}</span>
-              <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.status_code}</p>
+              <p className={`text-text-secondary font-mono mt-0.5 ${alignClass}`} dir="ltr">
+                {finding.status_code}
+              </p>
             </div>
-            <div className={language === "ar" ? "text-right" : ""}>
+            <div className="text-start">
               <span className="text-text-muted">{t("timing", language)}</span>
-              <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.timing_ms}ms</p>
+              <p className={`text-text-secondary font-mono mt-0.5 ${alignClass}`} dir="ltr">
+                {finding.timing_ms}ms
+              </p>
             </div>
             {finding.server && (
-              <div className={language === "ar" ? "text-right" : ""}>
+              <div className="text-start">
                 <span className="text-text-muted">{t("server", language)}</span>
-                <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.server}</p>
+                <p className={`text-text-secondary font-mono mt-0.5 ${alignClass}`} dir="ltr">
+                  {finding.server}
+                </p>
               </div>
             )}
           </div>
-          <div className={language === "ar" ? "text-right" : ""}>
-            <div className={`flex items-center gap-2 mb-1.5 ${language === "ar" ? "flex-row-reverse" : ""}`}>
+          <div className="text-start">
+            <div className="flex items-center gap-2 mb-1.5">
               <p className="text-xs text-text-muted">{t("reproduce", language)}</p>
               {hasSuspiciousChars && (
                 <span className="flex items-center gap-1 rounded-full bg-status-warning/15 px-2 py-0.5 text-[10px] font-bold text-status-warning uppercase">
@@ -80,7 +95,7 @@ function FindingCardInner({ finding, index, language }: { finding: ScanFindingEv
               )}
             </div>
             <div className="flex items-start gap-2 rounded-lg bg-bg-root border border-border-subtle p-3">
-              <code className="flex-1 text-[13px] font-mono text-text-secondary break-all leading-relaxed select-all" dir="ltr">
+              <code className={`flex-1 text-[13px] font-mono text-text-secondary break-all leading-relaxed select-all ${alignClass}`} dir="ltr">
                 {finding.curl_cmd}
               </code>
               <button
@@ -259,43 +274,43 @@ export function TerminalView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden mx-6 mb-6 rounded-xl border border-border-subtle bg-bg-terminal">
       <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => onTabChange("terminal")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[12px] font-semibold uppercase tracking-wider transition-all duration-300 active:scale-95 ${activeTab === "terminal"
-              ? "bg-bg-hover text-text-primary shadow-sm"
-              : "text-text-ghost hover:text-text-secondary hover:-translate-y-0.5"
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "terminal"
+              ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20"
+              : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"
               }`}
           >
-            <FlaskConical size={15} strokeWidth={2.5} />
+            <FlaskConical size={15} strokeWidth={2.5} className={activeTab === "terminal" ? "text-accent-text" : ""} />
             {t("terminal", language)}
           </button>
           <button
             onClick={() => onTabChange("findings")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[12px] font-semibold uppercase tracking-wider transition-all duration-300 active:scale-95 ${activeTab === "findings"
-              ? "bg-bg-hover text-text-primary shadow-sm"
-              : "text-text-ghost hover:text-text-secondary hover:-translate-y-0.5"
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "findings"
+              ? "bg-bg-card text-text-primary border-status-critical/40 shadow-[0_4px_12px_rgba(244,63,94,0.15)] ring-1 ring-status-critical/20"
+              : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"
               }`}
           >
-            <Bug size={15} strokeWidth={2.5} />
+            <Bug size={15} strokeWidth={2.5} className={activeTab === "findings" ? "text-status-critical" : ""} />
             {t("findings", language)}
             {findings.length > 0 && (
-              <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-status-critical/20 text-status-critical px-2 py-0.5 text-[11px] font-bold`}>
+              <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-status-critical/20 text-status-critical px-2 py-0.5 text-[10px] font-black`}>
                 {findings.length}
               </span>
             )}
           </button>
           <button
             onClick={() => onTabChange("history")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[12px] font-semibold uppercase tracking-wider transition-all duration-300 active:scale-95 ${activeTab === "history"
-              ? "bg-bg-hover text-text-primary shadow-sm"
-              : "text-text-ghost hover:text-text-secondary hover:-translate-y-0.5"
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "history"
+              ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20"
+              : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"
               }`}
           >
-            <Clock size={15} strokeWidth={2.5} />
+            <Clock size={15} strokeWidth={2.5} className={activeTab === "history" ? "text-accent-text" : ""} />
             {language === "ar" ? "السجل" : "History"}
             {scanHistory.length > 0 && (
-              <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-accent-dim text-accent-text px-2 py-0.5 text-[11px] font-bold`}>
+              <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-accent/20 text-accent-text px-2 py-0.5 text-[10px] font-black`}>
                 {scanHistory.length}
               </span>
             )}
@@ -520,8 +535,8 @@ export function TerminalView({
                     key={entry.id}
                     className="finding-card animate-fade-slide-in rounded-xl border border-border-subtle bg-bg-card px-5 py-4 group"
                   >
-                    <div className={`flex items-center justify-between mb-3 ${language === "ar" ? "flex-row-reverse" : ""}`}>
-                      <div className={`flex items-center gap-2 ${language === "ar" ? "flex-row-reverse" : ""}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-text-ghost">{dateStr}</span>
                         <span className="text-text-ghost/40">{"\u2022"}</span>
                         <span className="font-mono text-xs text-text-ghost">{timeStr}</span>
@@ -542,9 +557,9 @@ export function TerminalView({
                       </div>
                     </div>
 
-                    <p className="text-sm font-semibold text-text-primary truncate mb-3 font-mono text-left" dir="ltr">{entry.target}</p>
+                    <p className="text-sm font-semibold text-text-primary truncate mb-3 font-mono text-start" dir="ltr">{entry.target}</p>
 
-                    <div className="grid grid-cols-5 gap-2" dir={language === "ar" ? "rtl" : "ltr"}>
+                    <div className="grid grid-cols-5 gap-2">
                       <div className="rounded-lg bg-bg-root px-3 py-2 text-center">
                         <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-0.5">{t("targets", language)}</p>
                         <p className="font-mono text-sm font-bold text-text-primary">{entry.targetsCount}</p>

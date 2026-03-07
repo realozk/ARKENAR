@@ -13,6 +13,7 @@ import { SettingsModal, loadSettings, applyAccentColor, type AppSettings } from 
 import { InfoModal } from "./components/InfoModal";
 import { Starfield, Aurora } from "./components/VisualEffects";
 import { t } from "./utils/i18n";
+import { playSound } from "./utils/audio";
 
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
@@ -35,6 +36,9 @@ function validateHistory(data: unknown): ScanHistoryEntry[] {
 function App() {
 
   const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
+  const appSettingsRef = useRef(appSettings);
+  useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
+
   const [config, setConfig] = useState<ScanConfig>(() => {
     const s = loadSettings();
     return {
@@ -66,6 +70,7 @@ function App() {
   const [isCPressed, setIsCPressed] = useState(false);
   const spaceTimerRef = useRef<number | null>(null);
   const holdIntervalRef = useRef<number | null>(null);
+  const finishedTimerRef = useRef<number | null>(null);
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>(() => {
     try {
       const stored = localStorage.getItem(HISTORY_KEY);
@@ -130,6 +135,14 @@ function App() {
         setStats(event.payload);
         setScanStatus("finished");
         setScanProgress(100);
+        playSound("complete", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnComplete, appSettingsRef.current.soundVolume);
+
+        // Auto-reset to idle after 10 seconds
+        if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
+        finishedTimerRef.current = window.setTimeout(() => {
+          setScanStatus("idle");
+          finishedTimerRef.current = null;
+        }, 10_000);
 
         // Save to scan history
         const entry: ScanHistoryEntry = {
@@ -173,6 +186,7 @@ function App() {
         findingBuffer.current.push(event.payload);
         setActiveTab("findings");
         setScanProgress((p) => Math.min(p + 1, 90));
+        playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
       }),
     ]);
 
@@ -216,6 +230,8 @@ function App() {
 
   const handleStartScan = useCallback(async () => {
     if (!config.target && !config.listFile) return;
+    // Clear any pending finished→idle timer if user starts a new scan immediately
+    if (finishedTimerRef.current) { clearTimeout(finishedTimerRef.current); finishedTimerRef.current = null; }
     setScanStatus("running");
     setScanProgress(0);
     setErrorMsg(null);
@@ -223,6 +239,7 @@ function App() {
     setLogs([]);
     setFindings([]);
     setActiveTab("terminal");
+    playSound("start", appSettings.soundEnabled && appSettings.soundOnStart, appSettings.soundVolume);
     try {
       const finalConfig = {
         ...config,
@@ -254,13 +271,18 @@ function App() {
   const handleClearHistory = useCallback(() => {
     setScanHistory([]);
     localStorage.removeItem(HISTORY_KEY);
-  }, []);
+    playSound("clear", appSettings.soundEnabled && appSettings.soundOnClear, appSettings.soundVolume);
+  }, [appSettings.soundEnabled, appSettings.soundOnClear, appSettings.soundVolume]);
 
   const handleClear = useCallback(() => {
     if (activeTab === "terminal") setLogs([]);
     else if (activeTab === "findings") setFindings([]);
     else if (activeTab === "history") handleClearHistory();
-  }, [activeTab, handleClearHistory]);
+
+    if (activeTab !== "history") {
+      playSound("clear", appSettings.soundEnabled && appSettings.soundOnClear, appSettings.soundVolume);
+    }
+  }, [activeTab, handleClearHistory, appSettings.soundEnabled, appSettings.soundOnClear, appSettings.soundVolume]);
 
   const requestClear = useCallback(() => {
     // Only show modal if there's actually something to clear
@@ -408,7 +430,7 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden">
-      {appSettings.enableStars && <Starfield />}
+      {appSettings.enableStars && <Starfield isScanning={scanStatus === "running"} theme={appSettings.theme} />}
       <Aurora />
 
       <header className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
@@ -447,7 +469,10 @@ function App() {
           )}
           <div className="flex items-center gap-2">
             <StatusDot status={scanStatus} className="h-3 w-3" />
-            <span className="text-sm font-semibold text-text-secondary capitalize tracking-tight">
+            <span
+              key={scanStatus}
+              className="text-sm font-semibold text-text-secondary capitalize tracking-tight animate-fade-slide-in"
+            >
               {t(scanStatus === "error" ? "scanError" : scanStatus, appSettings.language)}
             </span>
           </div>
@@ -456,28 +481,47 @@ function App() {
               onClick={handleStopScan}
               disabled={scanStatus === "stopping"}
               className={`relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${scanStatus === "stopping"
-                ? "bg-bg-card text-status-warning cursor-not-allowed border border-status-warning/30"
+                ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
                 : `bg-status-critical text-white hover:brightness-110 btn-glow shadow-[0_0_20px_rgba(244,63,94,0.4)] ${isHoldingStop ? "animate-pulse scale-110" : ""}`
                 }`}
             >
-              {isHoldingStop && (
-                <div
-                  className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
-                  style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
-                />
+              {scanStatus === "stopping" ? (
+                <div className="flex items-center gap-2">
+                  <svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
+                    <rect x="0" y="0" width="4" height="14" rx="1" />
+                    <rect x="8" y="0" width="4" height="14" rx="1" />
+                  </svg>
+                  {t("stopping", appSettings.language)}
+                </div>
+              ) : (
+                <>
+                  {isHoldingStop && (
+                    <div
+                      className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
+                      style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
+                    />
+                  )}
+                  <div className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" />
+                  {t("stopScan", appSettings.language)}
+                  {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
+                </>
               )}
-              <div className={`h-2.5 w-2.5 rounded-full ${scanStatus === "stopping" ? "bg-status-warning animate-pulse" : "bg-white animate-pulse"}`} />
-              {scanStatus === "stopping" ? t("stopping", appSettings.language) : t("stopScan", appSettings.language)}
-              {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
             </button>
           ) : (
             <button
               onClick={handleStartScan}
               disabled={!config.target && !config.listFile}
-              className={`relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${config.target || config.listFile
-                ? `bg-accent text-bg-root btn-glow ${isHoldingSpace ? "animate-loading-swipe scale-110 shadow-accent/40" : "hover:brightness-110"}`
+              className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${config.target || config.listFile
+                ? `btn-glow ${isHoldingSpace ? "animate-loading-swipe scale-110" : "hover:brightness-110"}`
                 : "bg-bg-card text-text-ghost cursor-not-allowed border border-border-subtle/50"
                 }`}
+              style={config.target || config.listFile ? {
+                backgroundColor: "#10b981",
+                color: appSettings.theme === "light" ? "#ffffff" : "#052e1c",
+                boxShadow: isHoldingSpace
+                  ? "0 0 20px rgba(16,185,129,0.5), 0 0 40px rgba(16,185,129,0.2)"
+                  : "0 0 14px rgba(16,185,129,0.25)",
+              } : undefined}
             >
               {isHoldingSpace && (
                 <div
