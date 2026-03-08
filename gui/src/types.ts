@@ -19,6 +19,18 @@ export interface ScanConfig {
   crawlerMaxUrls: number;
   crawlerTimeout: number;
   webhookUrl?: string;
+  // Auth (v1.3)
+  authToken?: string;
+  authCookies?: string;
+  authType: "none" | "bearer" | "cookie" | "custom";
+  // Discovery (v1.3)
+  enableJsAnalysis: boolean;
+  enableParamFuzz: boolean;
+  // OAST (Market-Killer)
+  oastServer?: string;
+  oastToken?: string;
+  // Evasion (Market-Killer)
+  enableWafEvasion: boolean;
 }
 
 export type LogLevel = "info" | "success" | "error" | "warn" | "phase";
@@ -52,6 +64,23 @@ export interface ScanFindingEvent {
   timing_ms: number;
   server: string | null;
   curl_cmd: string;
+}
+
+// ── Exploit Studio ───────────────────────────────────────────────────────────────
+
+export interface StudioRequest {
+  url: string;
+  method: string;
+  headers: [string, string][];
+  body?: string;
+}
+
+export interface StudioResponse {
+  status: number;
+  headers: [string, string][];
+  body: string;
+  bodyTruncated: boolean;
+  timingMs: number;
 }
 
 export interface ScanHistoryEntry {
@@ -88,4 +117,16 @@ export const DEFAULT_CONFIG: ScanConfig = {
   crawlerMaxUrls: 50,
   crawlerTimeout: 60,
   webhookUrl: "",
+  // Auth
+  authType: "none",
+  authToken: "",
+  authCookies: "",
+  // Discovery
+  enableJsAnalysis: false,
+  enableParamFuzz: false,
+  // OAST
+  oastServer: "",
+  oastToken: "",
+  // Evasion
+  enableWafEvasion: false,
 };

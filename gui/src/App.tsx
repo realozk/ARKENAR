@@ -35,7 +35,10 @@ function validateHistory(data: unknown): ScanHistoryEntry[] {
 
 function App() {
 
-  const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    const s = loadSettings();
+    return s;
+  });
   const appSettingsRef = useRef(appSettings);
   useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
 
@@ -67,7 +70,7 @@ function App() {
   const [isHoldingStop, setIsHoldingStop] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [holdTimeRemaining, setHoldTimeRemaining] = useState(2.0);
-  const [isCPressed, setIsCPressed] = useState(false);
+  const [rps, setRps] = useState(0);
   const spaceTimerRef = useRef<number | null>(null);
   const holdIntervalRef = useRef<number | null>(null);
   const finishedTimerRef = useRef<number | null>(null);
@@ -81,6 +84,7 @@ function App() {
   // Buffers for batching updates
   const logBuffer = useRef<LogEntry[]>([]);
   const findingBuffer = useRef<ScanFindingEvent[]>([]);
+  const rpsCountRef = useRef(0); // raw event count per flush window
   const configRef = useRef(config);
   configRef.current = config;
   const scanQueueRef = useRef(scanQueue);
@@ -169,7 +173,7 @@ function App() {
           const [nextTarget, ...rest] = queue;
           setScanQueue(rest);
           // Auto-start next scan after a brief delay
-          setTimeout(() => {
+          const queueTimer = setTimeout(() => {
             setScanStatus("running");
             setScanProgress(0);
             setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
@@ -180,10 +184,14 @@ function App() {
               setScanStatus("error");
             });
           }, 500);
+          // Store cleanup on the finishedTimerRef so it can be cancelled if needed
+          if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
+          finishedTimerRef.current = queueTimer;
         }
       }),
       listen<ScanFindingEvent>("scan-finding", (event) => {
         findingBuffer.current.push(event.payload);
+        rpsCountRef.current += 1; // Count events for RPS
         setActiveTab("findings");
         setScanProgress((p) => Math.min(p + 1, 90));
         playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
@@ -205,6 +213,7 @@ function App() {
 
   // Flush buffers periodically (150ms)
   useEffect(() => {
+    const FLUSH_MS = 150;
     const interval = setInterval(() => {
       if (logBuffer.current.length > 0) {
         const batch = [...logBuffer.current];
@@ -219,7 +228,11 @@ function App() {
         findingBuffer.current = [];
         setFindings((prev) => [...prev, ...batch]);
       }
-    }, 150);
+      // Compute live RPS from event count in this flush window
+      const count = rpsCountRef.current;
+      rpsCountRef.current = 0;
+      setRps(Math.round(count / (FLUSH_MS / 1000)));
+    }, FLUSH_MS);
 
     return () => clearInterval(interval);
   }, []);
@@ -239,20 +252,20 @@ function App() {
     setLogs([]);
     setFindings([]);
     setActiveTab("terminal");
-    playSound("start", appSettings.soundEnabled && appSettings.soundOnStart, appSettings.soundVolume);
+    playSound("start", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnStart, appSettingsRef.current.soundVolume);
     try {
       const finalConfig = {
         ...config,
-        webhookUrl: appSettings.globalWebhookUrl || undefined
+        webhookUrl: appSettingsRef.current.globalWebhookUrl || undefined
       };
       await invoke("start_scan", { config: finalConfig });
     } catch (err: unknown) {
-      const msg = typeof err === "string" ? err : (err as Error)?.message ?? "Unknown error";
+      const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
       addLog("error", `Scan failed: ${msg}`);
       setErrorMsg(msg);
       setScanStatus("error");
     }
-  }, [config, appSettings.globalWebhookUrl, addLog]);
+  }, [config, addLog]);
 
   const handleStopScan = useCallback(async () => {
     try {
@@ -271,8 +284,8 @@ function App() {
   const handleClearHistory = useCallback(() => {
     setScanHistory([]);
     localStorage.removeItem(HISTORY_KEY);
-    playSound("clear", appSettings.soundEnabled && appSettings.soundOnClear, appSettings.soundVolume);
-  }, [appSettings.soundEnabled, appSettings.soundOnClear, appSettings.soundVolume]);
+    playSound("clear", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnClear, appSettingsRef.current.soundVolume);
+  }, []);
 
   const handleClear = useCallback(() => {
     if (activeTab === "terminal") setLogs([]);
@@ -280,9 +293,9 @@ function App() {
     else if (activeTab === "history") handleClearHistory();
 
     if (activeTab !== "history") {
-      playSound("clear", appSettings.soundEnabled && appSettings.soundOnClear, appSettings.soundVolume);
+      playSound("clear", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnClear, appSettingsRef.current.soundVolume);
     }
-  }, [activeTab, handleClearHistory, appSettings.soundEnabled, appSettings.soundOnClear, appSettings.soundVolume]);
+  }, [activeTab, handleClearHistory]);
 
   const requestClear = useCallback(() => {
     // Only show modal if there's actually something to clear
@@ -308,9 +321,7 @@ function App() {
         if (key === 'f') { setActiveTab("findings"); return; }
         if (key === 'h') { setActiveTab("history"); return; }
         if (key === 'c') {
-          setIsCPressed(true);
           requestClear();
-          setTimeout(() => setIsCPressed(false), 300);
           return;
         }
       }
@@ -329,7 +340,9 @@ function App() {
           setIsHoldingSpace(true);
         }
 
-        setHoldTimeRemaining(2.0);
+        // Stop hold: 1 second. Start hold: 2 seconds (prevents accidental launches).
+        const holdDuration = isRunning ? 1000 : 2000;
+        setHoldTimeRemaining(holdDuration / 1000);
 
         if (spaceTimerRef.current) clearTimeout(spaceTimerRef.current);
         if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
@@ -347,7 +360,7 @@ function App() {
             setIsHoldingSpace(false);
           }
           if (holdIntervalRef.current) clearInterval(holdIntervalRef.current);
-        }, 2000);
+        }, holdDuration);
         return;
       }
 
@@ -355,12 +368,12 @@ function App() {
       if (e.ctrlKey) {
         if (e.key === "t") {
           e.preventDefault();
-          setSidebarCollapsed(false); // Ensure sidebar is visible
+          setSidebarCollapsed(false);
           setTimeout(() => document.getElementById("target-input")?.focus(), 100);
           return;
         }
         if (e.key === "Enter" && scanStatus !== "running") { e.preventDefault(); handleStartScan(); }
-        if (e.key === "l") { e.preventDefault(); setIsCPressed(true); handleClear(); setTimeout(() => setIsCPressed(false), 300); }
+        if (e.key === "l") { e.preventDefault(); handleClear(); }
         if (e.key === "1") { e.preventDefault(); setActiveTab("terminal"); }
         if (e.key === "2") { e.preventDefault(); setActiveTab("findings"); }
         if (e.key === "3") { e.preventDefault(); setActiveTab("history"); }
@@ -431,7 +444,7 @@ function App() {
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden">
       {appSettings.enableStars && <Starfield isScanning={scanStatus === "running"} theme={appSettings.theme} />}
-      <Aurora />
+      {appSettings.enableStars && <Aurora />}
 
       <header className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
         <div className="flex items-center gap-4">
@@ -512,7 +525,7 @@ function App() {
               onClick={handleStartScan}
               disabled={!config.target && !config.listFile}
               className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${config.target || config.listFile
-                ? `btn-glow ${isHoldingSpace ? "animate-loading-swipe scale-110" : "hover:brightness-110"}`
+                ? `btn-glow ${isHoldingSpace ? "scale-110" : "hover:brightness-110"}`
                 : "bg-bg-card text-text-ghost cursor-not-allowed border border-border-subtle/50"
                 }`}
               style={config.target || config.listFile ? {
@@ -562,6 +575,7 @@ function App() {
             stats={stats}
             scanStatus={scanStatus}
             scanProgress={scanProgress}
+            rps={rps}
             language={appSettings.language}
           />
           <TerminalView
@@ -570,7 +584,6 @@ function App() {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onRequestClear={requestClear}
-            isClearGlowing={isCPressed}
             scanHistory={scanHistory}
             onLoadFromHistory={handleLoadFromHistory}
             language={appSettings.language}

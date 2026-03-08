@@ -51,18 +51,18 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
     }
   }, [onUpdate]);
 
-  const handleAddToQueue = () => {
+  const handleAddToQueue = useCallback(() => {
     const targets = queueInput
       .split("\n")
-      .map(t => t.trim())
-      .filter(t => t.startsWith("http://") || t.startsWith("https://"));
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("http://") || line.startsWith("https://"));
     if (targets.length > 0 && onAddToQueue) {
       onAddToQueue(targets);
       setQueueInput("");
     }
-  };
+  }, [queueInput, onAddToQueue]);
 
-  const handlePaste = async () => {
+  const handlePaste = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
@@ -72,7 +72,7 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
     } catch (err) {
       console.error("Paste failed", err);
     }
-  };
+  }, [onUpdate]);
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">

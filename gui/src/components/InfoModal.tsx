@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { X, Info, Sparkles, Users, Terminal, Palette, Keyboard } from "lucide-react";
 import { SectionLabel, Logo } from "./primitives";
 import { t } from "../utils/i18n";
@@ -8,20 +8,32 @@ interface InfoModalProps {
     language: "en" | "ar";
 }
 
-export const InfoModal: React.FC<InfoModalProps> = ({ onClose, language }) => {
+export function InfoModal({ onClose, language }: InfoModalProps) {
     const [isClosing, setIsClosing] = useState(false);
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handleClose = () => {
+    const handleClose = useCallback(() => {
+        if (closeTimerRef.current) return; // prevent double-close
         setIsClosing(true);
-        setTimeout(onClose, 200);
-    };
+        closeTimerRef.current = setTimeout(() => {
+            closeTimerRef.current = null;
+            onClose();
+        }, 200);
+    }, [onClose]);
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        };
+    }, []);
 
     // Close on Escape key
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, []);
+    }, [handleClose]);
 
     return (
         <div
@@ -157,4 +169,4 @@ export const InfoModal: React.FC<InfoModalProps> = ({ onClose, language }) => {
             </div>
         </div>
     );
-};
+}

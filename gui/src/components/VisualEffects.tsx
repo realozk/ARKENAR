@@ -26,6 +26,13 @@ export const Starfield = memo(({ isScanning, theme }: StarfieldProps) => {
         themeRef.current = theme;
     }, [theme]);
 
+    // Imperatively update canvas opacity when theme changes
+    // (avoids re-rendering Starfield via JSX on every parent update)
+    useEffect(() => {
+        if (!canvasRef.current) return;
+        canvasRef.current.style.opacity = theme === 'light' ? '0.88' : '0.40';
+    }, [theme]);
+
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -126,7 +133,6 @@ export const Starfield = memo(({ isScanning, theme }: StarfieldProps) => {
             className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-1000"
             style={{
                 filter: "blur(0.5px)",
-                opacity: theme === 'light' ? 0.88 : 0.40,
             }}
         />
     );

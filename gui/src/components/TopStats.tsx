@@ -1,19 +1,22 @@
-import { Crosshair, Globe, Shield, Eye, Network, Timer } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity } from "lucide-react";
+import { useState, useEffect, useRef, type ElementType } from "react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
 import { t } from "../utils/i18n";
 
 function StatCard({ label, value, icon: Icon, accent }: {
   label: string;
   value: string | number;
-  icon: React.ElementType;
-  accent?: "default" | "critical" | "warning" | "success";
+  icon: ElementType;
+  accent?: "default" | "critical" | "warning" | "success" | "rps-low" | "rps-med" | "rps-high";
 }) {
   const valueClass: Record<string, string> = {
     default: "text-text-primary",
     critical: "text-status-critical",
     warning: "text-status-warning",
     success: "text-status-success",
+    "rps-low": "text-status-success",
+    "rps-med": "text-status-warning",
+    "rps-high": "text-status-critical",
   };
 
   return (
@@ -92,27 +95,32 @@ function ScanProgressBar({ progress, status, language }: ScanProgressBarProps & 
   );
 }
 
-export function TopStats({ stats, scanStatus, scanProgress, language = "en" }: {
+export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = "en" }: {
   stats: ScanStatsEvent;
   scanStatus: ScanStatus;
   scanProgress: number;
+  rps?: number;
   language?: "en" | "ar";
 }) {
-  const lang = language || "en";
-
   return (
     <div className="shrink-0 p-6 pb-4 space-y-3">
-      <div className="grid grid-cols-6 gap-3">
+      <div className="grid grid-cols-7 gap-3">
         {/* Arabic-first localization for stats */}
-        <StatCard label={t("targets", lang)} value={stats.targets} icon={Crosshair} />
-        <StatCard label={t("urls", lang)} value={stats.urls} icon={Globe} />
-        <StatCard label={t("critical", lang)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} />
-        <StatCard label={t("medium", lang)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} />
-        <StatCard label={t("safe", lang)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} />
-        <StatCard label={t("elapsed", lang)} value={stats.elapsed} icon={Timer} />
+        <StatCard label={t("targets", language)} value={stats.targets} icon={Crosshair} />
+        <StatCard label={t("urls", language)} value={stats.urls} icon={Globe} />
+        <StatCard label={t("critical", language)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} />
+        <StatCard label={t("medium", language)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} />
+        <StatCard label={t("safe", language)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} />
+        <StatCard label={t("elapsed", language)} value={stats.elapsed} icon={Timer} />
+        <StatCard
+          label={language === "ar" ? "طلب/ث" : "req/s"}
+          value={scanStatus === "running" ? rps : "—"}
+          icon={Activity}
+          accent={scanStatus !== "running" ? "default" : rps > 200 ? "rps-high" : rps > 50 ? "rps-med" : "rps-low"}
+        />
       </div>
 
-      <ScanProgressBar progress={scanProgress} status={scanStatus} language={lang} />
+      <ScanProgressBar progress={scanProgress} status={scanStatus} language={language} />
     </div>
   );
 }

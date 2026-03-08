@@ -21,23 +21,23 @@
   --color-text-muted: #64647a;
   --color-text-ghost: #3e3e52;
 
-  /* Accent — teal/cyan */
-  --color-accent: #00d5be;
-  --color-accent-dim: rgba(0, 213, 190, 0.10);
-  --color-accent-hover: #00ecd3;
-  --color-accent-text: #00d5be;
+  /* Accent — orange brand */
+  --color-accent: #EA580C;
+  --color-accent-dim: rgba(234, 88, 12, 0.10);
+  --color-accent-hover: #F97316;
+  --color-accent-text: #EA580C;
 
   /* Status */
   --color-status-critical: #f43f5e;
   --color-status-warning: #eab308;
   --color-status-success: #10b981;
-  --color-status-info: #00d5be;
+  --color-status-info: #EA580C;
   --color-status-idle: #444460;
 
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-accent-glow: 0 0 24px rgba(0, 213, 190, 0.12), 0 0 48px rgba(0, 213, 190, 0.04);
-  --shadow-accent-btn: 0 0 20px rgba(0, 213, 190, 0.2), 0 0 40px rgba(0, 213, 190, 0.06);
+  --shadow-accent-glow: 0 0 24px rgba(234, 88, 12, 0.12), 0 0 48px rgba(234, 88, 12, 0.04);
+  --shadow-accent-btn: 0 0 20px rgba(234, 88, 12, 0.2), 0 0 40px rgba(234, 88, 12, 0.06);
 
   /* Font stacks */
   --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
@@ -476,50 +476,6 @@ input[type="number"] {
   display: block;
   height: auto !important;
   margin-bottom: 4px;
-}
-
-.terminal-line:nth-child(1) {
-  animation-delay: 0.05s;
-}
-
-.terminal-line:nth-child(2) {
-  animation-delay: 0.10s;
-}
-
-.terminal-line:nth-child(3) {
-  animation-delay: 0.15s;
-}
-
-.terminal-line:nth-child(4) {
-  animation-delay: 0.20s;
-}
-
-.terminal-line:nth-child(5) {
-  animation-delay: 0.25s;
-}
-
-.terminal-line:nth-child(6) {
-  animation-delay: 0.30s;
-}
-
-.terminal-line:nth-child(7) {
-  animation-delay: 0.35s;
-}
-
-.terminal-line:nth-child(8) {
-  animation-delay: 0.40s;
-}
-
-.terminal-line:nth-child(9) {
-  animation-delay: 0.45s;
-}
-
-.terminal-line:nth-child(10) {
-  animation-delay: 0.50s;
-}
-
-.terminal-line:nth-child(n+11) {
-  animation-delay: 0.50s;
 }
 
 .terminal-line:hover {

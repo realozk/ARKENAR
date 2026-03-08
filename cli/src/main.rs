@@ -89,6 +89,30 @@ pub struct Args {
 
     #[arg(long, help = "Resume a previously interrupted scan")]
     pub resume: bool,
+
+    // ── Auth (v1.3) ────────────
+    #[arg(long, help = "Bearer token (Authorization: Bearer …)")]
+    pub auth_token: Option<String>,
+
+    #[arg(long, help = "Raw cookie string (e.g. session=abc; csrf=xyz)")]
+    pub auth_cookies: Option<String>,
+
+    #[arg(long, default_value = "none",
+        value_parser = clap::builder::PossibleValuesParser::new(["none", "bearer", "cookie", "custom"]),
+        help = "Authentication type: none, bearer, cookie, custom")]
+    pub auth_type: String,
+
+    // ── OAST (Market-Killer) ───
+    #[arg(long, help = "Interactsh OAST server URL (e.g. https://oast.pro)")]
+    pub oast_server: Option<String>,
+
+    // ── Discovery (v1.3) ──────
+    #[arg(long, default_value_t = false, help = "Enable JavaScript static analysis")]
+    pub enable_js_analysis: bool,
+
+    // ── Evasion (Market-Killer) 
+    #[arg(long, default_value_t = false, help = "Enable WAF evasion mutations on 403 responses")]
+    pub enable_waf_evasion: bool,
 }
 
 #[tokio::main]
@@ -153,6 +177,16 @@ async fn main() {
         crawler_timeout: args.crawler_timeout,
         crawler_max_urls: args.crawler_max_urls,
         resume: args.resume,
+        // Auth
+        auth_token: args.auth_token.clone(),
+        auth_cookies: args.auth_cookies.clone(),
+        auth_type: args.auth_type.clone(),
+        // OAST
+        oast_server: args.oast_server.clone(),
+        // Discovery
+        enable_js_analysis: args.enable_js_analysis,
+        // Evasion
+        enable_waf_evasion: args.enable_waf_evasion,
         ..ScanConfig::default()
     };
 
@@ -214,7 +248,7 @@ fn print_banner() {
 
     "#;
     print!("{}\r\n", banner.bright_cyan().bold());
-    print!("{}\r\n", "──────────────────────────────────────────────────".dimmed());
+    print!("{}\r\n", "──────".dimmed());
     std::io::stdout().flush().ok();
 }
 
@@ -303,6 +337,6 @@ fn print_scan_config(target: &str, config: &ScanConfig) {
     if !config.tags.is_empty() {
         print!("{}\r\n", format!("[+] Tags:       {}", config.tags).yellow());
     }
-    print!("{}\r\n", "──────────────────────────────────────────────────".dimmed());
+    print!("{}\r\n", "──────".dimmed());
     std::io::stdout().flush().ok();
 }

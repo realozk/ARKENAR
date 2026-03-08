@@ -17,7 +17,9 @@ function FindingCardInner({ finding, index, language }: { finding: ScanFindingEv
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const isCritical = finding.vuln_type.toLowerCase().includes("sqli") || finding.vuln_type.toLowerCase().includes("sql");
+  const CRITICAL_VULN_PATTERNS = ["sqli", "sql", "rce", "exec", "command injection", "lfi", "path traversal", "ssrf", "xxe", "remote code"];
+  const vulnLower = finding.vuln_type.toLowerCase();
+  const isCritical = CRITICAL_VULN_PATTERNS.some((p) => vulnLower.includes(p));
   const severityClass = isCritical ? "text-status-critical bg-status-critical/10" : "text-status-warning bg-status-warning/10";
   const hasSuspiciousChars = SHELL_META.test(finding.curl_cmd);
 
@@ -122,7 +124,6 @@ interface TerminalViewProps {
   onRequestClear: () => void;
   scanHistory: ScanHistoryEntry[];
   onLoadFromHistory?: (target: string) => void;
-  isClearGlowing?: boolean;
   language: "en" | "ar";
 }
 
@@ -134,7 +135,6 @@ export function TerminalView({
   onRequestClear,
   scanHistory,
   onLoadFromHistory,
-  isClearGlowing,
   language
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -155,10 +155,9 @@ export function TerminalView({
   const [termSearchQuery, setTermSearchQuery] = useState("");
   const [isLogCopied, setIsLogCopied] = useState(false);
 
-  const handleCopyLogs = async () => {
+  const handleCopyLogs = useCallback(async () => {
     if (logs.length === 0) return;
 
-    // Format logs into a single string
     const textToCopy = logs.map(log => `[${log.time}] ${log.message}`).join('\n');
 
     try {
@@ -168,7 +167,7 @@ export function TerminalView({
     } catch (err) {
       console.error('Failed to copy logs', err);
     }
-  };
+  }, [logs]);
 
   // Handle auto-scroll logic
   useEffect(() => {
@@ -184,8 +183,10 @@ export function TerminalView({
   }, []);
 
   const processedFindings = useMemo(() => {
+    const CRITICAL_PATTERNS = ["sqli", "sql", "rce", "exec", "command injection", "lfi", "path traversal", "ssrf", "xxe", "remote code"];
     let result = findings.map((f, i) => {
-      const isCrit = f.vuln_type.toLowerCase().includes("sqli") || f.vuln_type.toLowerCase().includes("sql");
+      const vulnLower = f.vuln_type.toLowerCase();
+      const isCrit = CRITICAL_PATTERNS.some((p) => vulnLower.includes(p));
       return { ...f, originalIndex: i, severity: isCrit ? "critical" : "medium" as const };
     });
 
@@ -356,12 +357,9 @@ export function TerminalView({
           {activeTab !== "history" && (
             <button
               onClick={onRequestClear}
-              className={`group flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-semibold text-text-primary btn-danger-ghost transition-all duration-300 ${isClearGlowing
-                ? "bg-status-critical/20 border-status-critical/50 shadow-[0_0_15px_rgba(244,63,94,0.4)] scale-105"
-                : "bg-bg-card border-border-subtle"
-                }`}
+              className="group flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3.5 py-2 text-xs font-semibold text-text-primary btn-danger-ghost transition-all duration-300"
             >
-              <Trash2 size={15} strokeWidth={2.5} className={`transition-colors ${isClearGlowing ? "text-status-critical" : "text-text-ghost group-hover:text-status-critical"}`} />
+              <Trash2 size={15} strokeWidth={2.5} className="text-text-ghost group-hover:text-status-critical transition-colors" />
               {activeTab === "terminal" ? t("clear", language) + " " + (language === "ar" ? "السجلات" : "Logs") : t("clear", language) + " " + (language === "ar" ? "النتائج" : "Findings")}
             </button>
           )}
@@ -410,7 +408,7 @@ export function TerminalView({
             <div className="flex flex-col gap-1">
               {filteredLogs.map((log, i) => (
                 <div
-                  key={i}
+                  key={`${log.time}-${i}`}
                   className={`terminal-line ${log.level}`}
                   style={{ '--i': i % 50 } as React.CSSProperties}
                 >
@@ -436,6 +434,7 @@ export function TerminalView({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full rounded-lg border border-border-subtle bg-bg-input py-1.5 pl-9 pr-4 text-[13px] text-text-primary placeholder-text-ghost focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/40 transition-all duration-300 shadow-sm"
+                dir="ltr"
               />
             </div>
             <div className="flex items-center gap-2">

@@ -44,7 +44,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-    accentColor: "#00d5be",
+    accentColor: "#EA580C",
     theme: "dark",
     defaultThreads: 50,
     defaultTimeout: 5,
@@ -60,12 +60,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     reduceMotion: false,
     uiScale: 100,
     language: "en",
-    soundEnabled: true,
+    soundEnabled: false,
     soundVolume: 75,
-    soundOnStart: true,
-    soundOnComplete: true,
-    soundOnFinding: false,
-    soundOnClear: true,
+    soundOnStart: false,
+    soundOnComplete: false,
+    soundOnFinding: true,
+    soundOnClear: false,
 };
 
 const STORAGE_KEY = "arkenar_settings";
@@ -130,6 +130,7 @@ export function applyAccentColor(hex: string) {
 
 /* ── Accent presets ───────────────────────────────────────────── */
 const ACCENT_PRESETS = [
+    { label: "Orange", color: "#EA580C" },
     { label: "Teal", color: "#00d5be" },
     { label: "Violet", color: "#8b5cf6" },
     { label: "Blue", color: "#3b82f6" },
