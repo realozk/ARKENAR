@@ -39,3 +39,4 @@ src-tauri/target/
 .env.*
 
 gui/src-tauri/tools/
+repomix-output.xml

@@ -56,14 +56,27 @@
 
 ##  Installation (Recommended)
 
-###  Windows 
+### GUI Desktop App
+
+Download the installer directly from [GitHub Releases](https://github.com/realozk/ARKENAR/releases/latest):
+
+| Platform | File |
+|----------|------|
+| **Windows** | `Arkenar_*_x64-setup.exe` — double-click, no admin required |
+| **Linux** | `arkenar_*_amd64.AppImage` (portable) or `arkenar_*_amd64.deb` |
+
+The app auto-downloads Katana and Nuclei on first launch.
+
+---
+
+###  Windows (CLI)
 You can install **Arkenar** instantly using our automated PowerShell script. Copy and paste this command into your terminal:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
 
 ```
-### Linux & macOS
+### Linux & macOS (CLI)
 Run the following command to download and install automatically:
 
 ```bash

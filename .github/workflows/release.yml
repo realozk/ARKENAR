@@ -77,13 +77,113 @@ jobs:
           releaseBody: |
             ## Arkenar ${{ github.ref_name }}
 
-            ### Downloads
-            | Platform | Installer |
-            |----------|-----------|
-            | Windows  | `Arkenar_*_x64-setup.exe` (NSIS, no admin required) |
-            | Linux    | `arkenar_*_amd64.AppImage` · `arkenar_*_amd64.deb` |
+            ### ⬇️ Downloads
 
-            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+            #### GUI (Desktop App)
+            | Platform | File |
+            |----------|------|
+            | Windows  | `Arkenar_*_x64-setup.exe` (NSIS installer, no admin required) |
+            | Linux    | `arkenar_*_amd64.AppImage` or `arkenar_*_amd64.deb` |
+
+            #### CLI (Command Line)
+            | Platform | One-command install |
+            |----------|---------------------|
+            | Windows  | `irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 \| iex` |
+            | Linux / macOS | `curl -sL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh \| bash` |
+
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
           releaseDraft: false
-          # Automatically mark as pre-release when the tag contains -beta or -rc
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 2: Build the CLI binary for every platform and upload to the same
+  # GitHub Release that the GUI job created above.
+  # ───────────────────────────────────────────────────────────────────────────
+  build-cli:
+    name: Build CLI — ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: build-tauri   # wait for the release to exist before uploading assets
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            asset_name: arkenar-windows-amd64.zip
+            archive: zip
+
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            asset_name: arkenar-linux-amd64.tar.gz
+            archive: tar
+
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            asset_name: arkenar-linux-arm64.tar.gz
+            archive: tar
+            cross: true
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            asset_name: arkenar-macos-amd64.tar.gz
+            archive: tar
+
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            asset_name: arkenar-macos-arm64.tar.gz
+            archive: tar
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: ${{ matrix.target }}
+
+      - name: Install cross (for aarch64-linux)
+        if: matrix.cross == true
+        run: cargo install cross --locked
+
+      - name: Install Linux build dependencies (native)
+        if: runner.os == 'Linux' && matrix.cross != true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Build CLI binary (native)
+        if: matrix.cross != true
+        run: cargo build -p arkenar-cli --release --target ${{ matrix.target }}
+
+      - name: Build CLI binary (cross)
+        if: matrix.cross == true
+        run: cross build -p arkenar-cli --release --target ${{ matrix.target }}
+
+      - name: Package — zip (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $bin = "target/${{ matrix.target }}/release/arkenar.exe"
+          Compress-Archive -Path $bin -DestinationPath ${{ matrix.asset_name }}
+
+      - name: Package — tar.gz (Linux / macOS)
+        if: matrix.archive == 'tar'
+        run: |
+          BIN="target/${{ matrix.target }}/release/arkenar"
+          tar -czf ${{ matrix.asset_name }} -C "$(dirname $BIN)" "$(basename $BIN)"
+
+      - name: Upload CLI asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ${{ matrix.asset_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
