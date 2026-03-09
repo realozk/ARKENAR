@@ -64,6 +64,7 @@ Download the installer directly from [GitHub Releases](https://github.com/realoz
 |----------|------|
 | **Windows** | `Arkenar_*_x64-setup.exe` — double-click, no admin required |
 | **Linux** | `arkenar_*_amd64.AppImage` (portable) or `arkenar_*_amd64.deb` |
+| **macOS** | `Arkenar_*_universal.dmg` — works on both Intel and Apple Silicon |
 
 The app auto-downloads Katana and Nuclei on first launch.
 
