@@ -1,63 +1,89 @@
-name: Release
+name: Release Arkenar GUI
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+*'  # v1.0.1, v1.0.1-beta, v1.1.0-rc1, etc.
+
+permissions:
+  contents: write   # required to create/update GitHub Releases
 
 jobs:
-  build-and-package:
-    name: Build for ${{ matrix.os }} (${{ matrix.target }})
+  build-tauri:
+    name: Build GUI — ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+
     strategy:
+      fail-fast: false   # a Windows failure won't cancel the Linux build
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            archive_name: arkenar-linux-amd64.tar.gz
-            binary_name: arkenar
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive_name: arkenar-windows-amd64.zip
-            binary_name: arkenar.exe
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            archive_name: arkenar-macos-amd64.tar.gz
-            binary_name: arkenar
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            archive_name: arkenar-macos-arm64.tar.gz
-            binary_name: arkenar
+          - platform: windows
+            os: windows-latest
+          - platform: linux
+            os: ubuntu-22.04
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Rust
+      # ── Rust ──────────────────────────────────────────────────────────────
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
         with:
-          targets: ${{ matrix.target }}
+          workspaces: ". -> target"
 
-      - name: Build Release
-        run: cargo build --release --target ${{ matrix.target }}
+      # ── Node / pnpm ───────────────────────────────────────────────────────
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
 
-      - name: Package Artifacts
-        shell: bash
+      - name: Use Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: gui/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: gui
+        run: pnpm install --frozen-lockfile
+
+      # ── Linux system libraries (Tauri v2 requires webkit2gtk 4.1) ─────────
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
         run: |
-          mkdir -p dist
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/ARKENAR.exe
-            powershell Compress-Archive -Path dist/ARKENAR.exe -DestinationPath ${{ matrix.archive_name }} -Force
-          else
-            cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/arkenar
-            tar -czf ${{ matrix.archive_name }} -C dist arkenar
-          fi
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            pkg-config
 
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            ${{ matrix.archive_name }}
-            ${{ matrix.os == 'windows-latest' && 'dist/ARKENAR.exe' || '' }}
+      # ── Build Tauri app and publish to GitHub Release ─────────────────────
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: gui
+          tagName: ${{ github.ref_name }}
+          releaseName: "Arkenar ${{ github.ref_name }}"
+          releaseBody: |
+            ## Arkenar ${{ github.ref_name }}
+
+            ### Downloads
+            | Platform | Installer |
+            |----------|-----------|
+            | Windows  | `Arkenar_*_x64-setup.exe` (NSIS, no admin required) |
+            | Linux    | `arkenar_*_amd64.AppImage` · `arkenar_*_amd64.deb` |
+
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+          releaseDraft: false
+          # Automatically mark as pre-release when the tag contains -beta or -rc
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}

@@ -2,14 +2,26 @@ use arkenar_core::ScanResult;
 
 /// Sends a webhook alert for a critical/high finding.
 /// Supports Discord, Slack, and generic JSON webhooks.
+/// Returns `(is_discord, is_slack)` by inspecting only the hostname of the URL.
+/// Using hostname instead of a substring search on the full URL prevents crafted
+/// relay paths like `/discord.com/api/webhooks/` from falsely matching.
+fn classify_webhook(url: &str) -> (bool, bool) {
+    if let Ok(parsed) = url::Url::parse(url) {
+        let host = parsed.host_str().unwrap_or("").to_lowercase();
+        let is_discord = host == "discord.com" || host.ends_with(".discord.com");
+        let is_slack   = host == "hooks.slack.com";
+        return (is_discord, is_slack);
+    }
+    (false, false)
+}
+
 pub async fn send_webhook(webhook_url: &str, result: &ScanResult) {
-    let is_discord = webhook_url.contains("discord.com/api/webhooks");
-    let is_slack = webhook_url.contains("hooks.slack.com");
+    let (is_discord, is_slack) = classify_webhook(webhook_url);
 
     let payload = if is_discord {
         serde_json::json!({
             "embeds": [{
-                "title": format!(" {} Detected", result.vuln_type),
+                "title": format!("\u{1f6a8} {} Detected", result.vuln_type),
                 "color": 15158332,
                 "fields": [
                     { "name": "Target", "value": result.url, "inline": false },

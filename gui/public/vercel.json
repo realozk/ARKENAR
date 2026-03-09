@@ -1,0 +1,19 @@
+{
+  "redirects": [
+    {
+      "source": "/download/windows",
+      "destination": "https://github.com/real0zk/arkenar/releases/latest/download/Arkenar_1.0.1_x64-setup.exe",
+      "permanent": false
+    },
+    {
+      "source": "/download/linux-appimage",
+      "destination": "https://github.com/real0zk/arkenar/releases/latest/download/arkenar_1.0.1_amd64.AppImage",
+      "permanent": false
+    },
+    {
+      "source": "/download/linux-deb",
+      "destination": "https://github.com/real0zk/arkenar/releases/latest/download/arkenar_1.0.1_amd64.deb",
+      "permanent": false
+    }
+  ]
+}

@@ -110,7 +110,6 @@ async fn main() {
 
     let sink = ConsoleSink::new_ref();
 
-    // Handle --resume: load previous state and continue
     if args.resume {
         match ScanState::load(ScanState::default_path()) {
             Some(state) => {
@@ -253,13 +252,19 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
 
-    if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), sink).await {
+    if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, sink).await {
         sink.on_log("error", &format!("[!] Nuclei error: {}", e));
     }
 
     sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
 
-    let http_client = Arc::new(HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers));
+    let http_client = match HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers) {
+        Ok(c) => Arc::new(c),
+        Err(e) => {
+            sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));
+            return;
+        }
+    };
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
     let engine = ScanEngine::new(
         target_manager,
@@ -271,7 +276,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
     let output_path = config.output.clone();
 
     let (_, results) = tokio::join!(
-        engine.run(result_tx),
+        engine.run(result_tx, Arc::new(std::sync::atomic::AtomicBool::new(false))),
         ResultAggregator::run(result_rx, &output_path, sink.clone())
     );
 

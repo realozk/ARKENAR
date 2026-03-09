@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use futures::{stream, StreamExt};
@@ -53,17 +54,26 @@ impl ScanEngine {
         }
     }
 
-    /// Runs the scan engine on all targets from the target manager
-    pub async fn run(mut self, result_tx: mpsc::Sender<ScanResult>) {
+    /// Runs the scan engine on all targets from the target manager.
+    /// `abort` — when set to `true`, the engine stops launching new tasks and
+    /// in-flight per-payload tasks skip the network call before the next
+    /// throttle wait, keeping stop latency bounded to ~1 request timeout.
+    pub async fn run(mut self, result_tx: mpsc::Sender<ScanResult>, abort: Arc<AtomicBool>) {
         let semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
         let mut tasks = Vec::new();
 
         while let Some(target_url) = self.target_manager.next() {
-            let permit = semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore closed unexpectedly");
+            if abort.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let permit = match semaphore.clone().acquire_owned().await {
+                Ok(p) => p,
+                Err(_) => {
+                    warn!("Semaphore closed while acquiring permit — stopping engine.");
+                    break;
+                }
+            };
 
             let client = Arc::clone(&self.client);
             let payload_loader = Arc::clone(&self.payload_loader);
@@ -71,6 +81,7 @@ impl ScanEngine {
             let throttle = Arc::clone(&self.throttle);
             let tx = result_tx.clone();
             let concurrency = self.concurrency_limit;
+            let abort_task = Arc::clone(&abort);
 
             let handle = tokio::spawn(async move {
                 let _permit = permit;
@@ -91,6 +102,7 @@ impl ScanEngine {
                     throttle,
                     tx,
                     concurrency,
+                    abort_task,
                 ).await;
             });
 
@@ -106,8 +118,9 @@ impl ScanEngine {
         }
     }
 
-    /// Scans a single HTTP request directly
+    /// Scans a single HTTP request directly (no abort support — for one-off use only)
     pub async fn scan_request(&self, request: HttpRequest, result_tx: mpsc::Sender<ScanResult>) {
+        let no_abort = Arc::new(AtomicBool::new(false));
         scan_single_request(
             request,
             Arc::clone(&self.client),
@@ -116,6 +129,7 @@ impl ScanEngine {
             Arc::clone(&self.throttle),
             result_tx,
             self.concurrency_limit,
+            no_abort,
         ).await;
     }
 }
@@ -153,6 +167,7 @@ async fn scan_single_request(
     throttle: Arc<ThrottleController>,
     result_tx: mpsc::Sender<ScanResult>,
     concurrency_limit: usize,
+    abort: Arc<AtomicBool>,
 ) {
     let injection_points = mutator::extract_injection_points(&request);
 
@@ -180,8 +195,12 @@ async fn scan_single_request(
             let throttle = Arc::clone(&throttle);
             let result_tx = result_tx.clone();
             let payload_clone = payload.clone();
+            let abort = Arc::clone(&abort);
 
             async move {
+                // Honour abort before spending a network slot
+                if abort.load(Ordering::Relaxed) { return; }
+
                 let mutated_request = mutator::mutate_request(&request, &point, &payload);
 
                 throttle.wait().await;
@@ -307,7 +326,7 @@ mod tests {
     #[test]
     fn test_engine_creation() {
         let target_manager = TargetManager::new();
-        let client = Arc::new(HttpClient::new(10, None, &vec![]));
+        let client = Arc::new(HttpClient::new(10, None, &vec![]).expect("test: failed to build HTTP client"));
         let engine = ScanEngine::new(target_manager, client, 10, 0, None);
 
         assert_eq!(engine.concurrency_limit, 10);

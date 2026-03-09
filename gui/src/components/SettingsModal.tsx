@@ -130,12 +130,17 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
     const [isClosing, setIsClosing] = useState(false);
     const overlayRef = useRef<HTMLDivElement>(null);
 
+    // Keep a ref so the keydown listener always calls the latest version of
+    // handleFinalClose without needing to re-subscribe on every render.
+    const handleFinalCloseRef = useRef(handleFinalClose);
+    handleFinalCloseRef.current = handleFinalClose;
+
     // Close on Escape key
     useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleFinalClose(); };
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleFinalCloseRef.current(); };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [onClose]);
+    }, []); // only register once — the ref always points to the latest handler
 
     // Close on backdrop click
     const handleOverlayClick = (e: React.MouseEvent) => {

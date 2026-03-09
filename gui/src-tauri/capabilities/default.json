@@ -8,15 +8,27 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "fs:default",
     "dialog:default",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DOCUMENT/arkenar/**" },
+        { "path": "$DESKTOP/**" }
+      ]
+    },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
         { "path": "$DOWNLOAD/**" },
-        { "path": "$DOCUMENT/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$HOME/**" }
+        { "path": "$DOCUMENT/arkenar/**" },
+        { "path": "$DESKTOP/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$DOCUMENT/arkenar/**" }
       ]
     },
     {

@@ -164,6 +164,8 @@ function App() {
             setFindings([]);
             setActiveTab("terminal");
             invoke("start_scan", { config: { ...configRef.current, target: nextTarget, listFile: "" } }).catch(() => {
+              // Restore the remaining queue items so they aren't silently dropped.
+              setScanQueue(rest);
               setScanStatus("error");
             });
           }, 500);

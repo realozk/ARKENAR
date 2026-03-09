@@ -63,7 +63,10 @@ fn get_tool_download_url(tool: &str) -> &'static str {
                 "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_linux_amd64.zip"
             }
         }
-        _ => panic!("Unknown tool: {}", tool),
+        _ => {
+            eprintln!("[!] Installer: unknown tool '{}' requested", tool);
+            return "";
+        }
     }
 }
 

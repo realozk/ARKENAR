@@ -1,6 +1,7 @@
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::time::{timeout, Duration};
 use crate::utils;
 use crate::SinkRef;
 
@@ -9,6 +10,7 @@ pub async fn run_nuclei_scan(
     mode: &str,
     verbose: bool,
     custom_tags: Option<&str>,
+    max_secs: u64,
     sink: &SinkRef,
 ) -> anyhow::Result<()> {
     let binary = match utils::get_binary_path("nuclei") {
@@ -21,8 +23,8 @@ pub async fn run_nuclei_scan(
 
     let is_simple = mode != "advanced";
 
-    let timeout = if is_simple { "5" } else { "10" };
-    let concurrency = if is_simple { "25" } else { "50" };
+    let timeout_str = if is_simple { "5" } else { "10" };
+    let concurrency  = if is_simple { "25" } else { "50" };
 
     sink.on_log("phase", &format!("[*] Launching Nuclei on: {}", target));
 
@@ -33,10 +35,12 @@ pub async fn run_nuclei_scan(
     let mut args = vec![
         "-u", target,
         "-jsonl", "-silent",
-        "-severity",
-        "-timeout", timeout,
+        "-timeout", timeout_str,
         "-rate-limit", "50",
         "-c", concurrency,
+        "-duc",  // disable update check — saves 10-30s per run
+        "-ni",   // no interactsh — disables OOB server, eliminates round-trip delays
+        "-ns",   // no-stdin — prevents nuclei from waiting on stdin
     ];
 
     if let Some(tags) = custom_tags {
@@ -71,44 +75,58 @@ pub async fn run_nuclei_scan(
     let mut lines = reader.lines();
     let mut count: u32 = 0;
 
-    while let Ok(Some(raw_line)) = lines.next_line().await {
-        let line = raw_line.trim().to_string();
-        if line.is_empty() { continue; }
+    // Process-level kill timeout — prevents Nuclei from running indefinitely.
+    let effective_max = if max_secs == 0 { 120 } else { max_secs };
+    let scan_result = timeout(Duration::from_secs(effective_max), async {
+        let mut n: u32 = 0;
+        while let Ok(Some(raw_line)) = lines.next_line().await {
+            let line = raw_line.trim().to_string();
+            if line.is_empty() { continue; }
 
-        let v: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
+            let v: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
 
-        let name = v.get("info")
-            .and_then(|i| i.get("name"))
-            .and_then(|n| n.as_str());
+            let name = v.get("info")
+                .and_then(|i| i.get("name"))
+                .and_then(|n| n.as_str());
 
-        let severity_str = v.get("info")
-            .and_then(|i| i.get("severity"))
-            .and_then(|s| s.as_str())
-            .unwrap_or("unknown");
+            let severity_str = v.get("info")
+                .and_then(|i| i.get("severity"))
+                .and_then(|s| s.as_str())
+                .unwrap_or("unknown");
 
-        let matched_at = v.get("matched-at")
-            .or_else(|| v.get("matched_at"))
-            .or_else(|| v.get("host"))
-            .and_then(|m| m.as_str())
-            .unwrap_or("N/A");
+            let matched_at = v.get("matched-at")
+                .or_else(|| v.get("matched_at"))
+                .or_else(|| v.get("host"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("N/A");
 
-        let template_id = v.get("template-id")
-            .or_else(|| v.get("template_id"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
+            let template_id = v.get("template-id")
+                .or_else(|| v.get("template_id"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("");
 
-        if let Some(vuln_name) = name {
-            count += 1;
-            sink.on_log("success", &format!(
-                "[+] NUCLEI: {} [{}] @ {}",
-                vuln_name, severity_str.to_uppercase(), matched_at
-            ));
-            if verbose && !template_id.is_empty() {
-                sink.on_log("info", &format!("    [DEBUG] Template: {}", template_id));
+            if let Some(vuln_name) = name {
+                n += 1;
+                sink.on_log("success", &format!(
+                    "[+] NUCLEI: {} [{}] @ {}",
+                    vuln_name, severity_str.to_uppercase(), matched_at
+                ));
+                if verbose && !template_id.is_empty() {
+                    sink.on_log("info", &format!("    [DEBUG] Template: {}", template_id));
+                }
             }
+        }
+        n
+    }).await;
+
+    match scan_result {
+        Ok(n) => { count = n; }
+        Err(_) => {
+            sink.on_log("warn", &format!("[!] Nuclei hit the {}s phase limit — stopping it. Partial results saved.", effective_max));
+            child.kill().await.ok();
         }
     }
 

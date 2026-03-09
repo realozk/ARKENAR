@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -99,7 +99,22 @@ impl ScanEventSink for TauriSink {
 
 
 static SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
-static SCAN_ABORT: AtomicBool = AtomicBool::new(false);
+
+/// Per-scan abort flag held in an Arc so the scan task and stop_scan both
+/// operate on the same value. Replaced atomically at the start of each scan.
+static CURRENT_ABORT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+/// RAII guard that always resets SCAN_RUNNING when it is dropped, even if the
+/// scan task panics. Also clears the per-scan abort Arc so it can be GC'd.
+struct ScanGuard;
+impl Drop for ScanGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = CURRENT_ABORT.lock() {
+            *guard = None;
+        }
+        SCAN_RUNNING.store(false, Ordering::SeqCst);
+    }
+}
 
 /// Returns an error if `val` contains shell metacharacters or path-traversal.
 fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
@@ -149,7 +164,13 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
 
     if !config.list_file.is_empty() {
         if config.list_file.starts_with('/') || config.list_file.starts_with('~') || config.list_file.starts_with('\\') {
-            return Err("Target list path must be relative (no leading /, ~, or \\).".to_string());
+            return Err("Target list path must be relative (no leading /, ~, or backslash).".to_string());
+        }
+        // Block Windows absolute paths (e.g. C:\path)
+        if config.list_file.len() >= 2
+            && config.list_file.chars().nth(1) == Some(':')
+        {
+            return Err("Target list path must be relative (no drive letters).".to_string());
         }
     }
 
@@ -239,7 +260,12 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         return Err(e);
     }
 
-    SCAN_ABORT.store(false, Ordering::SeqCst);
+    let abort_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut guard = CURRENT_ABORT.lock()
+            .map_err(|_| "Internal lock error.".to_string())?;
+        *guard = Some(Arc::clone(&abort_flag));
+    }
 
     let sink = TauriSink::new_ref(app.clone(), config.webhook_url.clone());
 
@@ -268,6 +294,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
     }
 
     tokio::spawn(async move {
+        let _guard = ScanGuard; // resets SCAN_RUNNING on ANY exit path (including panics)
         let start_time = Instant::now();
         let total_targets = targets.len();
 
@@ -298,7 +325,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         let total_safe: usize = 0;
 
         for (i, target) in targets.iter().enumerate() {
-            if SCAN_ABORT.load(Ordering::SeqCst) {
+            if abort_flag.load(Ordering::SeqCst) {
                 sink.on_log("warn", "Scan aborted by user.");
                 break;
             }
@@ -329,7 +356,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 sink.on_log("info", "Katana crawler disabled, skipping Phase 1.");
             }
 
-            if SCAN_ABORT.load(Ordering::SeqCst) {
+            if abort_flag.load(Ordering::SeqCst) {
                 sink.on_log("warn", "Scan aborted by user.");
                 break;
             }
@@ -337,7 +364,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             if config.enable_nuclei {
                 sink.on_log("phase", "── Phase 2: Nuclei Scanner");
 
-                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), &sink).await {
+                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, &sink).await {
                     sink.on_log("error", &format!("Nuclei error: {}", e));
                 } else {
                     sink.on_log("success", "Nuclei scan completed.");
@@ -346,7 +373,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 sink.on_log("info", "Nuclei scanner disabled, skipping Phase 2.");
             }
 
-            if SCAN_ABORT.load(Ordering::SeqCst) {
+            if abort_flag.load(Ordering::SeqCst) {
                 sink.on_log("warn", "Scan aborted by user.");
                 break;
             }
@@ -356,7 +383,13 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let proxy_ref = config.proxy_ref().map(|s| s.to_string());
             let proxy_opt = proxy_ref.as_deref();
-            let http_client = Arc::new(HttpClient::new(config.timeout, proxy_opt, &custom_headers));
+            let http_client = match HttpClient::new(config.timeout, proxy_opt, &custom_headers) {
+                Ok(c) => Arc::new(c),
+                Err(e) => {
+                    sink.on_log("error", &format!("Failed to build HTTP client: {}", e));
+                    break;
+                }
+            };
 
             let (result_tx, result_rx) = mpsc::channel::<ScanResult>(200);
             let engine = ScanEngine::new(
@@ -369,9 +402,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let sink_agg = sink.clone();
             let output_path = config.output.clone();
+            let abort_for_engine = Arc::clone(&abort_flag);
 
             let engine_handle = tokio::spawn(async move {
-                engine.run(result_tx).await;
+                engine.run(result_tx, abort_for_engine).await;
             });
 
             let aggregator_handle = tokio::spawn(async move {
@@ -388,9 +422,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                         total_medium += 1;
                     }
                 }
-                total_urls += results.len();
+                // Do NOT add results.len() here — results are vulnerability findings,
+                // not URLs. total_urls already tracks crawled URLs above.
             }
-        }
+        }  // end target loop
 
         let elapsed = format!("{:.1}s", start_time.elapsed().as_secs_f64());
         sink.on_log("phase", &format!("── Scan Complete ({})", elapsed));
@@ -413,8 +448,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             safe: total_safe,
             elapsed,
         });
-
-        SCAN_RUNNING.store(false, Ordering::SeqCst);
+        // _guard drops here — ScanGuard resets SCAN_RUNNING and clears CURRENT_ABORT
     });
 
     Ok(())
@@ -423,7 +457,11 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 #[tauri::command]
 async fn stop_scan() -> Result<(), String> {
     if SCAN_RUNNING.load(Ordering::SeqCst) {
-        SCAN_ABORT.store(true, Ordering::SeqCst);
+        if let Ok(guard) = CURRENT_ABORT.lock() {
+            if let Some(ref flag) = *guard {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
         Ok(())
     } else {
         Err("No scan is currently running.".to_string())
@@ -440,8 +478,15 @@ async fn check_tools() -> Result<String, String> {
 async fn test_webhook(url: String) -> Result<(), String> {
     validate_webhook_url(&url)?;
 
-    let is_discord = url.contains("discord.com/api/webhooks");
-    let is_slack = url.contains("hooks.slack.com");
+    let is_discord = url::Url::parse(&url)
+        .map(|p| {
+            let h = p.host_str().unwrap_or("").to_lowercase();
+            h == "discord.com" || h.ends_with(".discord.com")
+        })
+        .unwrap_or(false);
+    let is_slack = url::Url::parse(&url)
+        .map(|p| p.host_str().unwrap_or("").to_lowercase() == "hooks.slack.com")
+        .unwrap_or(false);
 
     let payload = if is_discord {
         serde_json::json!({
@@ -480,13 +525,30 @@ async fn test_webhook(url: String) -> Result<(), String> {
 
 
 
+#[tauri::command]
+async fn export_report(
+    findings: Vec<ScanFindingEvent>,
+    config: arkenar_core::ScanConfig,
+    elapsed: String,
+    output_path: String,
+) -> Result<String, String> {
+    if output_path.is_empty() {
+        return Err("Output path must not be empty.".to_string());
+    }
+    let html = reporting::generate_html_report(&findings, &config, &elapsed);
+    std::fs::write(&output_path, html)
+        .map_err(|e| format!("Failed to write report: {}", e))?;
+    Ok(output_path)
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook])
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report])
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);
