@@ -40,3 +40,7 @@ src-tauri/target/
 
 gui/src-tauri/tools/
 repomix-output.xml
+tsc_errors.txt
+*.json.bak
+gui/src-tauri/scan_results.json
+gui/src-tauri/arkenar_report.html
