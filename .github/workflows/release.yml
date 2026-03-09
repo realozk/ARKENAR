@@ -6,7 +6,7 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+*'  # v1.0.1, v1.0.1-beta, v1.1.0-rc1, etc.
 
 permissions:
-  contents: write   # required to create/update GitHub Releases
+  contents: write  
 
 jobs:
   build-tauri:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
-      fail-fast: false   # a Windows failure won't cancel the Linux build
+      fail-fast: false 
       matrix:
         include:
           - platform: windows
@@ -28,7 +28,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Rust ──────────────────────────────────────────────────────────────
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -37,7 +36,6 @@ jobs:
         with:
           workspaces: ". -> target"
 
-      # ── Node / pnpm ───────────────────────────────────────────────────────
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
@@ -54,7 +52,6 @@ jobs:
         working-directory: gui
         run: pnpm install --frozen-lockfile
 
-      # ── Linux system libraries (Tauri v2 requires webkit2gtk 4.1) ─────────
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -67,7 +64,10 @@ jobs:
             libssl-dev \
             pkg-config
 
-      # ── Build Tauri app and publish to GitHub Release ─────────────────────
+      - name: Install macOS build dependencies
+        if: matrix.platform == 'macos'
+        run: brew install create-dmg
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -79,7 +79,7 @@ jobs:
           releaseBody: |
             ## Arkenar ${{ github.ref_name }}
 
-            ### ⬇️ Downloads
+            ###  Downloads
 
             #### GUI (Desktop App)
             | Platform | File |
@@ -98,10 +98,8 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
 
-  # ───────────────────────────────────────────────────────────────────────────
   # Job 2: Build the CLI binary for every platform and upload to the same
   # GitHub Release that the GUI job created above.
-  # ───────────────────────────────────────────────────────────────────────────
   build-cli:
     name: Build CLI — ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
