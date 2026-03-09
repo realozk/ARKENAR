@@ -182,11 +182,6 @@ jobs:
           tar -czf ${{ matrix.asset_name }} -C "$(dirname $BIN)" "$(basename $BIN)"
 
       - name: Upload CLI asset to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: ${{ matrix.asset_name }}
-          make_latest: false        # release already finalized by build-tauri; don't race to update it
-          generate_release_notes: false
+        run: gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
