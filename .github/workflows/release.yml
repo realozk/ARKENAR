@@ -186,5 +186,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: ${{ matrix.asset_name }}
+          make_latest: false        # release already finalized by build-tauri; don't race to update it
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
