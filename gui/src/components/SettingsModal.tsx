@@ -132,8 +132,7 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
 
     // Keep a ref so the keydown listener always calls the latest version of
     // handleFinalClose without needing to re-subscribe on every render.
-    const handleFinalCloseRef = useRef(handleFinalClose);
-    handleFinalCloseRef.current = handleFinalClose;
+    const handleFinalCloseRef = useRef<() => void>(() => {});
 
     // Close on Escape key
     useEffect(() => {
@@ -173,6 +172,7 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
         setIsClosing(true);
         setTimeout(onClose, 200);
     };
+    handleFinalCloseRef.current = handleFinalClose;
 
     const handleClose = () => {
         handleFinalClose();
