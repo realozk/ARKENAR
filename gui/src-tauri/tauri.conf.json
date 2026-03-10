@@ -28,7 +28,6 @@
     }
   },
   "bundle": {
-  "identifier": "com.arkenar.dev",
   "windows": {
     "nsis": {
       "installerIcon": "icons/icon.ico",
