@@ -3,6 +3,9 @@ name = "arkenar-core"
 version = "1.0.1"
 edition = "2021"
 description = "Core library for the Arkenar vulnerability scanner."
+license = "MIT"
+repository = "https://github.com/RealOzk/ARKENAR"
+homepage = "https://github.com/RealOzk/ARKENAR"
 
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
