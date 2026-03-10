@@ -15,6 +15,8 @@ fn get_arkenar_asset_name() -> &'static str {
         "arkenar-macos-arm64.tar.gz"
     } else if cfg!(target_os = "macos") {
         "arkenar-macos-amd64.tar.gz"
+    } else if cfg!(target_arch = "aarch64") {
+        "arkenar-linux-arm64.tar.gz"
     } else {
         "arkenar-linux-amd64.tar.gz"
     }
