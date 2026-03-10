@@ -136,10 +136,18 @@ async fn update_nuclei() {
         return;
     }
 
-    match Command::new(&nuclei_path)
-        .arg("-update")
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+    let mut std_cmd = std::process::Command::new(&nuclei_path);
+    std_cmd.arg("-update")
+           .stdout(Stdio::inherit())
+           .stderr(Stdio::inherit());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    match Command::from(std_cmd)
         .status()
         .await
     {
@@ -165,10 +173,18 @@ async fn update_nuclei_templates() {
         return;
     }
 
-    match Command::new(&nuclei_path)
-        .arg("-ut")
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+    let mut std_cmd = std::process::Command::new(&nuclei_path);
+    std_cmd.arg("-ut")
+           .stdout(Stdio::inherit())
+           .stderr(Stdio::inherit());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    match Command::from(std_cmd)
         .status()
         .await
     {
@@ -194,10 +210,18 @@ async fn update_katana() {
         return;
     }
 
-    match Command::new(&katana_path)
-        .arg("-update")
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+    let mut std_cmd = std::process::Command::new(&katana_path);
+    std_cmd.arg("-update")
+           .stdout(Stdio::inherit())
+           .stderr(Stdio::inherit());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    match Command::from(std_cmd)
         .status()
         .await
     {

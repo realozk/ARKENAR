@@ -57,12 +57,18 @@ pub async fn run_nuclei_scan(
         }
     }
 
-    let mut child = match Command::new(binary)
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
+    let mut std_cmd = std::process::Command::new(&binary);
+    std_cmd.args(&args)
+           .stdout(Stdio::piped())
+           .stderr(Stdio::null());
+
+    #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = match Command::from(std_cmd).spawn() {
         Ok(c) => c,
         Err(e) => {
             sink.on_log("error", &format!("[!] Failed to start Nuclei (is it installed?): {}", e));

@@ -166,14 +166,23 @@ jobs:
           }
           EOF
 
-      - name: Commit and push latest.json
+      - name: Commit and open PR for latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          BRANCH="chore/update-latest-json-${{ github.ref_name }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add latest.json
           git diff --cached --quiet && echo "No changes" && exit 0
+          git checkout -b "$BRANCH"
           git commit -m "chore: update latest.json for ${{ github.ref_name }}"
-          git push origin main
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: update latest.json for ${{ github.ref_name }}" \
+            --body "Auto-generated PR to update \`latest.json\` for release **${{ github.ref_name }}**." \
+            --base main \
+            --head "$BRANCH"
 
   build-cli:
     name: Build CLI — ${{ matrix.target }}
