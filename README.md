@@ -3,6 +3,8 @@
 **Designed for pentesters and offensive security pros, Arkenar acts as a central orchestration layer. It combines Katana and Nuclei, while layering on its own custom mutation engine to catch complex logic flaws and injections that static templates might miss.**
 ​
 
+**i will update thr readme just give sometime <3 **
+
 ## • Core Capabilities
 
 • **Hybrid Engine**: Seamlessly chains external tools (Katana, Nuclei) with native scanning logic for full-spectrum reconnaissance.
