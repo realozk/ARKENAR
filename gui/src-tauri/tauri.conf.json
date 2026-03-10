@@ -28,6 +28,7 @@
     }
   },
   "bundle": {
+  "active": true,
   "windows": {
     "nsis": {
       "installerIcon": "icons/icon.ico",
