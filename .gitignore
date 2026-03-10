@@ -14,10 +14,10 @@ debug/
 *.pem
 *.key
 
-# Environment
+# Environment — local secrets only, never commit
 .env
-.env.*
 .env.local
+.env.*.local
 
 # Editor
 .idea/
