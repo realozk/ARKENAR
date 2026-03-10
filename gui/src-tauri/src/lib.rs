@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use serde::Serialize;
@@ -99,81 +99,21 @@ impl ScanEventSink for TauriSink {
 
 
 static SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
-static SCAN_ABORT: AtomicBool = AtomicBool::new(false);
-static STUDIO_RUNNING: AtomicBool = AtomicBool::new(false);
-static STUDIO_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
-// ── Exploit Studio types ──────────────────────────────────────────────────────
+/// Per-scan abort flag held in an Arc so the scan task and stop_scan both
+/// operate on the same value. Replaced atomically at the start of each scan.
+static CURRENT_ABORT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
-#[derive(serde::Deserialize)]
-struct StudioRequest {
-    url: String,
-    method: String,
-    headers: Vec<(String, String)>,
-    body: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StudioResponse {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: String,
-    body_truncated: bool,
-    timing_ms: u128,
-}
-
-// ── Exploit Studio string mutation helpers ────────────────────────────────────
-
-fn studio_base64_encode(input: &str) -> String {
-    const ALPHA: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let bytes = input.as_bytes();
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0];
-        let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] } else { 0 };
-        out.push(ALPHA[(b0 >> 2) as usize] as char);
-        out.push(ALPHA[((b0 & 0x3) << 4 | b1 >> 4) as usize] as char);
-        out.push(if chunk.len() > 1 { ALPHA[((b1 & 0xF) << 2 | b2 >> 6) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { ALPHA[(b2 & 0x3F) as usize] as char } else { '=' });
-    }
-    out
-}
-
-fn studio_percent_encode(input: &str) -> String {
-    let mut out = String::new();
-    for byte in input.bytes() {
-        if matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~') {
-            out.push(byte as char);
-        } else {
-            out.push_str(&format!("%{:02X}", byte));
+/// RAII guard that always resets SCAN_RUNNING when it is dropped, even if the
+/// scan task panics. Also clears the per-scan abort Arc so it can be GC'd.
+struct ScanGuard;
+impl Drop for ScanGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = CURRENT_ABORT.lock() {
+            *guard = None;
         }
+        SCAN_RUNNING.store(false, Ordering::SeqCst);
     }
-    out
-}
-
-fn studio_html_entity(input: &str) -> String {
-    input.chars().map(|c| match c {
-        '<'  => "&lt;".to_string(),
-        '>'  => "&gt;".to_string(),
-        '&'  => "&amp;".to_string(),
-        '"'  => "&quot;".to_string(),
-        '\'' => "&#x27;".to_string(),
-        _    => c.to_string(),
-    }).collect()
-}
-
-fn studio_unicode_fuzz(input: &str) -> String {
-    // Replace printable ASCII (0x21–0x7E) with Unicode full-width equivalents (+0xFEE0).
-    input.chars().map(|c| {
-        let cp = c as u32;
-        if (0x21..=0x7E).contains(&cp) {
-            char::from_u32(cp + 0xFEE0).unwrap_or(c).to_string()
-        } else {
-            c.to_string()
-        }
-    }).collect()
 }
 
 /// Returns an error if `val` contains shell metacharacters or path-traversal.
@@ -212,7 +152,14 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     validate_text_field("headers",  &config.headers)?;
     validate_text_field("payloads", &config.payloads)?;
     validate_text_field("output",   &config.output)?;
-    validate_text_field("target",   &config.target)?;
+    // Target is a URL: only block chars that cause header injection or null-byte
+    // issues. Parentheses and other URL-legal characters must be permitted.
+    if config.target.chars().any(|c| matches!(c, '\n' | '\r' | '\0')) {
+        return Err("Field 'target' contains forbidden characters.".to_string());
+    }
+    if config.target.contains("../") || config.target.contains("..\\") {
+        return Err("Field 'target' contains a path-traversal sequence.".to_string());
+    }
     validate_text_field("listFile", &config.list_file)?;
 
     if !config.target.is_empty() {
@@ -224,7 +171,13 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
 
     if !config.list_file.is_empty() {
         if config.list_file.starts_with('/') || config.list_file.starts_with('~') || config.list_file.starts_with('\\') {
-            return Err("Target list path must be relative (no leading /, ~, or \\).".to_string());
+            return Err("Target list path must be relative (no leading /, ~, or backslash).".to_string());
+        }
+        // Block Windows absolute paths (e.g. C:\path)
+        if config.list_file.len() >= 2
+            && config.list_file.chars().nth(1) == Some(':')
+        {
+            return Err("Target list path must be relative (no drive letters).".to_string());
         }
     }
 
@@ -249,26 +202,6 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
             validate_webhook_url(wh)?;
         }
     }
-
-    // Auth fields
-    if let Some(ref token) = config.auth_token {
-        if !token.is_empty() {
-            validate_text_field("authToken", token)?;
-        }
-    }
-    if let Some(ref cookies) = config.auth_cookies {
-        if !cookies.is_empty() {
-            validate_text_field("authCookies", cookies)?;
-        }
-    }
-
-    // OAST server — must be a valid HTTPS URL if set
-    if let Some(ref oast) = config.oast_server {
-        if !oast.is_empty() {
-            validate_webhook_url(oast)?;
-        }
-    }
-
     Ok(())
 }
 
@@ -334,7 +267,12 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         return Err(e);
     }
 
-    SCAN_ABORT.store(false, Ordering::SeqCst);
+    let abort_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut guard = CURRENT_ABORT.lock()
+            .map_err(|_| "Internal lock error.".to_string())?;
+        *guard = Some(Arc::clone(&abort_flag));
+    }
 
     let sink = TauriSink::new_ref(app.clone(), config.webhook_url.clone());
 
@@ -363,6 +301,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
     }
 
     tokio::spawn(async move {
+        let _guard = ScanGuard; // resets SCAN_RUNNING on ANY exit path (including panics)
         let start_time = Instant::now();
         let total_targets = targets.len();
 
@@ -381,7 +320,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 targets: total_targets, urls: 0, critical: 0, medium: 0, safe: 0,
                 elapsed: format!("{:.1}s", start_time.elapsed().as_secs_f64()),
             });
-            SCAN_RUNNING.store(false, Ordering::SeqCst);
             return;
         }
 
@@ -390,10 +328,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         let mut total_urls: usize = 0;
         let mut total_critical: usize = 0;
         let mut total_medium: usize = 0;
-        let total_safe: usize = 0;
+        let mut total_safe: usize = 0;
 
         for (i, target) in targets.iter().enumerate() {
-            if SCAN_ABORT.load(Ordering::SeqCst) {
+            if abort_flag.load(Ordering::SeqCst) {
                 sink.on_log("warn", "Scan aborted by user.");
                 break;
             }
@@ -424,7 +362,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 sink.on_log("info", "Katana crawler disabled, skipping Phase 1.");
             }
 
-            if SCAN_ABORT.load(Ordering::SeqCst) {
+            if abort_flag.load(Ordering::SeqCst) {
                 sink.on_log("warn", "Scan aborted by user.");
                 break;
             }
@@ -432,7 +370,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             if config.enable_nuclei {
                 sink.on_log("phase", "── Phase 2: Nuclei Scanner");
 
-                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), &sink).await {
+                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, &sink).await {
                     sink.on_log("error", &format!("Nuclei error: {}", e));
                 } else {
                     sink.on_log("success", "Nuclei scan completed.");
@@ -441,7 +379,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 sink.on_log("info", "Nuclei scanner disabled, skipping Phase 2.");
             }
 
-            if SCAN_ABORT.load(Ordering::SeqCst) {
+            if abort_flag.load(Ordering::SeqCst) {
                 sink.on_log("warn", "Scan aborted by user.");
                 break;
             }
@@ -451,9 +389,16 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let proxy_ref = config.proxy_ref().map(|s| s.to_string());
             let proxy_opt = proxy_ref.as_deref();
-            let http_client = Arc::new(HttpClient::new(config.timeout, proxy_opt, &custom_headers));
+            let http_client = match HttpClient::new(config.timeout, proxy_opt, &custom_headers) {
+                Ok(c) => Arc::new(c),
+                Err(e) => {
+                    sink.on_log("error", &format!("Failed to build HTTP client: {}", e));
+                    break;
+                }
+            };
 
             let (result_tx, result_rx) = mpsc::channel::<ScanResult>(200);
+            let scanned_count = target_manager.len();
             let engine = ScanEngine::new(
                 target_manager,
                 Arc::clone(&http_client),
@@ -464,9 +409,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let sink_agg = sink.clone();
             let output_path = config.output.clone();
+            let abort_for_engine = Arc::clone(&abort_flag);
 
             let engine_handle = tokio::spawn(async move {
-                engine.run(result_tx).await;
+                engine.run(result_tx, abort_for_engine).await;
             });
 
             let aggregator_handle = tokio::spawn(async move {
@@ -475,6 +421,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let _ = engine_handle.await;
             if let Ok(results) = aggregator_handle.await {
+                let mut vulnerable_urls = std::collections::HashSet::new();
                 for r in &results {
                     let vl = r.vuln_type.to_lowercase();
                     if vl.contains("sqli") || vl.contains("sql injection") {
@@ -482,10 +429,12 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                     } else {
                         total_medium += 1;
                     }
+                    vulnerable_urls.insert(r.url.clone());
                 }
-                total_urls += results.len();
+                // Safe = scanned URLs that had no findings.
+                total_safe += scanned_count.saturating_sub(vulnerable_urls.len());
             }
-        }
+        }  // end target loop
 
         let elapsed = format!("{:.1}s", start_time.elapsed().as_secs_f64());
         sink.on_log("phase", &format!("── Scan Complete ({})", elapsed));
@@ -508,8 +457,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             safe: total_safe,
             elapsed,
         });
-
-        SCAN_RUNNING.store(false, Ordering::SeqCst);
+        // _guard drops here — ScanGuard resets SCAN_RUNNING and clears CURRENT_ABORT
     });
 
     Ok(())
@@ -518,7 +466,11 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 #[tauri::command]
 async fn stop_scan() -> Result<(), String> {
     if SCAN_RUNNING.load(Ordering::SeqCst) {
-        SCAN_ABORT.store(true, Ordering::SeqCst);
+        if let Ok(guard) = CURRENT_ABORT.lock() {
+            if let Some(ref flag) = *guard {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
         Ok(())
     } else {
         Err("No scan is currently running.".to_string())
@@ -535,8 +487,15 @@ async fn check_tools() -> Result<String, String> {
 async fn test_webhook(url: String) -> Result<(), String> {
     validate_webhook_url(&url)?;
 
-    let is_discord = url.contains("discord.com/api/webhooks");
-    let is_slack = url.contains("hooks.slack.com");
+    let is_discord = url::Url::parse(&url)
+        .map(|p| {
+            let h = p.host_str().unwrap_or("").to_lowercase();
+            h == "discord.com" || h.ends_with(".discord.com")
+        })
+        .unwrap_or(false);
+    let is_slack = url::Url::parse(&url)
+        .map(|p| p.host_str().unwrap_or("").to_lowercase() == "hooks.slack.com")
+        .unwrap_or(false);
 
     let payload = if is_discord {
         serde_json::json!({
@@ -575,97 +534,30 @@ async fn test_webhook(url: String) -> Result<(), String> {
 
 
 
-// ── Exploit Studio commands ───────────────────────────────────────────────────
-
-/// Pure synchronous string mutation — no network, no I/O.
-///
-/// Supported mutations: `base64`, `url_encode`, `double_url`,
-/// `html_entity`, `unicode_fuzz`, `reverse`.
 #[tauri::command]
-fn studio_mutate(payload: String, mutation: String) -> Result<String, String> {
-    match mutation.as_str() {
-        "base64"      => Ok(studio_base64_encode(&payload)),
-        "url_encode"  => Ok(studio_percent_encode(&payload)),
-        "double_url"  => Ok(studio_percent_encode(&studio_percent_encode(&payload))),
-        "html_entity" => Ok(studio_html_entity(&payload)),
-        "unicode_fuzz" => Ok(studio_unicode_fuzz(&payload)),
-        "reverse"     => Ok(payload.chars().rev().collect()),
-        _             => Err(format!("Unknown mutation: '{}'", mutation)),
+async fn export_report(
+    findings: Vec<ScanFindingEvent>,
+    config: arkenar_core::ScanConfig,
+    elapsed: String,
+    output_path: String,
+) -> Result<String, String> {
+    if output_path.is_empty() {
+        return Err("Output path must not be empty.".to_string());
     }
+    // Prevent path traversal and restrict to .html / .htm outputs.
+    if output_path.contains("..") {
+        return Err("Report path must not contain '..'.".to_string());
+    }
+    let lower = output_path.to_lowercase();
+    if !lower.ends_with(".html") && !lower.ends_with(".htm") {
+        return Err("Report path must end with .html or .htm.".to_string());
+    }
+    let html = reporting::generate_html_report(&findings, &config, &elapsed);
+    std::fs::write(&output_path, html)
+        .map_err(|e| format!("Failed to write report: {}", e))?;
+    Ok(output_path)
 }
 
-/// Fires a single HTTP request and returns the response.
-///
-/// Uses a dedicated `reqwest::Client` stored in `STUDIO_CLIENT`.
-/// Response body is capped at 65 536 bytes; `body_truncated` is set if the
-/// original body was larger.
-#[tauri::command]
-async fn studio_send(request: StudioRequest) -> Result<StudioResponse, String> {
-    if STUDIO_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-        return Err("A studio request is already in flight.".to_string());
-    }
-
-    let result = studio_send_inner(request).await;
-    STUDIO_RUNNING.store(false, Ordering::SeqCst);
-    result
-}
-
-async fn studio_send_inner(request: StudioRequest) -> Result<StudioResponse, String> {
-    // Validate URL
-    let parsed_url = url::Url::parse(&request.url)
-        .map_err(|_| "Studio: invalid URL.".to_string())?;
-    if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
-        return Err("Studio: URL must use http or https.".to_string());
-    }
-
-    // Validate method
-    let allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-    let method_upper = request.method.to_uppercase();
-    if !allowed_methods.contains(&method_upper.as_str()) {
-        return Err(format!("Studio: unsupported HTTP method '{}'.", request.method));
-    }
-    let method = reqwest::Method::from_bytes(method_upper.as_bytes())
-        .map_err(|e| format!("Studio: invalid method: {}", e))?;
-
-    // Validate header keys (no injection)
-    for (key, _) in &request.headers {
-        validate_text_field("studioHeaderKey", key)
-            .map_err(|e| format!("Studio: {}", e))?;
-    }
-
-    let client = STUDIO_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("Failed to build studio HTTP client")
-    });
-
-    let mut req_builder = client.request(method, &request.url);
-    for (key, val) in &request.headers {
-        req_builder = req_builder.header(key.as_str(), val.as_str());
-    }
-    if let Some(ref body) = request.body {
-        req_builder = req_builder.body(body.clone());
-    }
-
-    let start = Instant::now();
-    let resp = req_builder.send().await
-        .map_err(|e| format!("Studio request failed: {}", e))?;
-    let timing_ms = start.elapsed().as_millis();
-
-    let status = resp.status().as_u16();
-    let resp_headers: Vec<(String, String)> = resp.headers().iter()
-        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-        .collect();
-
-    const MAX_BODY: usize = 65_536;
-    let raw_bytes = resp.bytes().await
-        .map_err(|e| format!("Studio: failed to read response body: {}", e))?;
-    let body_truncated = raw_bytes.len() > MAX_BODY;
-    let body = String::from_utf8_lossy(&raw_bytes[..raw_bytes.len().min(MAX_BODY)]).into_owned();
-
-    Ok(StudioResponse { status, headers: resp_headers, body, body_truncated, timing_ms })
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -673,7 +565,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, studio_mutate, studio_send])
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report])
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);

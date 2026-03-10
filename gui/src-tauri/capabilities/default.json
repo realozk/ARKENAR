@@ -7,16 +7,32 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
     "opener:default",
-    "fs:default",
     "dialog:default",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DOCUMENT/arkenar/**" },
+        { "path": "$DESKTOP/**" }
+      ]
+    },
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [
         { "path": "$DOWNLOAD/**" },
-        { "path": "$DOCUMENT/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$HOME/**" }
+        { "path": "$DOCUMENT/arkenar/**" },
+        { "path": "$DESKTOP/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$DOCUMENT/arkenar/**" }
       ]
     },
     {

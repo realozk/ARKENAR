@@ -35,11 +35,18 @@ pub async fn run_katana_crawler(
 
     let args = vec!["-u", target, "-jsonl", "-silent", "-d", &depth_str, "-crawl-duration", &timeout_str];
 
-    let mut child = Command::new(binary)
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
+    let mut std_cmd = std::process::Command::new(&binary);
+    std_cmd.args(&args)
+           .stdout(Stdio::piped())
+           .stderr(Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = Command::from(std_cmd).spawn()?;
 
     let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("Failed to capture stdout from katana"))?;
     let reader = BufReader::new(stdout);

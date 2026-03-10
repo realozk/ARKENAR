@@ -1,1 +1,8 @@
 media/ export-ignore
+# Ignore GUI files from GitHub language statistics
+gui/src/** linguist-vendored
+gui/*.json linguist-vendored
+gui/*.ts linguist-vendored
+gui/*.js linguist-vendored
+gui/*.html linguist-vendored
+gui/*.css linguist-vendored

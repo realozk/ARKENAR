@@ -13,7 +13,7 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-    pub fn new(timeout_seconds: u64, proxy_url: Option<&str>, custom_headers: &[(String, String)]) -> Self {
+    pub fn new(timeout_seconds: u64, proxy_url: Option<&str>, custom_headers: &[(String, String)]) -> Result<Self, reqwest::Error> {
         let timeout = Duration::from_secs(timeout_seconds);
 
         let mut builder = ClientBuilder::new()
@@ -26,7 +26,7 @@ impl HttpClient {
             }
         }
 
-        let inner = builder.build().expect("failed to build reqwest client");
+        let inner = builder.build()?;
 
         let mut default_headers = HeaderMap::new();
         for (key, val) in custom_headers {
@@ -47,12 +47,12 @@ impl HttpClient {
              (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
         ];
 
-        Self {
+        Ok(Self {
             inner,
             user_agents,
             default_timeout: timeout,
             default_headers,
-        }
+        })
     }
 
     pub async fn send_request(&self, req: &HttpRequest) -> Result<Response, reqwest::Error> {

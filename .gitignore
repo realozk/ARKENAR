@@ -1,43 +1,39 @@
 
-/target
-/debug
+# Build outputs
+target/
+debug/
+
+# Rust
 **/*.rs.bk
-**/*.exe
-**/*.dll
-scan_results.json
+
+# Binaries
 *.exe
-/tools/
+*.dll
+
+# Secrets / keys — never commit these
+*.pem
+*.key
+
+# Environment — local secrets only, never commit
+.env
+.env.local
+.env.*.local
+
+# Editor
 .idea/
 .vscode/
 *.iml
 *.swp
 .DS_Store
 
-
-*-template.md
-checklist-template.md
-spec-template.md
-plan-template.md
-tasks-template.md
-agent-file-template.md
-
-.speckit/
-.specify/
-
-.env
-*.pem
+# Node
 node_modules/
-pnpm-lock.yaml 
-target/
 
-src-tauri/target/
-
-.vscode/
-.idea/
-
-.env
-.env.*
-
-gui/src-tauri/tools/
-
+# Generated / runtime files
+scan_results.json
+tsc_errors.txt
 repomix-output.xml
+*.json.bak
+gui/src-tauri/tools/
+gui/src-tauri/scan_results.json
+gui/src-tauri/arkenar_report.html

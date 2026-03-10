@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { X, Settings, PanelLeftClose, PanelLeft, Info } from "lucide-react";
+import { X, Settings, PanelLeftClose, PanelLeft, Info, Minus, Square } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry } from "./types";
 import { DEFAULT_CONFIG } from "./types";
@@ -181,6 +182,8 @@ function App() {
             setFindings([]);
             setActiveTab("terminal");
             invoke("start_scan", { config: { ...configRef.current, target: nextTarget, listFile: "" } }).catch(() => {
+              // Restore the remaining queue items so they aren't silently dropped.
+              setScanQueue(rest);
               setScanStatus("error");
             });
           }, 500);
@@ -446,7 +449,7 @@ function App() {
       {appSettings.enableStars && <Starfield isScanning={scanStatus === "running"} theme={appSettings.theme} />}
       {appSettings.enableStars && <Aurora />}
 
-      <header className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
+      <header data-tauri-drag-region className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
         <div className="flex items-center gap-4">
           <button
             onClick={() => setSidebarCollapsed(p => !p)}
@@ -546,6 +549,30 @@ function App() {
               {isHoldingSpace ? `${t("ready", appSettings.language)} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan", appSettings.language)}
             </button>
           )}
+          {/* Window Controls */}
+          <div className="flex items-center ml-3 border-l border-border-subtle pl-3 gap-0.5">
+            <button
+              onClick={() => getCurrentWindow().minimize()}
+              title="Minimize"
+              className="flex items-center justify-center w-[46px] h-[32px] text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-200 active:scale-90"
+            >
+              <Minus size={20} strokeWidth={2.5} />
+            </button>
+            <button
+              onClick={() => getCurrentWindow().toggleMaximize()}
+              title="Maximize / Restore"
+              className="flex items-center justify-center w-[46px] h-[32px] text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-200 active:scale-90"
+            >
+              <Square size={16} strokeWidth={2.5} />
+            </button>
+            <button
+              onClick={() => getCurrentWindow().close()}
+              title="Close"
+              className="flex items-center justify-center w-[46px] h-[32px] text-text-muted hover:bg-red-600 hover:text-white transition-all duration-200 active:scale-90"
+            >
+              <X size={20} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </header>
 

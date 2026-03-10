@@ -3,6 +3,8 @@
 **Designed for pentesters and offensive security pros, Arkenar acts as a central orchestration layer. It combines Katana and Nuclei, while layering on its own custom mutation engine to catch complex logic flaws and injections that static templates might miss.**
 ​
 
+**i will update thr readme just give sometime <3 **
+
 ## • Core Capabilities
 
 • **Hybrid Engine**: Seamlessly chains external tools (Katana, Nuclei) with native scanning logic for full-spectrum reconnaissance.
@@ -32,6 +34,9 @@
   <a href="https://github.com/projectdiscovery/nuclei">
     <img src="https://img.shields.io/badge/Nuclei-ProjectDiscovery?style=for-the-badge&labelColor=dc2626&color=0b1220&logo=github&logoColor=white">
   </a>
+  <a href="https://crates.io/crates/arkenar">
+    <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
+</a>
 
 ## Table of Contents
 
@@ -47,20 +52,34 @@
 
 ##  Preview
 
-<div align="center"> <img src="/media/arkenatee-ezgif.com-crop.gif" width="90%" alt="Arkenar Banner"> </div>
+<div align="center"> <img src="/media/demo.gif" width="90%" alt="Arkenar Banner"> </div>
 
 
 
 ##  Installation (Recommended)
 
-###  Windows 
+### GUI Desktop App
+
+Download the installer directly from [GitHub Releases](https://github.com/realozk/ARKENAR/releases/latest):
+
+| Platform | File |
+|----------|------|
+| **Windows** | `Arkenar_*_x64-setup.exe` — double-click, no admin required |
+| **Linux** | `arkenar_*_amd64.AppImage` (portable) or `arkenar_*_amd64.deb` |
+| **macOS** | `Arkenar_*_universal.dmg` — works on both Intel and Apple Silicon |
+
+The app auto-downloads Katana and Nuclei on first launch.
+
+---
+
+###  Windows (CLI)
 You can install **Arkenar** instantly using our automated PowerShell script. Copy and paste this command into your terminal:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
 
 ```
-### Linux & macOS
+### Linux & macOS (CLI)
 Run the following command to download and install automatically:
 
 ```bash

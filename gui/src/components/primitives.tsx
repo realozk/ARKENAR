@@ -311,29 +311,31 @@ export function ConfirmationModal({
 }
 
 
-export function Logo({ className = "", size = "md" }: { className?: string; size?: "sm" | "md" | "lg" }) {
-  const art = `      :::      :::::::::  :::    ::: :::::::::: ::::    :::     :::     ::::::::: 
-    :+: :+:    :+:    :+: :+:   :+:  :+:        :+:+:   :+:   :+: :+:   :+:    :+: 
-   +:+   +:+   +:+    +:+ +:+  +:+   +:+        :+:+:+  +:+  +:+   +:+  +:+    +:+ 
-  +#++:++#++:  +#++:++#:  +#++:++    +#++:++    +#+ +:+ +#+ +#++:++#++: +#++:++#:  
-  +#+     +#+  +#+    +#+ +#+  +#+   +#+        +#+  +#+#+# +#+     +#+ +#+    +#+ 
-  #+#     #+#  #+#    #+# #+#   #+#  #+#        #+#   #+#+# #+#     #+# #+#    #+# 
-  ###     ###  ###    ### ###    ### ########## ###    #### ###     ### ###    ### `;
+import iconUrl from "../assets/arkenar-icon.png";
 
-  const fontSize = size === "sm" ? "2.5px" : size === "lg" ? "6.5px" : "4px";
+export function Logo({ className = "", size = "md" }: { className?: string; size?: "sm" | "md" | "lg" }) {
+  const sizeClasses = {
+    sm: "w-6 h-6",
+    md: "w-8 h-8",
+    lg: "w-14 h-14"
+  };
+
+  const textSizeClasses = {
+    sm: "text-xl",
+    md: "text-2xl",
+    lg: "text-4xl"
+  };
 
   return (
-    <pre
-      dir="ltr"
-      className={`font-mono leading-[1.1] select-none pointer-events-none text-text-primary font-bold whitespace-pre text-center ${className}`}
-      style={{
-        fontSize,
-        letterSpacing: "0.1em",
-        transform: "skewX(-15deg)",
-        textShadow: "0 0 1px currentColor, 0 0 12px var(--color-accent-dim)"
-      }}
-    >
-      {art}
-    </pre>
+    <div className={`flex items-center gap-3 pointer-events-none select-none ${className}`}>
+      <img
+        src={iconUrl}
+        alt="Arkenar Logo"
+        className={`${sizeClasses[size]} object-contain drop-shadow-[0_0_1px_rgba(255,255,255,0.4)] antialiased shrink-0`}
+      />
+      <span className={`font-mono font-bold tracking-[0.15em] text-text-primary ${textSizeClasses[size]} drop-shadow-[0_0_12px_var(--color-accent-dim)]`}>
+        ARKENAR
+      </span>
+    </div>
   );
 }

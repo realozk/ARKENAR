@@ -1,15 +1,18 @@
 [package]
-name = "arkenar-cli"
-version = "1.0.0"
+name = "arkenar"
+version = "1.0.3"
 edition = "2021"
 description = "CLI frontend for the Arkenar vulnerability scanner."
+license = "MIT"
+repository = "https://github.com/RealOzk/ARKENAR"
+homepage = "https://github.com/RealOzk/ARKENAR"
 
 [[bin]]
 name = "arkenar"
 path = "src/main.rs"
 
 [dependencies]
-arkenar-core = { path = "../core" }
+arkenar-core = { version = "1.0.3", path = "../core" }
 clap = { version = "4.0", features = ["derive"] }
 colored = "2.0"
 tokio = { version = "1.0", features = ["full"] }

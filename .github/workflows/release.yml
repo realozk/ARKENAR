@@ -1,63 +1,271 @@
-name: Release
+name: Release Arkenar GUI
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+*'  # v1.0.1, v1.0.1-beta, v1.1.0-rc1, etc.
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  build-and-package:
-    name: Build for ${{ matrix.os }} (${{ matrix.target }})
+  build-tauri:
+    name: Build GUI — ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+
     strategy:
+      fail-fast: false 
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            archive_name: arkenar-linux-amd64.tar.gz
-            binary_name: arkenar
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive_name: arkenar-windows-amd64.zip
-            binary_name: arkenar.exe
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            archive_name: arkenar-macos-amd64.tar.gz
-            binary_name: arkenar
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            archive_name: arkenar-macos-arm64.tar.gz
-            binary_name: arkenar
+          - platform: windows
+            os: windows-latest
+          - platform: linux
+            os: ubuntu-22.04
+          - platform: macos
+            os: macos-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Use Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: gui/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: gui
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            pkg-config
+
+      - name: Install macOS build dependencies
+        if: matrix.platform == 'macos'
+        run: brew install create-dmg
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          projectPath: gui
+          tagName: ${{ github.ref_name }}
+          releaseName: "Arkenar ${{ github.ref_name }}"
+          releaseBody: |
+            ## Arkenar ${{ github.ref_name }}
+
+            ###  Downloads
+
+            #### GUI (Desktop App)
+            | Platform | File |
+            |----------|------|
+            | Windows  | `Arkenar_*_x64-setup.exe` (NSIS installer, no admin required) |
+            | Linux    | `arkenar_*_amd64.AppImage` or `arkenar_*_amd64.deb` |
+            | macOS    | `Arkenar_*_universal.dmg` |
+
+            #### CLI (Command Line)
+            | Platform | One-command install |
+            |----------|---------------------|
+            | Windows  | `irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 \| iex` |
+            | Linux / macOS | `curl -sL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh \| bash` |
+
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+
+  update-latest-json:
+    name: Update latest.json
+    runs-on: ubuntu-22.04
+    needs: build-tauri
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build latest.json from release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${TAG#v}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          fetch_sig() {
+            local asset="$1"
+            gh release download "$TAG" --repo "$REPO" --pattern "${asset}.sig" --output - 2>/dev/null || echo ""
+          }
+
+          WIN_ASSET="Arkenar_${VERSION}_x64-setup.exe"
+          LINUX_ASSET="Arkenar_${VERSION}_amd64.AppImage"
+          MAC_X64_ASSET="Arkenar_${VERSION}_x64.dmg"
+          MAC_ARM_ASSET="Arkenar_${VERSION}_aarch64.dmg"
+
+          WIN_SIG=$(fetch_sig "$WIN_ASSET")
+          LINUX_SIG=$(fetch_sig "$LINUX_ASSET")
+          MAC_X64_SIG=$(fetch_sig "$MAC_X64_ASSET")
+          MAC_ARM_SIG=$(fetch_sig "$MAC_ARM_ASSET")
+
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+
+          cat > latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "See the CHANGELOG for details.",
+            "pub_date": "${DATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "${BASE}/${WIN_ASSET}"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG}",
+                "url": "${BASE}/${LINUX_ASSET}"
+              },
+              "darwin-x86_64": {
+                "signature": "${MAC_X64_SIG}",
+                "url": "${BASE}/${MAC_X64_ASSET}"
+              },
+              "darwin-aarch64": {
+                "signature": "${MAC_ARM_SIG}",
+                "url": "${BASE}/${MAC_ARM_ASSET}"
+              }
+            }
+          }
+          EOF
+
+      - name: Commit and open PR for latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="chore/update-latest-json-${{ github.ref_name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git checkout -B "$BRANCH"
+          git commit -m "chore: update latest.json for ${{ github.ref_name }}"
+          git push --force origin "$BRANCH"
+          existing_pr=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$existing_pr" ]; then
+            echo "PR #$existing_pr already exists, updated branch."
+          else
+            gh pr create \
+              --title "chore: update latest.json for ${{ github.ref_name }}" \
+              --body "Auto-generated PR to update \`latest.json\` for release **${{ github.ref_name }}**." \
+              --base main \
+              --head "$BRANCH"
+          fi
+
+  build-cli:
+    name: Build CLI — ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    needs: build-tauri
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            asset_name: arkenar-windows-amd64.zip
+            archive: zip
+
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            asset_name: arkenar-linux-amd64.tar.gz
+            archive: tar
+
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            asset_name: arkenar-linux-arm64.tar.gz
+            archive: tar
+            cross: true
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            asset_name: arkenar-macos-amd64.tar.gz
+            archive: tar
+
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            asset_name: arkenar-macos-arm64.tar.gz
+            archive: tar
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable + target
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build Release
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Package Artifacts
-        shell: bash
-        run: |
-          mkdir -p dist
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/ARKENAR.exe
-            powershell Compress-Archive -Path dist/ARKENAR.exe -DestinationPath ${{ matrix.archive_name }} -Force
-          else
-            cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/arkenar
-            tar -czf ${{ matrix.archive_name }} -C dist arkenar
-          fi
-
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
         with:
-          files: |
-            ${{ matrix.archive_name }}
-            ${{ matrix.os == 'windows-latest' && 'dist/ARKENAR.exe' || '' }}
+          workspaces: ". -> target"
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross == true
+        run: cargo install cross --locked
+
+      - name: Build CLI binary
+        if: matrix.cross != true
+        run: cargo build -p arkenar --release --target ${{ matrix.target }}
+
+      - name: Build CLI binary (cross)
+        if: matrix.cross == true
+        run: cross build -p arkenar --release --target ${{ matrix.target }}
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $bin = "target/${{ matrix.target }}/release/arkenar.exe"
+          Compress-Archive -Path $bin -DestinationPath ${{ matrix.asset_name }}
+
+      - name: Package (Linux / macOS)
+        if: matrix.archive == 'tar'
+        run: |
+          BIN="target/${{ matrix.target }}/release/arkenar"
+          tar -czf ${{ matrix.asset_name }} -C "$(dirname $BIN)" "$(basename $BIN)"
+
+      - name: Upload CLI asset to GitHub Release
+        run: gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

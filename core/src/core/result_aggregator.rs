@@ -21,19 +21,29 @@ pub struct ScanResult {
 
 impl ScanResult {
     /// Builds a curl command that reproduces this finding.
+    ///
+    /// Values from external server responses (headers, body) are shell-quoted
+    /// using POSIX single-quote escaping so the reproduce string is safe to
+    /// copy-paste into a terminal without shell injection risk.
     pub fn to_curl(&self) -> String {
-        let mut parts = vec![format!("curl -X {} '{}'", self.method, self.url)];
+        let mut parts = vec![format!("curl -X {} {}", self.method, shell_quote(&self.url))];
         for (k, v) in &self.request_headers {
-            parts.push(format!("-H '{}: {}'", k, v));
+            parts.push(format!("-H {}", shell_quote(&format!("{}: {}", k, v))));
         }
         if let Some(ref body) = self.request_body {
             if !body.is_empty() {
-                parts.push(format!("-d '{}'", body));
+                parts.push(format!("--data-raw {}", shell_quote(body)));
             }
         }
         parts.push("--insecure".to_string());
         parts.join(" ")
     }
+}
+
+/// POSIX single-quote escaping: wraps `s` in single-quotes and escapes any
+/// embedded single-quotes as `'\''`.
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.split('\'').collect::<Vec<_>>().join("'\\''" ))
 }
 
 /// Builds a deduplication key from URL base path + vulnerability type.
@@ -62,16 +72,22 @@ impl ResultAggregator {
         output_path: &str,
         sink: SinkRef,
     ) -> Vec<ScanResult> {
-        let mut file = match std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(output_path)
-        {
-            Ok(f) => f,
-            Err(e) => {
-                sink.on_log("error", &format!("[!] Failed to open output file '{}': {}", output_path, e));
-                return Vec::new();
+        // Open the output file once; if it fails, log the error but continue
+        // collecting results in memory so no findings are silently discarded.
+        let mut file = if !output_path.is_empty() {
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(output_path)
+            {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    sink.on_log("error", &format!("[!] Failed to open output file '{}': {} — results will not be persisted to disk.", output_path, e));
+                    None
+                }
             }
+        } else {
+            None
         };
 
         let mut results = Vec::new();
@@ -85,8 +101,10 @@ impl ResultAggregator {
 
             sink.on_finding(&result);
 
-            if let Ok(line) = serde_json::to_string(&result) {
-                let _ = writeln!(file, "{}", line);
+            if let Some(ref mut f) = file {
+                if let Ok(line) = serde_json::to_string(&result) {
+                    let _ = writeln!(f, "{}", line);
+                }
             }
 
             results.push(result);
@@ -100,13 +118,32 @@ impl ResultAggregator {
         if vulns.is_empty() {
             sink.on_log("success", "[+] No vulnerabilities found.");
         } else {
-            sink.on_log("warn", &format!("[+] {} finding(s) discovered:", vulns.len()));
+            let critical: Vec<&&ScanResult> = vulns.iter().filter(|r| {
+                let v = r.vuln_type.to_lowercase();
+                v.contains("sqli") || v.contains("sql")
+            }).collect();
+            let medium_count = vulns.len() - critical.len();
+
+            sink.on_log("phase", "");
+            sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            sink.on_log("phase", &format!("  SCAN RESULTS — {} finding(s)", vulns.len()));
+            sink.on_log("phase", &format!("  {} Critical  |  {} Medium", critical.len(), medium_count));
+            sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
             for (i, v) in vulns.iter().enumerate() {
-                sink.on_log("error", &format!(
-                    "  #{} {} → {} (payload: {})",
-                    i + 1, v.vuln_type, v.url, v.payload
+                let severity = {
+                    let vl = v.vuln_type.to_lowercase();
+                    if vl.contains("sqli") || vl.contains("sql") { "CRITICAL" } else { "MEDIUM" }
+                };
+                let level = if severity == "CRITICAL" { "error" } else { "warn" };
+                sink.on_log(level, &format!(
+                    "  #{} [{}] {} → {}",
+                    i + 1, severity, v.vuln_type, v.url
                 ));
             }
+
+            sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            sink.on_log("phase", "");
         }
     }
 }

@@ -335,9 +335,18 @@ fn url_encode(input: &str) -> String {
         .replace("%20", "+")
 }
 
-/// Updates the Content-Length header based on the current body size
+/// Updates the Content-Length header based on the current body size.
+/// Only inserts the header when the request actually has a body;
+/// setting Content-Length: 0 on GET requests can trip WAFs and cause
+/// unexpected server behaviour.
 fn update_content_length(req: &mut HttpRequest) {
     let body_len = req.body.len();
+    if body_len == 0 {
+        // Remove any existing Content-Length so we don't send "Content-Length: 0"
+        // on requests that have no body (e.g. mutated GET requests).
+        req.headers.remove(CONTENT_LENGTH);
+        return;
+    }
     if let Ok(value) = HeaderValue::from_str(&body_len.to_string()) {
         req.headers.insert(CONTENT_LENGTH, value);
     }

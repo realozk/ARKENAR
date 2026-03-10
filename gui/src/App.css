@@ -21,10 +21,10 @@
   --color-text-muted: #64647a;
   --color-text-ghost: #3e3e52;
 
-  /* Accent — orange brand */
+  /* Accent — orange */
   --color-accent: #EA580C;
   --color-accent-dim: rgba(234, 88, 12, 0.10);
-  --color-accent-hover: #F97316;
+  --color-accent-hover: #ff630d;
   --color-accent-text: #EA580C;
 
   /* Status */
@@ -61,201 +61,23 @@
   --gradient-surface: linear-gradient(180deg, #121216 0%, #0d0d10 100%);
 }
 
-/* ☀️ Light — Clean White Studio */
+/* ☀ Light — Clean Slate */
 [data-theme="light"] {
-  /* Main wrapper is transparent — canvas shines through */
-  --color-bg-root: transparent;
-  /* Panels are frosted glass */
-  --color-bg-panel: rgba(255, 255, 255, 0.22);
-  --color-bg-terminal: rgba(255, 255, 255, 0.18);
-  --color-bg-card: rgba(255, 255, 255, 0.18);
-  --color-bg-input: rgba(255, 255, 255, 0.55);
-  --color-bg-hover: rgba(0, 0, 0, 0.06);
-
-  --color-border-subtle: rgba(0, 0, 0, 0.11);
-  --color-border-hover: rgba(0, 0, 0, 0.18);
-
-  --color-text-primary: #0e0e14;
-  --color-text-secondary: #42424e;
-  --color-text-muted: #72728a;
-  --color-text-ghost: #8e8ea8;
-
-  --color-status-idle: #b0b0c8;
-
-  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.10);
-  --shadow-accent-glow: 0 0 24px rgba(0, 213, 190, 0.10), 0 0 48px rgba(0, 213, 190, 0.04);
-  --shadow-accent-btn: 0 0 20px rgba(0, 213, 190, 0.18), 0 0 40px rgba(0, 213, 190, 0.06);
-
-  --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(245, 247, 250, 0.78) 100%);
-  --glass-tint: rgba(255, 255, 255, 0.25);
-  --glass-border: rgba(0, 0, 0, 0.10);
-}
-
-/* html gets the ambient page colour — canvas draws ABOVE this.
-   Body must NOT have a background or it paints over the canvas. */
-[data-theme="light"] html {
-  background: #d8dae2;
-}
-
-[data-theme="light"] body {
-  background: transparent;
-}
-
-
-/* ── Light: scrollbar ─────────────────────────────────────────── */
-[data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.18);
-}
-
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.30);
-}
-
-/* ── Light: body — transparent so canvas shows, use white glass tint ─ */
-[data-theme="light"] body {
-  background-image: none;
-}
-
-/* ── Light: glass containers — frosted glass with blur ─────────── */
-[data-theme="light"] aside,
-[data-theme="light"] header,
-[data-theme="light"] .settings-panel,
-[data-theme="light"] .finding-card {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
-}
-
-/* ── Light: terminal hover row ───────────────────────────────── */
-[data-theme="light"] .terminal-line:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-/* ── Light: inactive tab text — make it clearly readable ─────── */
-[data-theme="light"] .text-text-ghost {
-  color: var(--color-text-ghost);
-}
-
-/* ── Light: active tab pill needs a visible shadow ───────────── */
-[data-theme="light"] .bg-bg-hover {
-  background: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-
-/* ── Light: hover-row-glow ───────────────────────────────────── */
-[data-theme="light"] .hover-row-glow:hover {
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0%, transparent 100%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.07);
-}
-
-/* ── Light: settings panel shadow ───────────────────────────── */
-[data-theme="light"] .settings-panel {
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.08),
-    0 24px 64px rgba(0, 0, 0, 0.16),
-    0 8px 24px rgba(0, 0, 0, 0.10);
-}
-
-/* ── Light: finding/stat card hover ─────────────────────────── */
-[data-theme="light"] .finding-card:hover,
-[data-theme="light"] .stat-card:hover {
-  background: rgba(0, 0, 0, 0.05) !important;
-  box-shadow: inset 0 0 0 1px var(--color-border-focus),
-    0 4px 16px rgba(0, 0, 0, 0.10),
-    0 0 24px rgba(0, 213, 190, 0.06);
-}
-
-/* ── Light: toggle track inactive ───────────────────────────── */
-[data-theme="light"] .toggle-track {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-/* ── Light: settings overlay backdrop ───────────────────────── */
-[data-theme="light"] .settings-overlay {
-  background: rgba(80, 80, 110, 0.30);
-}
-
-/* ── Light: text selection ───────────────────────────────────── */
-[data-theme="light"] ::selection {
-  background: rgba(0, 213, 190, 0.20);
-  color: #006860;
-}
-
-/* ── Light: range slider track ───────────────────────────────── */
-[data-theme="light"] .range-slider {
-  background: rgba(0, 0, 0, 0.12);
-}
-
-/* ── Light: stat card + finding card — frosted glass ─────────── */
-[data-theme="light"] .finding-card,
-[data-theme="light"] .stat-card {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
-}
-
-/* ── Light: bg-bg-card elements (generic cards/sections) ─────── */
-[data-theme="light"] .bg-bg-card {
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-/* ── Light: bg-bg-panel elements ─────────────────────────────── */
-[data-theme="light"] .bg-bg-panel {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-/* ── Light: bg-bg-terminal (main terminal/tab container) ─────── */
-[data-theme="light"] .bg-bg-terminal {
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-/* ── Light: neon label — no glow on white ────────────────────── */
-[data-theme="light"] .neon-label {
-  text-shadow: none;
-}
-
-/* ── Light: text-bg-root — fix transparent text on accent buttons ── */
-/* --color-bg-root is `transparent` for the glass layout trick,
-   but text-bg-root is used for text ON accent (teal) backgrounds.
-   Override it to near-black so it reads clearly. */
-[data-theme="light"] .text-bg-root {
-  color: #ffffff;
-}
-
-/* ── Light: inner bg-bg-root (history cells, code blocks) ───────── */
-/* Only apply a surface colour when INSIDE a panel — NOT the main wrapper */
-[data-theme="light"] .bg-bg-panel .bg-bg-root,
-[data-theme="light"] .bg-bg-terminal .bg-bg-root,
-[data-theme="light"] .bg-bg-card .bg-bg-root {
-  background-color: rgba(220, 222, 230, 0.65);
-}
-
-/* ── Light: toolbar button base ──────────────────────────────── */
-/* Give ghost toolbar buttons a more visible surface in light mode */
-[data-theme="light"] .group.bg-bg-card {
-  background-color: rgba(255, 255, 255, 0.55) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10), inset 0 0 0 1px rgba(0, 0, 0, 0.09);
-}
-
-/* ── Light: danger-ghost button hover — vivid red glow ──────── */
-[data-theme="light"] .btn-danger-ghost:hover {
-  background: rgba(244, 63, 94, 0.12) !important;
-  border-color: rgba(244, 63, 94, 0.50) !important;
-  color: var(--color-status-critical) !important;
-  box-shadow: 0 0 12px rgba(244, 63, 94, 0.30), 0 0 24px rgba(244, 63, 94, 0.10) !important;
-}
-
-/* ── Light: danger-ghost icon — red on hover via group ──────── */
-[data-theme="light"] .group:hover .group-hover\:text-status-critical {
-  color: var(--color-status-critical) !important;
-}
-
-/* ── Light: accent icon — teal on hover via group ───────────── */
-[data-theme="light"] .group:hover .group-hover\:text-accent-text {
-  color: var(--color-accent-text) !important;
+  --color-bg-root: #f8fafc;
+  --color-bg-panel: #ffffff;
+  --color-bg-terminal: #ffffff;
+  --color-bg-card: #ffffff;
+  --color-bg-input: #f1f5f9;
+  --color-bg-hover: rgba(15, 23, 42, 0.04);
+  --color-border-subtle: rgba(15, 23, 42, 0.1);
+  --color-border-hover: rgba(15, 23, 42, 0.2);
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-ghost: #94a3b8;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --glass-tint: rgba(15, 23, 42, 0.04);
 }
 
 /* 🪐 Cosmic — Deep Space Mystery */
@@ -476,6 +298,50 @@ input[type="number"] {
   display: block;
   height: auto !important;
   margin-bottom: 4px;
+}
+
+.terminal-line:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.terminal-line:nth-child(2) {
+  animation-delay: 0.10s;
+}
+
+.terminal-line:nth-child(3) {
+  animation-delay: 0.15s;
+}
+
+.terminal-line:nth-child(4) {
+  animation-delay: 0.20s;
+}
+
+.terminal-line:nth-child(5) {
+  animation-delay: 0.25s;
+}
+
+.terminal-line:nth-child(6) {
+  animation-delay: 0.30s;
+}
+
+.terminal-line:nth-child(7) {
+  animation-delay: 0.35s;
+}
+
+.terminal-line:nth-child(8) {
+  animation-delay: 0.40s;
+}
+
+.terminal-line:nth-child(9) {
+  animation-delay: 0.45s;
+}
+
+.terminal-line:nth-child(10) {
+  animation-delay: 0.50s;
+}
+
+.terminal-line:nth-child(n+11) {
+  animation-delay: 0.50s;
 }
 
 .terminal-line:hover {
@@ -923,7 +789,24 @@ header,
   transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 
+[data-theme="light"] {
 
+  /* Fix toggle visibility in Light Mode */
+  .toggle-track {
+    background: #cbd5e1;
+    /* Tailwind slate-300 for solid visibility */
+    border: inset 1px rgba(0, 0, 0, 0.05);
+  }
+
+  .toggle-track.active {
+    background: var(--color-accent);
+    border: none;
+  }
+
+  .toggle-thumb {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+}
 
 @keyframes loading-swipe {
   from {
@@ -942,17 +825,4 @@ header,
       rgba(255, 255, 255, 0.4) 50%,
       var(--color-accent) 100%) !important;
   animation: loading-swipe 1s linear infinite !important;
-}
-
-/* Start Scan button — always status-success green regardless of accent colour */
-.start-scan-btn.animate-loading-swipe {
-  background-image: linear-gradient(90deg,
-      #10b981 0%,
-      rgba(255, 255, 255, 0.55) 50%,
-      #10b981 100%) !important;
-}
-
-.bg-bg-terminal {
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
 }
