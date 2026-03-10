@@ -100,12 +100,10 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
 
-  # Job 2: Build the CLI binary for every platform and upload to the same
-  # GitHub Release that the GUI job created above.
   build-cli:
     name: Build CLI — ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    needs: build-tauri   # wait for the release to exist before uploading assets
+    needs: build-tauri
 
     strategy:
       fail-fast: false
@@ -152,11 +150,11 @@ jobs:
           workspaces: ". -> target"
           key: ${{ matrix.target }}
 
-      - name: Install cross (for aarch64-linux)
+      - name: Install cross
         if: matrix.cross == true
         run: cargo install cross --locked
 
-      - name: Build CLI binary (native)
+      - name: Build CLI binary
         if: matrix.cross != true
         run: cargo build -p arkenar-cli --release --target ${{ matrix.target }}
 
@@ -164,14 +162,14 @@ jobs:
         if: matrix.cross == true
         run: cross build -p arkenar-cli --release --target ${{ matrix.target }}
 
-      - name: Package — zip (Windows)
+      - name: Package (Windows)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
           $bin = "target/${{ matrix.target }}/release/arkenar.exe"
           Compress-Archive -Path $bin -DestinationPath ${{ matrix.asset_name }}
 
-      - name: Package — tar.gz (Linux / macOS)
+      - name: Package (Linux / macOS)
         if: matrix.archive == 'tar'
         run: |
           BIN="target/${{ matrix.target }}/release/arkenar"
