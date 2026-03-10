@@ -156,11 +156,11 @@ jobs:
 
       - name: Build CLI binary
         if: matrix.cross != true
-        run: cargo build -p arkenar-cli --release --target ${{ matrix.target }}
+        run: cargo build -p arkenar --release --target ${{ matrix.target }}
 
       - name: Build CLI binary (cross)
         if: matrix.cross == true
-        run: cross build -p arkenar-cli --release --target ${{ matrix.target }}
+        run: cross build -p arkenar --release --target ${{ matrix.target }}
 
       - name: Package (Windows)
         if: matrix.archive == 'zip'
