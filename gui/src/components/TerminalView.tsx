@@ -562,7 +562,8 @@ export function TerminalView({
                   style={{ '--i': i % 50 } as React.CSSProperties}
                 >
                   <span className="text-text-ghost select-none mr-3">{log.time}</span>
-                  {log.message}
+                  <span className="font-bold mr-2 opacity-80">[{log.level === 'error' ? 'CRITICAL' : log.level.toUpperCase()}]</span>
+                  <span>{log.message}</span>
                 </div>
               ))}
             </div>

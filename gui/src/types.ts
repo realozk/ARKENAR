@@ -19,6 +19,7 @@ export interface ScanConfig {
   crawlerMaxUrls: number;
   crawlerTimeout: number;
   webhookUrl?: string;
+  htmlReport: boolean;
 }
 
 export type LogLevel = "info" | "success" | "error" | "warn" | "phase";
@@ -88,4 +89,5 @@ export const DEFAULT_CONFIG: ScanConfig = {
   crawlerMaxUrls: 50,
   crawlerTimeout: 60,
   webhookUrl: "",
+  htmlReport: false,
 };

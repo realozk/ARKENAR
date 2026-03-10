@@ -38,34 +38,42 @@ fn get_tool_binary_name(tool: &str) -> String {
     }
 }
 
+// Tool version pins — update these when new releases are available.
+// Check: https://github.com/projectdiscovery/katana/releases
+//        https://github.com/projectdiscovery/nuclei/releases
+const KATANA_VERSION: &str = "1.1.0";
+const NUCLEI_VERSION: &str = "3.3.5";
+
 /// Returns the download URL for a given tool on the current platform.
-fn get_tool_download_url(tool: &str) -> &'static str {
+fn get_tool_download_url(tool: &str) -> String {
     match tool {
         "katana" => {
+            let v = KATANA_VERSION;
             if cfg!(target_os = "windows") {
-                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_windows_amd64.zip"
+                format!("https://github.com/projectdiscovery/katana/releases/download/v{}/katana_{}_windows_amd64.zip", v, v)
             } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
-                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_macOS_arm64.zip"
+                format!("https://github.com/projectdiscovery/katana/releases/download/v{}/katana_{}_macOS_arm64.zip", v, v)
             } else if cfg!(target_os = "macos") {
-                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_macOS_amd64.zip"
+                format!("https://github.com/projectdiscovery/katana/releases/download/v{}/katana_{}_macOS_amd64.zip", v, v)
             } else {
-                "https://github.com/projectdiscovery/katana/releases/download/v1.1.0/katana_1.1.0_linux_amd64.zip"
+                format!("https://github.com/projectdiscovery/katana/releases/download/v{}/katana_{}_linux_amd64.zip", v, v)
             }
         }
         "nuclei" => {
+            let v = NUCLEI_VERSION;
             if cfg!(target_os = "windows") {
-                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_windows_amd64.zip"
+                format!("https://github.com/projectdiscovery/nuclei/releases/download/v{}/nuclei_{}_windows_amd64.zip", v, v)
             } else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
-                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_macOS_arm64.zip"
+                format!("https://github.com/projectdiscovery/nuclei/releases/download/v{}/nuclei_{}_macOS_arm64.zip", v, v)
             } else if cfg!(target_os = "macos") {
-                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_macOS_amd64.zip"
+                format!("https://github.com/projectdiscovery/nuclei/releases/download/v{}/nuclei_{}_macOS_amd64.zip", v, v)
             } else {
-                "https://github.com/projectdiscovery/nuclei/releases/download/v3.2.4/nuclei_3.2.4_linux_amd64.zip"
+                format!("https://github.com/projectdiscovery/nuclei/releases/download/v{}/nuclei_{}_linux_amd64.zip", v, v)
             }
         }
         _ => {
             eprintln!("[!] Installer: unknown tool '{}' requested", tool);
-            return "";
+            return String::new();
         }
     }
 }
@@ -88,14 +96,14 @@ pub async fn check_and_install_tools() {
 
     if !tools_dir.join(&katana_bin).exists() {
         print!("{}\r\n", "[*] Katana not found. Downloading...".yellow());
-        download_and_extract(get_tool_download_url("katana"), tools_dir).await;
+        download_and_extract(&get_tool_download_url("katana"), tools_dir).await;
     } else {
-        print!("{}\r\n", "[+] Katana found.".green());
+        print!("{}", "[+] Katana found.\r\n".green());
     }
 
     if !tools_dir.join(&nuclei_bin).exists() {
-        print!("{}\r\n", "[*] Nuclei not found. Downloading...".yellow());
-        download_and_extract(get_tool_download_url("nuclei"), tools_dir).await;
+        print!("{}", "[*] Nuclei not found. Downloading...\r\n".yellow());
+        download_and_extract(&get_tool_download_url("nuclei"), tools_dir).await;
     } else {
         print!("{}\r\n", "[+] Nuclei found.".green());
     }

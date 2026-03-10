@@ -152,7 +152,14 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     validate_text_field("headers",  &config.headers)?;
     validate_text_field("payloads", &config.payloads)?;
     validate_text_field("output",   &config.output)?;
-    validate_text_field("target",   &config.target)?;
+    // Target is a URL: only block chars that cause header injection or null-byte
+    // issues. Parentheses and other URL-legal characters must be permitted.
+    if config.target.chars().any(|c| matches!(c, '\n' | '\r' | '\0')) {
+        return Err("Field 'target' contains forbidden characters.".to_string());
+    }
+    if config.target.contains("../") || config.target.contains("..\\") {
+        return Err("Field 'target' contains a path-traversal sequence.".to_string());
+    }
     validate_text_field("listFile", &config.list_file)?;
 
     if !config.target.is_empty() {
@@ -313,7 +320,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                 targets: total_targets, urls: 0, critical: 0, medium: 0, safe: 0,
                 elapsed: format!("{:.1}s", start_time.elapsed().as_secs_f64()),
             });
-            SCAN_RUNNING.store(false, Ordering::SeqCst);
             return;
         }
 
@@ -322,7 +328,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         let mut total_urls: usize = 0;
         let mut total_critical: usize = 0;
         let mut total_medium: usize = 0;
-        let total_safe: usize = 0;
+        let mut total_safe: usize = 0;
 
         for (i, target) in targets.iter().enumerate() {
             if abort_flag.load(Ordering::SeqCst) {
@@ -392,6 +398,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             };
 
             let (result_tx, result_rx) = mpsc::channel::<ScanResult>(200);
+            let scanned_count = target_manager.len();
             let engine = ScanEngine::new(
                 target_manager,
                 Arc::clone(&http_client),
@@ -414,6 +421,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let _ = engine_handle.await;
             if let Ok(results) = aggregator_handle.await {
+                let mut vulnerable_urls = std::collections::HashSet::new();
                 for r in &results {
                     let vl = r.vuln_type.to_lowercase();
                     if vl.contains("sqli") || vl.contains("sql injection") {
@@ -421,9 +429,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                     } else {
                         total_medium += 1;
                     }
+                    vulnerable_urls.insert(r.url.clone());
                 }
-                // Do NOT add results.len() here — results are vulnerability findings,
-                // not URLs. total_urls already tracks crawled URLs above.
+                // Safe = scanned URLs that had no findings.
+                total_safe += scanned_count.saturating_sub(vulnerable_urls.len());
             }
         }  // end target loop
 
@@ -534,6 +543,14 @@ async fn export_report(
 ) -> Result<String, String> {
     if output_path.is_empty() {
         return Err("Output path must not be empty.".to_string());
+    }
+    // Prevent path traversal and restrict to .html / .htm outputs.
+    if output_path.contains("..") {
+        return Err("Report path must not contain '..'.".to_string());
+    }
+    let lower = output_path.to_lowercase();
+    if !lower.ends_with(".html") && !lower.ends_with(".htm") {
+        return Err("Report path must end with .html or .htm.".to_string());
     }
     let html = reporting::generate_html_report(&findings, &config, &elapsed);
     std::fs::write(&output_path, html)
