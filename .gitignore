@@ -9,11 +9,15 @@ debug/
 # Binaries
 *.exe
 *.dll
+
+# Secrets / keys — never commit these
 *.pem
+*.key
 
 # Environment
 .env
 .env.*
+.env.local
 
 # Editor
 .idea/

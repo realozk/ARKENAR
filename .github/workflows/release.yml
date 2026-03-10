@@ -74,6 +74,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: gui
           tagName: ${{ github.ref_name }}
@@ -99,6 +101,79 @@ jobs:
             See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+
+  update-latest-json:
+    name: Update latest.json
+    runs-on: ubuntu-22.04
+    needs: build-tauri
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build latest.json from release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${TAG#v}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          fetch_sig() {
+            local asset="$1"
+            gh release download "$TAG" --repo "$REPO" --pattern "${asset}.sig" --output - 2>/dev/null || echo ""
+          }
+
+          WIN_ASSET="Arkenar_${VERSION}_x64-setup.exe"
+          LINUX_ASSET="Arkenar_${VERSION}_amd64.AppImage"
+          MAC_X64_ASSET="Arkenar_${VERSION}_x64.dmg"
+          MAC_ARM_ASSET="Arkenar_${VERSION}_aarch64.dmg"
+
+          WIN_SIG=$(fetch_sig "$WIN_ASSET")
+          LINUX_SIG=$(fetch_sig "$LINUX_ASSET")
+          MAC_X64_SIG=$(fetch_sig "$MAC_X64_ASSET")
+          MAC_ARM_SIG=$(fetch_sig "$MAC_ARM_ASSET")
+
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+
+          cat > latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "notes": "See the CHANGELOG for details.",
+            "pub_date": "${DATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WIN_SIG}",
+                "url": "${BASE}/${WIN_ASSET}"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG}",
+                "url": "${BASE}/${LINUX_ASSET}"
+              },
+              "darwin-x86_64": {
+                "signature": "${MAC_X64_SIG}",
+                "url": "${BASE}/${MAC_X64_ASSET}"
+              },
+              "darwin-aarch64": {
+                "signature": "${MAC_ARM_SIG}",
+                "url": "${BASE}/${MAC_ARM_ASSET}"
+              }
+            }
+          }
+          EOF
+
+      - name: Commit and push latest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: update latest.json for ${{ github.ref_name }}"
+          git push origin main
 
   build-cli:
     name: Build CLI — ${{ matrix.target }}
