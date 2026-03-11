@@ -88,7 +88,7 @@ tbody tr:hover {{ background: rgba(255,255,255,0.03); }}
 <body>
 <div class="header">
     <h1>🛡 Arkenar Scan Report</h1>
-    <span class="badge">v1.0.3</span>
+    <span class="badge">v1.0.4</span>
 </div>
 
 <div class="meta">

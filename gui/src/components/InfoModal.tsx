@@ -68,7 +68,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                         </div>
                         <div className="flex items-center gap-3 mb-2">
                             <span className="rounded-full bg-accent/10 px-2 py-0.5 font-mono text-[9px] font-black tracking-widest text-accent-text border border-accent/20 shadow-[0_0_15px_var(--color-accent-dim)] uppercase">
-                                v1.0.3
+                                v1.0.4
                             </span>
                         </div>
                         <p className="text-sm font-medium text-text-secondary max-w-[300px] leading-relaxed">
@@ -80,7 +80,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                     <section>
                         <div className="flex items-center justify-between">
                             <SectionLabel icon={Sparkles}>{t("whatsNew", language)}</SectionLabel>
-                            <span className="text-[10px] font-mono font-bold text-text-ghost uppercase opacity-50">v1.0.3</span>
+                            <span className="text-[10px] font-mono font-bold text-text-ghost uppercase opacity-50">v1.0.4</span>
                         </div>
 
                         <ul className="space-y-3.5 mt-4 text-sm text-text-secondary">
