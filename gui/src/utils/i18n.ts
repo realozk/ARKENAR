@@ -160,6 +160,16 @@ export const translations = {
         vulnDescription: "Description",
         vulnImpact: "Impact",
         vulnRemediation: "Remediation",
+        audioNotifications: "Audio & Notifications",
+        enableSounds: "Enable Sounds",
+        enableSoundsDesc: "Play sound effects for scan events",
+        volume: "Volume",
+        soundOnStart: "Play on scan start",
+        soundOnComplete: "Play on scan complete",
+        soundOnFinding: "Play on finding discovered",
+        soundOnClear: "Play on list clear",
+        testSound: "Test",
+        paste: "Paste",
     },
     ar: {
         terminal: "الطرفية",
@@ -322,13 +332,24 @@ export const translations = {
         vulnDescription: "الوصف",
         vulnImpact: "التأثير",
         vulnRemediation: "الإصلاح",
+        audioNotifications: "التنبيهات الصوتية",
+        enableSounds: "تفعيل الأصوات",
+        enableSoundsDesc: "تشغيل مؤثرات صوتية لأحداث الفحص",
+        volume: "مستوى الصوت",
+        soundOnStart: "صوت عند بدء الفحص",
+        soundOnComplete: "صوت عند اكتمال الفحص",
+        soundOnFinding: "صوت عند اكتشاف شيء",
+        soundOnClear: "صوت عند مسح القائمة",
+        testSound: "اختبار",
+        paste: "لصق",
     }
 };
 
 export type TranslationKey = keyof typeof translations.en;
 
-export const t = (key: TranslationKey, lang: 'en' | 'ar', params?: Record<string, any>) => {
-    let val = translations[lang][key] || translations.en[key] || key;
+export const t = (key: TranslationKey, lang: string, params?: Record<string, any>) => {
+    const langDict = translations[lang as keyof typeof translations] || translations.en;
+    let val = langDict[key] || translations.en[key] || key;
     if (params) {
         Object.entries(params).forEach(([k, v]) => {
             val = val.replace(`{${k}}`, String(v));

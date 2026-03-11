@@ -81,9 +81,17 @@ export function loadSettings(): AppSettings {
             // Type-check critical fields
             if (typeof merged.accentColor !== "string" || !/^#[0-9a-fA-F]{6}$/.test(merged.accentColor)) merged.accentColor = DEFAULT_SETTINGS.accentColor;
             if (merged.theme !== "dark" && merged.theme !== "light" && merged.theme !== "cosmic" && merged.theme !== "emerald") merged.theme = DEFAULT_SETTINGS.theme;
+            if (merged.language !== "en" && merged.language !== "ar") merged.language = DEFAULT_SETTINGS.language;
+            if (typeof merged.globalWebhookUrl !== "string") merged.globalWebhookUrl = DEFAULT_SETTINGS.globalWebhookUrl;
+            if (typeof merged.defaultOutputPath !== "string") merged.defaultOutputPath = DEFAULT_SETTINGS.defaultOutputPath;
+            if (typeof merged.defaultThreads !== "number") merged.defaultThreads = DEFAULT_SETTINGS.defaultThreads;
+            if (typeof merged.defaultTimeout !== "number") merged.defaultTimeout = DEFAULT_SETTINGS.defaultTimeout;
+            if (typeof merged.defaultRateLimit !== "number") merged.defaultRateLimit = DEFAULT_SETTINGS.defaultRateLimit;
             if (typeof merged.defaultCrawlerDepth !== "number") merged.defaultCrawlerDepth = DEFAULT_SETTINGS.defaultCrawlerDepth;
             if (typeof merged.defaultCrawlerTimeout !== "number") merged.defaultCrawlerTimeout = DEFAULT_SETTINGS.defaultCrawlerTimeout;
             if (typeof merged.defaultCrawlerMaxUrls !== "number") merged.defaultCrawlerMaxUrls = DEFAULT_SETTINGS.defaultCrawlerMaxUrls;
+            if (typeof merged.autoOpenReport !== "boolean") merged.autoOpenReport = DEFAULT_SETTINGS.autoOpenReport;
+            if (typeof merged.showTimestamps !== "boolean") merged.showTimestamps = DEFAULT_SETTINGS.showTimestamps;
             if (typeof merged.uiScale !== "number") merged.uiScale = DEFAULT_SETTINGS.uiScale;
             if (typeof merged.enableStars !== "boolean") merged.enableStars = DEFAULT_SETTINGS.enableStars;
             if (typeof merged.reduceMotion !== "boolean") merged.reduceMotion = DEFAULT_SETTINGS.reduceMotion;
