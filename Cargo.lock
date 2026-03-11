@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "arkenar"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "arkenar-core",
  "assert_cmd",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "arkenar-core"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -153,6 +153,24 @@ dependencies = [
  "url",
  "which",
  "zip 0.6.6",
+]
+
+[[package]]
+name = "arkenar-gui"
+version = "1.0.4"
+dependencies = [
+ "arkenar-core",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-opener",
+ "tauri-plugin-updater",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -1729,24 +1747,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "gui"
-version = "1.0.3"
-dependencies = [
- "arkenar-core",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-opener",
- "tauri-plugin-updater",
- "tokio",
- "url",
 ]
 
 [[package]]

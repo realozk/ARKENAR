@@ -3,6 +3,7 @@ use colored::*;
 use std::io::Write;
 use std::process;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool};
 use tokio::sync::mpsc;
 
 use arkenar_core::{
@@ -272,7 +273,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
     let mut target_manager = TargetManager::new();
     target_manager.add_target(target.to_string());
 
-    match run_katana_crawler(target, config, sink).await {
+    match run_katana_crawler(target, config, sink, Arc::new(AtomicBool::new(false))).await {
         Ok(crawled) => {
             sink.on_log("success", &format!("[+] Discovered {} URL(s).", crawled.len()));
             for u in crawled {
@@ -286,7 +287,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
 
-    if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, sink).await {
+    if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, sink, Arc::new(AtomicBool::new(false))).await {
         sink.on_log("error", &format!("[!] Nuclei error: {}", e));
     }
 

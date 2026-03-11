@@ -4,6 +4,15 @@ All notable changes to Arkenar are documented here.
 
 ---
 
+## [1.0.4] — 2026-03-12
+
+### Fixed
+- **Stop button now instant** — Katana and Nuclei subprocesses are killed immediately when Stop is pressed instead of waiting for the full crawler timeout to expire
+- **Crawler was always returning 1 URL** — Katana's `-crawl-duration` flag requires a Go duration unit suffix (`60s`); passing bare `60` caused it to exit nearly instantly
+- Verbose log was printing double unit suffix (`timeout: 60ss`) — corrected to `60s`
+
+---
+
 ## [1.0.1] — 2026-03-09
 
 ### Added

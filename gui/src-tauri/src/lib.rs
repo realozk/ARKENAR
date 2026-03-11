@@ -346,7 +346,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             if config.enable_crawler {
                 sink.on_log("phase", "── Phase 1: Katana Crawler");
 
-                match run_katana_crawler(target, &config, &sink).await {
+                match run_katana_crawler(target, &config, &sink, Arc::clone(&abort_flag)).await {
                     Ok(crawled) => {
                         sink.on_log("success", &format!("Discovered {} URL(s).", crawled.len()));
                         total_urls += crawled.len();
@@ -370,7 +370,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             if config.enable_nuclei {
                 sink.on_log("phase", "── Phase 2: Nuclei Scanner");
 
-                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, &sink).await {
+                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, &sink, Arc::clone(&abort_flag)).await {
                     sink.on_log("error", &format!("Nuclei error: {}", e));
                 } else {
                     sink.on_log("success", "Nuclei scan completed.");

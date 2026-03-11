@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use serde_json::Value;
@@ -21,14 +23,15 @@ pub async fn run_katana_crawler(
     target: &str,
     config: &ScanConfig,
     sink: &SinkRef,
+    abort: Arc<AtomicBool>,
 ) -> anyhow::Result<Vec<String>> {
     let binary = katana_binary()?;
     let depth_str = config.crawler_depth.to_string();
-    let timeout_str = config.crawler_timeout.to_string();
+    let timeout_str = format!("{}s", config.crawler_timeout); // Go duration needs a unit suffix
     let max_urls = config.crawler_max_urls;
 
     if config.verbose {
-        sink.on_log("info", &format!("[*] Starting Katana on target: {} (depth: {}, timeout: {}s, max: {})", target, depth_str, timeout_str, max_urls));
+        sink.on_log("info", &format!("[*] Starting Katana on target: {} (depth: {}, timeout: {}, max: {})", target, depth_str, timeout_str, max_urls));
     } else {
         sink.on_log("info", &format!("[*] Starting Katana on target: {}", target));
     }
@@ -58,6 +61,11 @@ pub async fn run_katana_crawler(
         .and_then(|u| u.host_str().map(|h| h.to_lowercase()));
 
     while let Ok(Some(raw_line)) = lines.next_line().await {
+        if abort.load(Ordering::Relaxed) {
+            child.kill().await.ok();
+            break;
+        }
+
         let line = raw_line.trim().to_string();
         if line.is_empty() { continue; }
 

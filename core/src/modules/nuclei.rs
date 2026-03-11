@@ -1,4 +1,6 @@
 use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -12,6 +14,7 @@ pub async fn run_nuclei_scan(
     custom_tags: Option<&str>,
     max_secs: u64,
     sink: &SinkRef,
+    abort: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let binary = match utils::get_binary_path("nuclei") {
         Some(path) => path,
@@ -86,6 +89,10 @@ pub async fn run_nuclei_scan(
     let scan_result = timeout(Duration::from_secs(effective_max), async {
         let mut n: u32 = 0;
         while let Ok(Some(raw_line)) = lines.next_line().await {
+            if abort.load(Ordering::Relaxed) {
+                break;
+            }
+
             let line = raw_line.trim().to_string();
             if line.is_empty() { continue; }
 
@@ -129,7 +136,12 @@ pub async fn run_nuclei_scan(
     }).await;
 
     match scan_result {
-        Ok(n) => { count = n; }
+        Ok(n) => {
+            count = n;
+            if abort.load(Ordering::Relaxed) {
+                child.kill().await.ok();
+            }
+        }
         Err(_) => {
             sink.on_log("warn", &format!("[!] Nuclei hit the {}s phase limit — stopping it. Partial results saved.", effective_max));
             child.kill().await.ok();
