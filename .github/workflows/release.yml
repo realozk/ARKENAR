@@ -3,7 +3,7 @@ name: Release Arkenar GUI
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*'  # v1.0.1, v1.0.1-beta, v1.1.0-rc1, etc.
+      - 'v[0-9]+.[0-9]+.[0-9]+*' 
 
 permissions:
   contents: write
@@ -40,14 +40,14 @@ jobs:
           workspaces: ". -> target"
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 9
 
       - name: Use Node.js LTS
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           cache-dependency-path: gui/pnpm-lock.yaml
 
