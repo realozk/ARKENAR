@@ -36,7 +36,7 @@ pub async fn run_katana_crawler(
         sink.on_log("info", &format!("[*] Starting Katana on target: {}", target));
     }
 
-    let args = vec!["-u", target, "-jsonl", "-silent", "-d", &depth_str, "-crawl-duration", &timeout_str];
+    let args = vec!["-u", target, "-jsonl", "-silent", "-d", &depth_str, "-crawl-duration", &timeout_str, "-timeout", "15", "-duc"];
 
     let mut std_cmd = std::process::Command::new(&binary);
     std_cmd.args(&args)
