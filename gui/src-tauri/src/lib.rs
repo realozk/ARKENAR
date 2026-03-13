@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
+use reqwest::redirect::Policy;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
@@ -41,6 +42,23 @@ pub struct ScanFindingEvent {
     pub timing_ms: u128,
     pub server: Option<String>,
     pub curl_cmd: String,
+}
+#[derive(serde::Deserialize)]
+pub struct StudioRequest {
+    pub url:     String,
+    pub method:  String,
+    pub headers: String,
+    pub body:    String,
+}
+
+/// Returned to React after a Studio send.
+#[derive(Clone, serde::Serialize)]
+pub struct StudioResponse {
+    pub status:         u16,
+    pub headers:        Vec<(String, String)>,
+    pub body:           String,
+    pub body_truncated: bool,
+    pub timing_ms:      u128,
 }
 
 
@@ -100,9 +118,53 @@ impl ScanEventSink for TauriSink {
 
 static SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
 
+
 /// Per-scan abort flag held in an Arc so the scan task and stop_scan both
 /// operate on the same value. Replaced atomically at the start of each scan.
 static CURRENT_ABORT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+static STUDIO_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static STUDIO_RUNNING: AtomicBool = AtomicBool::new(false);
+
+fn validate_studio_request(req: &StudioRequest) -> Result<(), String> {
+    if req.url.trim().is_empty() {
+        return Err("Studio URL is required.".to_string());
+    }
+
+    if req.url.chars().any(|c| matches!(c, '\n' | '\r' | '\0')) {
+        return Err("Studio URL contains forbidden characters.".to_string());
+    }
+
+    let parsed = url::Url::parse(req.url.trim())
+        .map_err(|_| "Studio URL is not a valid URL.".to_string())?;
+
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err("Studio URL must start with http:// or https://".to_string());
+    }
+
+    if parsed.host_str().is_none() {
+        return Err("Studio URL has no hostname.".to_string());
+    }
+
+    if req.headers.contains('\0') {
+        return Err("Headers contain forbidden characters.".to_string());
+    }
+
+    if req.body.contains('\0') {
+        return Err("Body contains forbidden characters.".to_string());
+    }
+
+    const MAX_STUDIO_FIELD: usize = 256 * 1024;
+    if req.headers.len() > MAX_STUDIO_FIELD {
+        return Err("Headers are too large.".to_string());
+    }
+    if req.body.len() > MAX_STUDIO_FIELD {
+        return Err("Body is too large.".to_string());
+    }
+
+    Ok(())
+}
 
 /// RAII guard that always resets SCAN_RUNNING when it is dropped, even if the
 /// scan task panics. Also clears the per-scan abort Arc so it can be GC'd.
@@ -464,6 +526,95 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn studio_send(req: StudioRequest) -> Result<StudioResponse, String> {
+    if STUDIO_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("Studio is already sending a request.".to_string());
+    }
+    struct StudioGuard;
+    impl Drop for StudioGuard {
+        fn drop(&mut self) {
+            STUDIO_RUNNING.store(false, Ordering::SeqCst);
+        }
+    }
+    let _guard = StudioGuard;
+
+    validate_studio_request(&req)?;
+
+    let method = match req.method.to_uppercase().as_str() {
+        "GET"     => reqwest::Method::GET,
+        "POST"    => reqwest::Method::POST,
+        "PUT"     => reqwest::Method::PUT,
+        "PATCH"   => reqwest::Method::PATCH,
+        "DELETE"  => reqwest::Method::DELETE,
+        "HEAD"    => reqwest::Method::HEAD,
+        "OPTIONS" => reqwest::Method::OPTIONS,
+        other     => return Err(format!("Unsupported HTTP method: {}", other)),
+    };
+
+    // ── Lazy-init Studio client (cookie store ON, redirects ON
+    let client = STUDIO_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .cookie_store(true)
+            .redirect(Policy::limited(5))
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("Failed to build Studio HTTP client")
+    });
+
+    let mut builder = client.request(method, &req.url);
+
+    for line in req.headers.lines() {
+        if let Some((k, v)) = line.split_once(':') {
+            let k = k.trim();
+            let v = v.trim();
+            if !k.is_empty() {
+                builder = builder.header(k, v);
+            }
+        }
+    }
+
+    if !req.body.is_empty() {
+        builder = builder.body(req.body.clone());
+    }
+
+    let start = Instant::now();
+    let resp = builder
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    let timing_ms = start.elapsed().as_millis();
+
+    let status = resp.status().as_u16();
+
+    let headers: Vec<(String, String)> = resp
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+
+    const MAX_BODY: usize = 64 * 1024;
+    let raw = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read body: {}", e))?;
+
+    let body_truncated = raw.len() > MAX_BODY;
+    let body = String::from_utf8_lossy(&raw[..raw.len().min(MAX_BODY)]).into_owned();
+
+    Ok(StudioResponse {
+        status,
+        headers,
+        body,
+        body_truncated,
+        timing_ms,
+    })
+}
+
+
+#[tauri::command]
 async fn stop_scan() -> Result<(), String> {
     if SCAN_RUNNING.load(Ordering::SeqCst) {
         if let Ok(guard) = CURRENT_ABORT.lock() {
@@ -566,7 +717,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report])
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report ,   studio_send,])
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);

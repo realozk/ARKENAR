@@ -14,6 +14,7 @@ import { StatusDot, ConfirmationModal, Logo } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
+import StudioPanel from "./components/StudioPanel";
 import { SettingsModal, loadSettings, applyAccentColor, type AppSettings } from "./components/SettingsModal";
 import { InfoModal } from "./components/InfoModal";
 import { t } from "./utils/i18n";
@@ -63,7 +64,8 @@ function App() {
   const [stats, setStats] = useState<ScanStatsEvent>({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [findings, setFindings] = useState<ScanFindingEvent[]>([]);
-  const [activeTab, setActiveTab] = useState<"terminal" | "findings" | "history">("terminal");
+  const [activeTab, setActiveTab] = useState<"terminal" | "findings" | "history" | "studio">("terminal");
+  const activeTabRef = useRef<"terminal" | "findings" | "history" | "studio">("terminal");
   const [scanProgress, setScanProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -97,6 +99,9 @@ function App() {
   configRef.current = config;
   const scanQueueRef = useRef(scanQueue);
   scanQueueRef.current = scanQueue;
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
   useEffect(() => {
     applyAccentColor(appSettings.accentColor);
@@ -215,7 +220,9 @@ const removeToast = useCallback((id: string) => {
       listen<ScanFindingEvent>("scan-finding", (event) => {
         findingBuffer.current.push(event.payload);
         rpsCountRef.current += 1;
-        setActiveTab("findings");
+        if (activeTabRef.current !== "studio") {
+          setActiveTab("findings");
+        }
         setScanProgress((p) => Math.min(p + 1, 90));
         playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
       }),
@@ -389,6 +396,7 @@ const removeToast = useCallback((id: string) => {
     if (activeTab === "terminal" && logs.length === 0) return;
     if (activeTab === "findings" && findings.length === 0) return;
     if (activeTab === "history" && scanHistory.length === 0) return;
+    if (activeTab === "studio") return;
 
     setShowClearConfirm(true);
   }, [activeTab, logs.length, findings.length, scanHistory.length]);
@@ -412,6 +420,7 @@ const removeToast = useCallback((id: string) => {
         if (key === 't') { setActiveTab("terminal"); return; }
         if (key === 'f') { setActiveTab("findings"); return; }
         if (key === 'h') { setActiveTab("history"); return; }
+        if (key === 'e') { setActiveTab("studio"); return; }
         if (key === 'c') {
           requestClear();
           return;
@@ -470,6 +479,7 @@ const removeToast = useCallback((id: string) => {
         if (e.key === "1") { e.preventDefault(); setActiveTab("terminal"); }
         if (e.key === "2") { e.preventDefault(); setActiveTab("findings"); }
         if (e.key === "3") { e.preventDefault(); setActiveTab("history"); }
+        if (e.key === "4") { e.preventDefault(); setActiveTab("studio"); }
         if (e.key === "b") { e.preventDefault(); setSidebarCollapsed(p => !p); }
         if (e.key === ",") { e.preventDefault(); setShowSettings(true); }
       }
@@ -693,6 +703,23 @@ const removeToast = useCallback((id: string) => {
           </div>
         </div>
         <main className="flex flex-1 flex-col overflow-hidden min-w-0">
+          <div className="px-4 pt-3">
+            {activeTab === "studio" ? (
+              <button
+                onClick={() => setActiveTab("terminal")}
+                className="rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-11px text-text-secondary hover:border-accent/30 hover:text-accent-text transition-all duration-300"
+              >
+                Back To Scan View
+              </button>
+            ) : (
+              <button
+                onClick={() => setActiveTab("studio")}
+                className="rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-11px text-text-secondary hover:border-accent/30 hover:text-accent-text transition-all duration-300"
+              >
+                Open Exploit Studio
+              </button>
+            )}
+          </div>
           <TopStats
             stats={stats}
             scanStatus={scanStatus}
@@ -700,20 +727,25 @@ const removeToast = useCallback((id: string) => {
             rps={rps}
             language={appSettings.language}
           />
-          <TerminalView
-            
-            logs={logs}
-            findings={findings}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            onRequestClear={requestClear}
-            scanHistory={scanHistory}
-            onLoadFromHistory={handleLoadFromHistory}
-            language={appSettings.language}
-            scanProgress={scanProgress}
-            scanStatus={scanStatus}
-            onQuickRescan={handleQuickRescan}
-          />
+          {activeTab === "studio" ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <StudioPanel />
+            </div>
+          ) : (
+            <TerminalView
+              logs={logs}
+              findings={findings}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              onRequestClear={requestClear}
+              scanHistory={scanHistory}
+              onLoadFromHistory={handleLoadFromHistory}
+              language={appSettings.language}
+              scanProgress={scanProgress}
+              scanStatus={scanStatus}
+              onQuickRescan={handleQuickRescan}
+            />
+          )}
         </main>
       </div>
 
