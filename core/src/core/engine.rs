@@ -5,7 +5,7 @@ use std::time::Instant;
 use futures::{stream, StreamExt};
 use log::warn;
 use tokio::sync::{mpsc, Semaphore};
-use reqwest::Method;
+use reqwest::{Method, header};
 use reqwest::header::HeaderMap;
 use url::Url;
 
@@ -18,6 +18,8 @@ use crate::core::VulnerabilityType;
 use crate::http::{HttpClient, HttpRequest};
 use crate::utils::detector::VulnerabilityDetector;
 use crate::utils::payload_loader::PayloadLoader;
+use crate::utils::fingerprint::{fingerprint_response, TechProfile};
+
 
 /// Smart mutation-based vulnerability scanner engine
 ///
@@ -93,6 +95,62 @@ impl ScanEngine {
                         return;
                     }
                 };
+                
+                if abort_task.load(Ordering::Relaxed) {
+                    return;
+                }
+
+                const CANARY: &str = "ARK-1337";
+
+                let canary_url = {
+
+            let mut u = request.url.clone();
+            u.query_pairs_mut().append_pair("canary", CANARY);
+            u
+                };
+
+                let canary_req = HttpRequest::new(
+                    Method::GET,
+                    canary_url,
+                    HeaderMap::new(),
+                    String::new(),
+                );   
+
+                throttle.wait().await;
+                let reflects =  match client.send_request(&canary_req).await {
+                    Ok(resp) => {
+                        let _canary_headers = resp.headers().clone();
+                        let status = resp.status().as_u16();
+                        throttle.record_response(status);
+                        matches!(resp.text().await, Ok(body) if body.contains(CANARY))
+                    }
+                    Err(_) => false,
+                };     
+
+                if !reflects {
+                    return;
+                }
+
+                let fp_req = match create_request_from_url(&target_url) {
+                   Ok(r) => r,
+                     Err(_) => request.clone(), 
+                       
+                };
+
+                throttle.wait().await;
+                let tech_profile = match client.send_request(&fp_req).await {
+                    Ok(resp) => {
+                      throttle.record_response(resp.status().as_u16());
+                      let headers = resp.headers().clone();
+                      let body = resp.text().await.unwrap_or_default();
+                      fingerprint_response(&headers, &body)
+                    }
+                    Err(_) => TechProfile::default(),
+                };
+                
+                let _ = &tech_profile; 
+
+
 
                 scan_single_request(
                     request,
