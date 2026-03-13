@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::env;
 use colored::*;
 use tokio::process::Command;
 use std::process::Stdio;
@@ -80,6 +81,18 @@ fn get_tool_download_url(tool: &str) -> String {
     }
 }
 
+fn get_arkenar_home() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let home = env::var("USERPROFILE").ok()?;
+    #[cfg(not(target_os = "windows"))]
+    let home = env::var("HOME").ok()?;
+    Some(PathBuf::from(home).join(".arkenar"))
+}
+
+/// Returns the path to the user's custom Nuclei template folder.
+pub fn get_plugin_dir() -> Option<PathBuf> {
+    Some(get_arkenar_home()?.join("plugins").join("nuclei"))
+}
 
 /// Verifies required tools are installed, downloading them if missing.
 pub async fn check_and_install_tools() {
@@ -92,7 +105,20 @@ pub async fn check_and_install_tools() {
             return;
         }
     }
-
+  if let Some(plugin_dir) = get_plugin_dir() {
+        if !plugin_dir.exists() {
+            match fs::create_dir_all(&plugin_dir) {
+                Ok(_) => print!(
+                    "{}",
+                    format!(" Created plugin dir: {}\n", plugin_dir.display()).green()
+                ),
+                Err(e) => eprint!(
+                    "{}",
+                    format!("! Could not create plugin dir: {}\n", e).yellow()
+                ),
+            }
+        }
+    }
     let katana_bin = get_tool_binary_name("katana");
     let nuclei_bin = get_tool_binary_name("nuclei");
 

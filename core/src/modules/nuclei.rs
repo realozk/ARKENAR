@@ -6,6 +6,9 @@ use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 use crate::utils;
 use crate::SinkRef;
+use std::fs;
+use crate::utils::installer::get_plugin_dir;
+
 
 pub async fn run_nuclei_scan(
     target: &str,
@@ -46,6 +49,8 @@ pub async fn run_nuclei_scan(
         "-ns",   // no-stdin — prevents nuclei from waiting on stdin
     ];
 
+    let plugin_dir_string: String;
+
     if let Some(tags) = custom_tags {
         if verbose {
             sink.on_log("info", &format!("[*] Custom tags active: {}", tags));
@@ -57,6 +62,24 @@ pub async fn run_nuclei_scan(
             args.extend_from_slice(&["-severity", "high,critical"]);
         } else {
             args.extend_from_slice(&["-severity", "low,medium,high,critical"]);
+        }
+    }
+
+    if let Some(dir) = get_plugin_dir() {
+        let has_templates = fs::read_dir(&dir)
+            .map(|mut entries| {
+                entries.any(|e| {
+                    e.ok()
+                        .and_then(|f| f.path().extension().map(|x| x == "yaml"))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        if has_templates {
+            plugin_dir_string = dir.to_string_lossy().into_owned();
+            args.extend_from_slice(&["-t", &plugin_dir_string]);
+            sink.on_log("info", &format!("[+] Custom templates loaded from: {}", plugin_dir_string));
         }
     }
 
