@@ -11,18 +11,22 @@
   },
   "app": {
     "windows": [
-      {
-        "title": "Arkenar",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
-        "resizable": true,
-        "decorations": false
-      }
+     {
+  "title": "Arkenar",
+  "width": 1280,
+  "height": 800,
+  "minWidth": 900,
+  "minHeight": 600,
+  "resizable": true,
+  "decorations": false,
+  "transparent": true,
+  "shadow": true,
+  "theme": "Dark"
+
+}
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost",
+"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost/",
       "dangerousDisableAssetCspModification": false,
       "freezePrototype": true
     }
@@ -37,13 +41,14 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "sidebarImage": "icons/sidebar.bmp",
-        "headerImage": "icons/header.bmp",
-        "installMode": "currentUser",
-        "displayLanguageSelector": false
-      }
+   "nsis": {
+  "installerIcon": "icons/icon.ico",
+  "sidebarImage": "icons/sidebar.bmp",
+  "headerImage": "icons/header.bmp",
+  "installMode": "currentUser",
+  "displayLanguageSelector": false
+}
+
     }
   },
   "plugins": {

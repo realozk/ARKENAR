@@ -108,13 +108,13 @@ export function SliderWithInput({ value, onChange, min = 0, max = 100, step = 1 
         <div className="relative flex-1 h-1.5 rounded-full bg-bg-input flex items-center">
           {/* Active Track Fill */}
           <div
-            className="absolute left-0 h-full rounded-full bg-accent transition-all duration-150 ease-out"
+            className="absolute left-0 h-full rounded-full bg-accent"
             style={{ width: `${percent}%` }}
           />
 
           {/* Thumb */}
           <div
-            className="absolute h-3 w-3 -ml-1.5 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)] transition-all duration-150 ease-out"
+            className="absolute h-3 w-3 -ml-1.5 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)]"
             style={{ left: `${percent}%` }}
           />
 

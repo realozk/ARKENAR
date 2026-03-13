@@ -1,14 +1,70 @@
-import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity } from "lucide-react";
+import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity, Zap, CheckCircle, Cpu } from "lucide-react";
 import { useState, useEffect, useRef, type ElementType } from "react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
 import { t } from "../utils/i18n";
 
-function StatCard({ label, value, icon: Icon, accent }: {
+/* ─── E3: Animated number counter hook ──────────────────────────── */
+function useAnimatedNumber(value: number): number {
+  const displayedRef = useRef(value);
+  const [displayed, setDisplayed] = useState(value);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    const from = displayedRef.current;
+    if (from === value) return;
+    cancelAnimationFrame(rafRef.current);
+    const start = performance.now();
+    const animate = (now: number) => {
+      const t = Math.min((now - start) / 600, 1);
+      const eased = 1 - (1 - t) ** 3;
+      const cur = Math.round(from + (value - from) * eased);
+      displayedRef.current = cur;
+      setDisplayed(cur);
+      if (t < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value]);
+
+  useEffect(() => { displayedRef.current = displayed; });
+  return displayed;
+}
+
+/* ─── E1: RPS Sparkline ──────────────────────────────────────────── */
+function Sparkline({ values }: { values: number[] }) {
+  const W = 56, H = 20;
+  const max = Math.max(...values, 1);
+  const allZero = values.every(v => v === 0);
+  const pts = values
+    .map((v, i) => `${(i / (values.length - 1)) * W},${H - (v / max) * (H - 2) - 1}`)
+    .join(" ");
+  return (
+    <svg width={W} height={H} className="mt-1.5 block mx-auto">
+      <polyline
+        points={allZero ? `0,${H / 2} ${W},${H / 2}` : pts}
+        fill="none"
+        stroke={allZero ? "rgba(255,255,255,0.10)" : "var(--color-accent)"}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/* ─── StatCard — centered layout ─────────────────────────────────── */
+function StatCard({ label, value, icon: Icon, accent, animate, children }: {
   label: string;
   value: string | number;
   icon: ElementType;
   accent?: "default" | "critical" | "warning" | "success" | "rps-low" | "rps-med" | "rps-high";
+  animate?: boolean;
+  children?: React.ReactNode;
 }) {
+  const numVal = typeof value === "number" ? value : 0;
+  const animatedNum = useAnimatedNumber(numVal);
+  const displayValue = (animate && typeof value === "number") ? animatedNum : value;
+
   const valueClass: Record<string, string> = {
     default: "text-text-primary",
     critical: "text-status-critical",
@@ -20,81 +76,111 @@ function StatCard({ label, value, icon: Icon, accent }: {
   };
 
   return (
-    <div className="stat-card rounded-xl border border-border-subtle bg-bg-card p-5 transition-all duration-200 hover:bg-bg-hover hover:border-border-hover group">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon size={16} className="text-text-muted group-hover:text-text-secondary transition-colors duration-200" strokeWidth={2.5} />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">{label}</span>
+    <div className="stat-card rounded-xl border border-border-subtle bg-bg-card px-4 py-4 flex flex-col items-center justify-center text-center transition-all duration-200 hover:bg-bg-hover hover:border-border-hover group min-h-[84px]">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon size={13} className="text-text-muted group-hover:text-text-secondary transition-colors duration-200 shrink-0" strokeWidth={2.5} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{label}</span>
       </div>
-      <span className={`stat-value font-mono text-2xl font-bold tracking-tight ${valueClass[accent ?? "default"]}`} dir="ltr">
-        {value}
+      <span className={`stat-value font-mono text-[22px] font-bold tracking-tight leading-none ${valueClass[accent ?? "default"]}`} dir="ltr">
+        {displayValue}
       </span>
+      {children}
     </div>
   );
 }
 
-interface ScanProgressBarProps {
-  progress: number;   // 0–100
-  status: ScanStatus;
+/* ─── E2: Phase Timeline — always visible, no pop ───────────────── */
+const PHASES = [
+  { label: "Crawl",    Icon: Globe },
+  { label: "Nuclei",   Icon: Zap },
+  { label: "Engine",   Icon: Cpu },
+  { label: "Complete", Icon: CheckCircle },
+];
+
+function getPhaseIndex(progress: number): number {
+  if (progress < 20) return 0;
+  if (progress < 50) return 1;
+  if (progress < 75) return 2;
+  return 3;
 }
 
-function ScanProgressBar({ progress, status, language }: ScanProgressBarProps & { language: "en" | "ar" }) {
+function PhaseTimeline({ progress, scanning }: { progress: number; scanning: boolean }) {
+  const activePhase = scanning ? getPhaseIndex(progress) : -1;
+
+  return (
+    <div className={`flex items-center justify-center py-3 transition-opacity duration-500 ${scanning ? "opacity-100" : "opacity-25"}`}>
+      {PHASES.map((phase, idx) => {
+        const isActive = idx === activePhase;
+        const isDone = idx < activePhase;
+
+        return (
+          <div key={phase.label} className="flex items-center">
+            <div className="flex flex-col items-center gap-2">
+              <div className={`flex items-center justify-center w-11 h-11 rounded-full border-2 transition-all duration-500 ${
+                isActive  ? "border-accent bg-accent/15 shadow-[0_0_14px_var(--color-accent-dim)] scale-110"
+                : isDone  ? "border-status-success bg-status-success/10"
+                          : "border-border-subtle bg-bg-card"
+              }`}>
+                {isDone
+                  ? <CheckCircle size={20} className="text-status-success" strokeWidth={2} />
+                  : <phase.Icon size={20} className={isActive ? "text-accent-text" : "text-text-ghost"} strokeWidth={2} />
+                }
+              </div>
+              <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors duration-500 ${
+                isActive ? "text-accent-text" : isDone ? "text-status-success" : "text-text-ghost"
+              }`}>{phase.label}</span>
+            </div>
+            {idx < PHASES.length - 1 && (
+              <div className={`h-px w-24 mb-5 mx-3 transition-colors duration-700 ${isDone ? "bg-status-success" : isActive ? "bg-accent/40" : "bg-border-subtle"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── YouTube-style thin progress bar ───────────────────────────── */
+export function ThinProgressBar({ progress, status }: { progress: number; status: ScanStatus }) {
   const [visible, setVisible] = useState(status !== "idle");
-  const [exiting, setExiting] = useState(false);
+  const [opacity, setOpacity] = useState(status !== "idle" ? 1 : 0);
   const prevStatus = useRef(status);
 
   useEffect(() => {
     if (status === "idle" && prevStatus.current !== "idle") {
-      // Animate out first, then unmount
-      setExiting(true);
-      const t = window.setTimeout(() => { setVisible(false); setExiting(false); }, 420);
+      setOpacity(0);
+      const t = window.setTimeout(() => setVisible(false), 600);
       return () => clearTimeout(t);
     } else if (status !== "idle") {
       setVisible(true);
-      setExiting(false);
+      setOpacity(1);
     }
     prevStatus.current = status;
   }, [status]);
 
   if (!visible) return null;
 
-  const isRunning = status === "running";
-  const isFinished = status === "finished";
-  const isError = status === "error";
+  const fillColor =
+    status === "error"    ? "bg-status-critical" :
+    status === "finished" ? "bg-status-success"  :
+                            "bg-accent";
 
-  const trackColor = isError ? "bg-status-critical/10" : "bg-bg-card";
-  const fillColor = isError
-    ? "bg-status-critical"
-    : isFinished
-      ? "bg-status-success"
-      : "bg-accent";
+  const isRunning = status === "running";
 
   return (
-    <div className={`flex items-center gap-3 w-full mt-1.5 opacity-95 transition-all duration-400 ${exiting ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
-      {/* Wrapper without overflow-hidden so the internal box-shadow can spread */}
-      <div className={`relative h-3.5 flex-1 rounded-full ${trackColor} transition-all duration-500`}>
-        {/* Filled portion with overflow-hidden to clip the shimmer */}
-        <div
-          className={`progress-bar-fill absolute top-0 bottom-0 ${language === "ar" ? "right-0" : "left-0"} rounded-full transition-all duration-700 ease-out flex items-center justify-end overflow-hidden ${fillColor} ${isFinished ? "progress-bar-done" : ""} ${isRunning ? "progress-bar-running progress-bar-shimmer-bg" : ""}`}
-          style={{ width: `${progress}%` }}
-        >
-          {progress >= 8 && (
-            <span className={`${language === "ar" ? "pl-1.5" : "pr-1.5"} font-mono text-[10px] font-black text-bg-root drop-shadow-sm z-10 leading-none mt-px tracking-tight`}>
-              {Math.round(progress)}%
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Outside text if not wide enough to fit inside cleanly */}
-      {progress < 8 && (
-        <span className={`w-8 shrink-0 text-left font-mono text-[11px] font-bold ${isError ? 'text-status-critical' : isFinished ? 'text-status-success' : 'text-accent-text'} leading-none mt-px drop-shadow-sm`}>
-          {Math.round(progress)}%
-        </span>
-      )}
+    <div
+      className="w-full h-[3px] bg-transparent overflow-hidden"
+      style={{ opacity, transition: "opacity 0.6s ease" }}
+    >
+      <div
+        className={`h-full ${fillColor} transition-all duration-700 ease-out ${isRunning ? "progress-bar-running" : ""}`}
+        style={{ width: `${progress}%` }}
+      />
     </div>
   );
 }
 
+/* ─── TopStats ───────────────────────────────────────────────────── */
 export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = "en" }: {
   stats: ScanStatsEvent;
   scanStatus: ScanStatus;
@@ -102,25 +188,39 @@ export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = 
   rps?: number;
   language?: "en" | "ar";
 }) {
-  return (
-    <div className="shrink-0 p-6 pb-4 space-y-3">
-      <div className="grid grid-cols-7 gap-3">
-        {/* Arabic-first localization for stats */}
-        <StatCard label={t("targets", language)} value={stats.targets} icon={Crosshair} />
-        <StatCard label={t("urls", language)} value={stats.urls} icon={Globe} />
-        <StatCard label={t("critical", language)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} />
-        <StatCard label={t("medium", language)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} />
-        <StatCard label={t("safe", language)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} />
-        <StatCard label={t("elapsed", language)} value={stats.elapsed} icon={Timer} />
-        <StatCard
-          label={language === "ar" ? "طلب/ث" : "req/s"}
-          value={scanStatus === "running" ? rps : "—"}
-          icon={Activity}
-          accent={scanStatus !== "running" ? "default" : rps > 200 ? "rps-high" : rps > 50 ? "rps-med" : "rps-low"}
-        />
-      </div>
+  // E1: Rolling RPS history buffer
+  const [rpsHistory, setRpsHistory] = useState<number[]>(() => Array(20).fill(0));
+  useEffect(() => {
+    setRpsHistory(prev => [...prev.slice(1), scanStatus === "running" ? rps : 0]);
+  }, [rps, scanStatus]);
 
-      <ScanProgressBar progress={scanProgress} status={scanStatus} language={language} />
+  const rpsAccent = scanStatus !== "running" ? "default" : rps > 200 ? "rps-high" : rps > 50 ? "rps-med" : "rps-low";
+  const isScanning = scanStatus === "running";
+
+  return (
+    <div className="shrink-0 flex flex-col">
+      {/* Stat cards + phase timeline */}
+      <div className="px-6 pt-5 pb-3 space-y-3">
+        <div className="grid grid-cols-7 gap-3">
+          <StatCard label={t("targets", language)} value={stats.targets} icon={Crosshair} animate />
+          <StatCard label={t("urls", language)} value={stats.urls} icon={Globe} animate />
+          <StatCard label={t("critical", language)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} animate />
+          <StatCard label={t("medium", language)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} animate />
+          <StatCard label={t("safe", language)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} animate />
+          <StatCard label={t("elapsed", language)} value={stats.elapsed} icon={Timer} />
+          <StatCard
+            label={language === "ar" ? "طلب/ث" : "req/s"}
+            value={scanStatus === "running" ? rps : "—"}
+            icon={Activity}
+            accent={rpsAccent}
+          >
+            <Sparkline values={rpsHistory} />
+          </StatCard>
+        </div>
+
+        {/* E2: Phase Timeline — always shown, dimmed when idle */}
+        <PhaseTimeline progress={scanProgress} scanning={isScanning} />
+      </div>
     </div>
   );
 }

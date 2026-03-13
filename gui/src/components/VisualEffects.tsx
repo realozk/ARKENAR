@@ -45,8 +45,13 @@ export const Starfield = memo(({ isScanning, theme }: StarfieldProps) => {
         let speedMultiplier = 1;
 
         const resize = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            const w = Math.max(1, window.innerWidth);
+            const h = Math.max(1, window.innerHeight);
+            canvas.width = w;
+            canvas.height = h;
+            // Clear immediately so we never show uninitialized buffer (avoids static in Tauri/webview)
+            ctx.fillStyle = themeRef.current === 'light' ? 'rgb(216, 218, 226)' : 'rgb(0, 0, 0)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             initStars();
         };
 
@@ -119,7 +124,8 @@ export const Starfield = memo(({ isScanning, theme }: StarfieldProps) => {
 
         window.addEventListener("resize", resize);
         resize();
-        draw();
+        // Start draw on next frame so canvas is fully ready (avoids static on first paint)
+        animationFrameId = requestAnimationFrame(() => draw());
 
         return () => {
             window.removeEventListener("resize", resize);
@@ -127,10 +133,10 @@ export const Starfield = memo(({ isScanning, theme }: StarfieldProps) => {
         };
     }, []);
 
-    return (
+        return (
         <canvas
             ref={canvasRef}
-            className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-1000"
+            className="fixed inset-0 pointer-events-none -z-10 transition-opacity duration-1000"
             style={{
                 filter: "blur(0.5px)",
             }}
@@ -140,7 +146,7 @@ export const Starfield = memo(({ isScanning, theme }: StarfieldProps) => {
 
 export const Aurora = memo(() => {
     return (
-        <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden opacity-30 select-none">
+        <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden opacity-30 select-none">
             <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-accent/10 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
             <div className="absolute -bottom-[20%] -right-[10%] w-[50%] h-[50%] rounded-full bg-status-info/5 blur-[100px] animate-pulse" style={{ animationDuration: '12s' }} />
         </div>

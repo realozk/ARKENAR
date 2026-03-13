@@ -3,7 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { X, Settings, PanelLeftClose, PanelLeft, Info, Minus, Square } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 
+import { ToastContainer, type Toast, type ToastType } from "./components/Toast";
+import { CommandPalette } from "./components/CommandPalette";
 import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry } from "./types";
 import { DEFAULT_CONFIG } from "./types";
 import { StatusDot, ConfirmationModal, Logo } from "./components/primitives";
@@ -12,7 +16,6 @@ import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
 import { SettingsModal, loadSettings, applyAccentColor, type AppSettings } from "./components/SettingsModal";
 import { InfoModal } from "./components/InfoModal";
-import { Starfield, Aurora } from "./components/VisualEffects";
 import { t } from "./utils/i18n";
 import { playSound } from "./utils/audio";
 
@@ -64,8 +67,12 @@ function App() {
   const [scanProgress, setScanProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [isResizing, setIsResizing] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  
   const [scanQueue, setScanQueue] = useState<string[]>([]);
   const [isHoldingSpace, setIsHoldingSpace] = useState(false);
   const [isHoldingStop, setIsHoldingStop] = useState(false);
@@ -112,12 +119,24 @@ function App() {
     logBuffer.current.push({ time, level, message });
   }, []);
 
+  const addToast = useCallback((type: ToastType, message: string) => {
+  const id = crypto.randomUUID();
+  setToasts(prev => [...prev.slice(-4), { id, type, message }]);
+}, []);
+
+const removeToast = useCallback((id: string) => {
+  setToasts(prev => prev.filter(t => t.id !== id));
+}, []);
+
+
   // Handle Tauri Listeners
+  const unlistenRef = useRef<(() => void)[]>([]);
   useEffect(() => {
+    // Tear down any previous listeners first
+    unlistenRef.current.forEach(fn => fn());
+    unlistenRef.current = [];
     pendingCleanup.forEach((fn) => fn());
     pendingCleanup = [];
-
-    let active = true;
 
     const setup = Promise.all([
       listen<ScanLogEvent>("scan-log", (event) => {
@@ -139,6 +158,7 @@ function App() {
       listen<ScanStatsEvent>("scan-complete", (event) => {
         setStats(event.payload);
         setScanStatus("finished");
+        addToast("success", `Scan complete — ${event.payload.elapsed}`);
         setScanProgress(100);
         playSound("complete", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnComplete, appSettingsRef.current.soundVolume);
 
@@ -173,28 +193,28 @@ function App() {
         if (queue.length > 0) {
           const [nextTarget, ...rest] = queue;
           setScanQueue(rest);
-          // Auto-start next scan after a brief delay
           const queueTimer = setTimeout(() => {
             setScanStatus("running");
+            addToast("info", "Scan started");
             setScanProgress(0);
             setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
             setLogs([]);
             setFindings([]);
             setActiveTab("terminal");
-            invoke("start_scan", { config: { ...configRef.current, target: nextTarget, listFile: "" } }).catch(() => {
-              // Restore the remaining queue items so they aren't silently dropped.
+            invoke("start_scan", { config: { ...configRef.current, target: nextTarget, listFile: "" } }).catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
               setScanQueue(rest);
               setScanStatus("error");
+              addToast("error", `Scan failed: ${msg}`);
             });
           }, 500);
-          // Store cleanup on the finishedTimerRef so it can be cancelled if needed
           if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
           finishedTimerRef.current = queueTimer;
         }
       }),
       listen<ScanFindingEvent>("scan-finding", (event) => {
         findingBuffer.current.push(event.payload);
-        rpsCountRef.current += 1; // Count events for RPS
+        rpsCountRef.current += 1;
         setActiveTab("findings");
         setScanProgress((p) => Math.min(p + 1, 90));
         playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
@@ -202,17 +222,23 @@ function App() {
     ]);
 
     setup.then((fns) => {
-      if (active) {
-        pendingCleanup.push(...fns);
+      // Unlisten any that resolved after we already cleaned up
+      if (unlistenRef.current.length === 0) {
+        unlistenRef.current = fns;
       } else {
-        fns.forEach((fn) => fn());
+        // already cleaned up (effect ran again before promise resolved)
+        fns.forEach(fn => fn());
       }
     });
 
     return () => {
-      active = false;
+      // Synchronously clear the ref so next effect doesn't double-call,
+      // and call any already-resolved unlisteners immediately.
+      const fns = unlistenRef.current;
+      unlistenRef.current = [];
+      fns.forEach(fn => fn());
     };
-  }, []);
+  }, [addToast]);
 
   // Flush buffers periodically (150ms)
   useEffect(() => {
@@ -222,7 +248,17 @@ function App() {
         const batch = [...logBuffer.current];
         logBuffer.current = [];
         setLogs((prev) => {
-          const next = [...prev, ...batch];
+          // Deduplicate: skip entries identical to the last seen entry
+          let last = prev.length > 0 ? prev[prev.length - 1] : null;
+          const deduped: LogEntry[] = [];
+          for (const entry of batch) {
+            if (!last || last.message !== entry.message || last.level !== entry.level) {
+              deduped.push(entry);
+              last = entry;
+            }
+          }
+          if (deduped.length === 0) return prev;
+          const next = [...prev, ...deduped];
           return next.length > LOG_CAP ? next.slice(next.length - LOG_CAP) : next;
         });
       }
@@ -244,11 +280,44 @@ function App() {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+ 
+
+
+  // H1: Quick re-scan from history tab
+ const handleQuickRescan = useCallback(async (target: string) => {
+  setConfig(prev => ({ ...prev, target, listFile: "" }));
+  setScanStatus("running");
+  setScanProgress(0);
+  setLogs([]);
+  setFindings([]);
+  setActiveTab("terminal");
+  setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
+  try {
+    await invoke("start_scan", { config: { ...configRef.current, target, listFile: "" } });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
+    addLog("error", `Scan failed: ${msg}`);
+    setScanStatus("error");
+    addToast("error", `Scan failed: ${msg}`);
+  }
+}, [addLog, addToast]);
+
+  // H1: Export findings (for CommandPalette)
+  const handleExportFindings = useCallback(async () => {
+    if (findings.length === 0) return;
+    const filePath = await save({
+      defaultPath: `arkenar-findings-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (filePath) await writeTextFile(filePath, JSON.stringify(findings, null, 2));
+  }, [findings]);
+
   const handleStartScan = useCallback(async () => {
     if (!config.target && !config.listFile) return;
     // Clear any pending finished→idle timer if user starts a new scan immediately
     if (finishedTimerRef.current) { clearTimeout(finishedTimerRef.current); finishedTimerRef.current = null; }
     setScanStatus("running");
+    addToast("info", "Scan started");
     setScanProgress(0);
     setErrorMsg(null);
     setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
@@ -267,13 +336,28 @@ function App() {
       addLog("error", `Scan failed: ${msg}`);
       setErrorMsg(msg);
       setScanStatus("error");
+      addToast("error", `Scan failed: ${msg}`);
     }
-  }, [config, addLog]);
+  }, [config, addLog, addToast]);
+  const handleExportCSV = useCallback(() => {
+  if (scanHistory.length === 0) return;
+  const header = "Date,Target,Elapsed,Critical,Medium,Safe,URLs\n";
+  const rows = scanHistory.map(e =>
+    `"${e.date}","${e.target}","${e.elapsed}",${e.criticalCount},${e.mediumCount},${e.safeCount},${e.urlsScanned}`
+  ).join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "arkenar-history.csv"; a.click();
+  URL.revokeObjectURL(url);
+}, [scanHistory]);
+
 
   const handleStopScan = useCallback(async () => {
     try {
       setScanStatus("stopping");
       await invoke("stop_scan");
+      addToast("warning", "Stopping scan...");
       addLog("warn", "Stop signal sent. Aborting scan...");
       setScanQueue([]); // Clear queue on manual stop
     } catch (err: unknown) {
@@ -312,9 +396,14 @@ function App() {
   // --- Integrated Keyboard Shortcuts & Modern Actions ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+       if (e.ctrlKey && e.key === "k") {
+    e.preventDefault();
+    setShowPalette(p => !p);
+    return; 
+  }
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (showSettings) return; // Don't trigger shortcuts if settings modal is open
+      if (showPalette) return;
 
       const key = e.key.toLowerCase();
 
@@ -369,6 +458,7 @@ function App() {
 
       // Ctrl Combinations
       if (e.ctrlKey) {
+        if (e.key === "k") { e.preventDefault(); setShowPalette(true); return; }
         if (e.key === "t") {
           e.preventDefault();
           setSidebarCollapsed(false);
@@ -410,7 +500,7 @@ function App() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings]);
+  }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings , showPalette]);
 
   const handleResetConfig = useCallback(() => {
     setConfig({
@@ -445,10 +535,10 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col bg-bg-root overflow-hidden">
-      {appSettings.enableStars && <Starfield isScanning={scanStatus === "running"} theme={appSettings.theme} />}
-      {appSettings.enableStars && <Aurora />}
+    <div className="flex h-screen flex-col bg-bg-root overflow-hidden rounded-xl">
+     
 
+      <div className="relative z-0 flex flex-1 flex-col min-h-0">
       <header data-tauri-drag-region className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
         <div className="flex items-center gap-4">
           <button
@@ -586,18 +676,23 @@ function App() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        <div className={`shrink-0 h-full transition-all duration-300 ease-in-out overflow-hidden ${sidebarCollapsed ? "w-0" : "w-[320px]"}`}>
-          <Sidebar
-            config={config}
-            onUpdate={update}
-            onReset={handleResetConfig}
-            scanQueue={scanQueue}
-            onAddToQueue={handleAddToQueue}
-            onRemoveFromQueue={handleRemoveFromQueue}
-            language={appSettings.language}
-          />
+      <div
+          className="relative shrink-0 h-full transition-all duration-300 ease-in-out"
+          style={{ width: sidebarCollapsed ? 0 : 320, overflow: "hidden" }}
+        >
+          <div className="h-full w-[320px]">
+            <Sidebar
+              config={config}
+              onUpdate={update}
+              onReset={handleResetConfig}
+              scanQueue={scanQueue}
+              onAddToQueue={handleAddToQueue}
+              onRemoveFromQueue={handleRemoveFromQueue}
+              language={appSettings.language}
+            />
+          </div>
         </div>
-        <main className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex flex-1 flex-col overflow-hidden min-w-0">
           <TopStats
             stats={stats}
             scanStatus={scanStatus}
@@ -606,6 +701,7 @@ function App() {
             language={appSettings.language}
           />
           <TerminalView
+            
             logs={logs}
             findings={findings}
             activeTab={activeTab}
@@ -614,6 +710,9 @@ function App() {
             scanHistory={scanHistory}
             onLoadFromHistory={handleLoadFromHistory}
             language={appSettings.language}
+            scanProgress={scanProgress}
+            scanStatus={scanStatus}
+            onQuickRescan={handleQuickRescan}
           />
         </main>
       </div>
@@ -644,7 +743,27 @@ function App() {
         }
         confirmText={t("yesUnderstand", appSettings.language)}
         cancelText={t("noDoNotClear", appSettings.language)}
+        
       />
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* H1: Command Palette */}
+      {showPalette && (
+        <CommandPalette
+          onClose={() => setShowPalette(false)}
+          scanStatus={scanStatus}
+          hasTarget={!!(config.target || config.listFile)}
+          hasFindings={findings.length > 0}
+          onStartScan={handleStartScan}
+          onStopScan={handleStopScan}
+          onTabChange={setActiveTab}
+          onOpenSettings={() => setShowSettings(true)}
+          onRequestClear={requestClear}
+          onToggleSidebar={() => setSidebarCollapsed(p => !p)}
+          onExportFindings={handleExportCSV}
+        />
+      )}
+      </div>
     </div>
   );
 }

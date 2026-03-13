@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { SectionLabel, TextInput, SliderWithInput, Toggle, ConfirmationModal } from "./primitives";
 import {
     X, Palette, FolderOutput, Sliders, KeyRound, RotateCcw, Moon, Sun, Radar,
-    Accessibility, Sparkles, Move, ZoomIn, Globe, Check, ExternalLink, Info,
+    Accessibility, Move, ZoomIn, Globe, ExternalLink, Info,
     Volume2
 } from "lucide-react";
 import { t } from "../utils/i18n";
@@ -28,9 +28,7 @@ export interface AppSettings {
     defaultCrawlerMaxUrls: number;
     // Behaviour
     autoOpenReport: boolean;
-    showTimestamps: boolean;
     // Accessibility
-    enableStars: boolean;
     reduceMotion: boolean;
     uiScale: number;
     language: "en" | "ar";
@@ -55,8 +53,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     defaultCrawlerTimeout: 60,
     defaultCrawlerMaxUrls: 50,
     autoOpenReport: true,
-    showTimestamps: true,
-    enableStars: true,
     reduceMotion: false,
     uiScale: 100,
     language: "en",
@@ -91,9 +87,7 @@ export function loadSettings(): AppSettings {
             if (typeof merged.defaultCrawlerTimeout !== "number") merged.defaultCrawlerTimeout = DEFAULT_SETTINGS.defaultCrawlerTimeout;
             if (typeof merged.defaultCrawlerMaxUrls !== "number") merged.defaultCrawlerMaxUrls = DEFAULT_SETTINGS.defaultCrawlerMaxUrls;
             if (typeof merged.autoOpenReport !== "boolean") merged.autoOpenReport = DEFAULT_SETTINGS.autoOpenReport;
-            if (typeof merged.showTimestamps !== "boolean") merged.showTimestamps = DEFAULT_SETTINGS.showTimestamps;
             if (typeof merged.uiScale !== "number") merged.uiScale = DEFAULT_SETTINGS.uiScale;
-            if (typeof merged.enableStars !== "boolean") merged.enableStars = DEFAULT_SETTINGS.enableStars;
             if (typeof merged.reduceMotion !== "boolean") merged.reduceMotion = DEFAULT_SETTINGS.reduceMotion;
             if (typeof merged.soundEnabled !== "boolean") merged.soundEnabled = DEFAULT_SETTINGS.soundEnabled;
             if (typeof merged.soundVolume !== "number") merged.soundVolume = DEFAULT_SETTINGS.soundVolume;
@@ -218,7 +212,6 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
             || draft.defaultTimeout !== settings.defaultTimeout
             || draft.defaultRateLimit !== settings.defaultRateLimit
             || draft.autoOpenReport !== settings.autoOpenReport
-            || draft.showTimestamps !== settings.showTimestamps
             || draft.soundEnabled !== settings.soundEnabled
             || draft.soundVolume !== settings.soundVolume
             || draft.soundOnStart !== settings.soundOnStart
@@ -250,8 +243,8 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
             const next = { ...prev, [key]: val };
 
             // Auto-apply appearance and sound changes instantly
-            if (key === "accentColor" || key === "theme" || key === "uiScale" || key === "language" || key.startsWith("sound")) {
-                saveSettings(next);
+            if (key === "accentColor" || key === "theme" || key === "language" || key.startsWith("sound")) {
+                   saveSettings(next);
                 onSave(next); // This pushes the state to App.tsx, triggering the live DOM update
             }
 
@@ -542,19 +535,6 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-3 rounded-xl bg-bg-card border border-border-subtle group hover:bg-bg-hover transition-all duration-300">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-accent/10 text-accent-text group-hover:scale-110 transition-transform duration-300">
-                                        <Sparkles size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-text-primary">{t("backgroundStars", draft.language)}</p>
-                                        <p className="text-[11px] text-text-muted">{t("backgroundStarsDesc", draft.language)}</p>
-                                    </div>
-                                </div>
-                                <Toggle checked={draft.enableStars} onChange={(v) => set("enableStars", v)} />
-                            </div>
-
-                            <div className="flex items-center justify-between p-3 rounded-xl bg-bg-card border border-border-subtle group hover:bg-bg-hover transition-all duration-300">
-                                <div className="flex items-center gap-3">
                                     <div className="p-2 rounded-lg bg-status-info/10 text-status-info group-hover:scale-110 transition-transform duration-300">
                                         <Move size={16} />
                                     </div>
@@ -612,18 +592,6 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                 <Toggle checked={draft.autoOpenReport} onChange={(v) => set("autoOpenReport", v)} />
                             </div>
 
-                            <div className="flex items-center justify-between p-3 rounded-xl bg-bg-card border border-border-subtle group hover:bg-bg-hover transition-all duration-300">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-status-info/10 text-status-info group-hover:scale-110 transition-transform duration-300">
-                                        <Check size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-text-primary">{t("showTimestamps", draft.language)}</p>
-                                        <p className="text-[11px] text-text-muted">{t("showTimestampsDesc", draft.language)}</p>
-                                    </div>
-                                </div>
-                                <Toggle checked={draft.showTimestamps} onChange={(v) => set("showTimestamps", v)} />
-                            </div>
                         </div>
                     </section>
                 </div>

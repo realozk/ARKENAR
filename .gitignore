@@ -1,5 +1,4 @@
 
-# Build outputs
 target/
 debug/
 
@@ -10,11 +9,11 @@ debug/
 *.exe
 *.dll
 
-# Secrets / keys — never commit these
+# Secrets
 *.pem
 *.key
 
-# Environment — local secrets only, never commit
+# Environment 
 .env
 .env.local
 .env.*.local

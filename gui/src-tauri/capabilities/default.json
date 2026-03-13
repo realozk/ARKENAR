@@ -11,6 +11,9 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
+    "core:window:allow-set-effects",
+    "core:window:allow-set-shadow",
+    "core:window:allow-set-background-color",
     "opener:default",
     "dialog:default",
     {

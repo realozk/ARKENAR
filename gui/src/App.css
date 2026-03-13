@@ -1,10 +1,29 @@
+*, *::before, *::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, .terminal-line, .finding-card pre, .mono {
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* ===== Selection Color ===== */
+::selection {
+  background: rgba(234, 88, 12, 0.35);
+  color: #ffffff;
+}
+::-moz-selection {
+  background: rgba(234, 88, 12, 0.35);
+  color: #ffffff;
+}
+
 @import "tailwindcss";
 
 /* ─── Arkenar Premium Design System — Linear-inspired ────────── */
 @theme {
   /* Surfaces — warmer, slightly lifted dark palette */
-  --color-bg-root: #0a0a0c;
-  --color-bg-panel: #111114;
+    --color-bg-root: rgba(10, 10, 12, 0.80);
+  --color-bg-panel: rgba(17, 17, 20, 0.85);
   --color-bg-card: rgba(255, 255, 255, 0.035);
   --color-bg-input: #151518;
   --color-bg-hover: rgba(255, 255, 255, 0.06);
@@ -49,6 +68,21 @@
   --glass-blur: blur(12px);
   --gradient-overlay: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05), transparent 70%);
 }
+
+/* ===== Custom Scrollbar ===== */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+
+
+/* ===== Rounded Window ===== */
+#root {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
 
 /* ─── Themes ─────────────────────────────────────────────────── */
 
@@ -138,11 +172,11 @@ body {
   margin: 0;
   min-height: 100vh;
   overflow: hidden;
-  /* Add subtle texture */
+    background: transparent;
   background-image:
     radial-gradient(circle at 50% 0%, var(--glass-tint), transparent 80%),
     url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  background-blend-mode: overlay, soft-light;
+    background-blend-mode: overlay, soft-light;
   opacity: 0.98;
 }
 
@@ -158,24 +192,6 @@ header,
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
-/* ─── Scrollbar ───────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
 
 /* Hide spin buttons for input[type="number"] — ensures text alignment */
 input::-webkit-outer-spin-button,
@@ -369,11 +385,6 @@ input[type="number"] {
   font-weight: 600;
 }
 
-/* ─── Selection ───────────────────────────────────────────────── */
-::selection {
-  background: rgba(0, 213, 190, 0.15);
-  color: var(--color-accent-hover);
-}
 
 .hover-row-glow {
   transition: all 0.2s ease;
@@ -503,7 +514,6 @@ select option {
 
 .animate-scan-pulse {
   animation: pulseGlow 1.5s ease-in-out infinite;
-  will-change: transform, opacity;
 }
 
 /* ─── Danger ghost button ─────────────────────────────────────── */
@@ -786,7 +796,7 @@ header,
 .bg-bg-card,
 .bg-bg-input,
 .bg-bg-terminal {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
 
 [data-theme="light"] {

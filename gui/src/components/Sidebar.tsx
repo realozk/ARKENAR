@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw, Plus, X, ListOrdered, FolderSearch, ClipboardPaste,
+  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw, Plus, X, ListOrdered, FolderSearch, ClipboardPaste, BookmarkPlus, Bookmark,
 } from "lucide-react";
 import type { ScanConfig } from "../types";
 import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
@@ -17,9 +17,28 @@ interface SidebarProps {
   language: "en" | "ar";
 }
 
+const TEMPLATES_KEY = "arkenar-templates";
+const URL_REGEX = /^https?:\/\/(\w[\w-]*(\.[\w-]+)+)(:\d+)?(\/.*)?$/;
+
+interface ScanTemplate { id: string; name: string; config: Partial<ScanConfig>; }
+
+function loadTemplates(): ScanTemplate[] {
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || "[]"); } catch { return []; }
+}
+function saveTemplates(tpls: ScanTemplate[]) {
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(tpls));
+}
+
 export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueue, onRemoveFromQueue, language }: SidebarProps) {
   const [queueInput, setQueueInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  // S1: templates
+  const [templates, setTemplates] = useState<ScanTemplate[]>(loadTemplates);
+  const [templateNameInput, setTemplateNameInput] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  // S2: URL validator
+  const [urlValid, setUrlValid] = useState<null | boolean>(null);
+const debounceRef = useRef<number | undefined>(undefined);
 
   const handleBrowseList = async () => {
     try {
@@ -74,24 +93,109 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
     }
   }, [onUpdate]);
 
+  // S2: validate URL on every keystroke (debounced 300ms)
+useEffect(() => {
+  if (debounceRef.current) clearTimeout(debounceRef.current);
+  
+  if (!config.target) { setUrlValid(null); return; }
+  
+  debounceRef.current = window.setTimeout(() => {
+    setUrlValid(URL_REGEX.test(config.target));
+  }, 300);
+  
+  return () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  };
+}, [config.target]);
+
+
+  // S1: save current config as template
+  const handleSaveTemplate = useCallback(() => {
+    if (!templateNameInput.trim()) return;
+    const newTpl: ScanTemplate = { id: Date.now().toString(), name: templateNameInput.trim(), config: { ...config } };
+    const updated = [...templates, newTpl].slice(-8);
+    setTemplates(updated);
+    saveTemplates(updated);
+    setTemplateNameInput("");
+    setSavingTemplate(false);
+  }, [templateNameInput, templates, config]);
+
+  const handleDeleteTemplate = useCallback((id: string) => {
+    const updated = templates.filter(t => t.id !== id);
+    setTemplates(updated);
+    saveTemplates(updated);
+  }, [templates]);
+
+  const handleLoadTemplate = useCallback((tpl: ScanTemplate) => {
+    Object.entries(tpl.config).forEach(([k, v]) => onUpdate(k as keyof ScanConfig, v as ScanConfig[keyof ScanConfig]));
+  }, [onUpdate]);
+
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">
       <div className="px-5 pt-6 pb-5 space-y-6 flex-1">
 
+        {/* S1: Templates Section */}
+        {(templates.length > 0 || savingTemplate) && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <SectionLabel icon={Bookmark} className="!mb-0">{language === "ar" ? "القوالب" : "Templates"}</SectionLabel>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {templates.map(tpl => (
+                <div key={tpl.id} className="flex items-center gap-1 rounded-lg bg-bg-input border border-border-subtle px-2.5 py-1 group">
+                  <button onClick={() => handleLoadTemplate(tpl)} className="text-[11px] font-medium text-text-secondary hover:text-accent-text transition-colors">{tpl.name}</button>
+                  <button onClick={() => handleDeleteTemplate(tpl.id)} className="opacity-0 group-hover:opacity-100 p-0.5 text-text-ghost hover:text-status-critical transition-all duration-150">
+                    <X size={10} strokeWidth={2.5} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Target Section */}
         <div>
           <SectionLabel icon={Crosshair}>{t("target", language)}</SectionLabel>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <div className="flex-1">
               <TextInput id="target-input" value={config.target} onChange={(v) => onUpdate("target", v)} placeholder="https://example.com" mono />
             </div>
+            {/* S2: URL validator dot */}
+            {urlValid !== null && (
+              <div className={`w-2 h-2 rounded-full shrink-0 transition-colors duration-300 ${urlValid ? "bg-status-success shadow-[0_0_6px_var(--color-status-success)]" : "bg-status-critical shadow-[0_0_6px_var(--color-status-critical)]"}`} title={urlValid ? "Valid URL" : "Invalid URL"} />
+            )}
             <button
               onClick={handlePaste}
               title={t("paste", language)}
-              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
+              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95 h-9"
             >
               <ClipboardPaste size={16} strokeWidth={2.5} />
             </button>
+          </div>
+          {/* S1: Save as template inline */}
+          <div className="mt-2">
+            {savingTemplate ? (
+              <div className="flex gap-2 items-center">
+                <input
+                  autoFocus
+                  value={templateNameInput}
+                  onChange={e => setTemplateNameInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleSaveTemplate(); if (e.key === "Escape") setSavingTemplate(false); }}
+                  placeholder={language === "ar" ? "اسم القالب" : "Template name..."}
+                  className="flex-1 bg-bg-input border border-border-subtle rounded-lg px-3 py-1 text-xs font-mono text-text-primary outline-none focus:border-accent/40 transition-all duration-200"
+                />
+                <button onClick={handleSaveTemplate} disabled={!templateNameInput.trim()} className="px-2.5 py-1 rounded-lg bg-accent/15 border border-accent/20 text-[11px] font-bold text-accent-text hover:bg-accent/25 transition-all duration-150 disabled:opacity-40">
+                  {language === "ar" ? "حفظ" : "Save"}
+                </button>
+                <button onClick={() => { setSavingTemplate(false); setTemplateNameInput(""); }} className="p-1 text-text-ghost hover:text-text-primary transition-colors">
+                  <X size={13} strokeWidth={2.5} />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setSavingTemplate(true)} className="flex items-center gap-1 text-[10px] text-text-ghost hover:text-accent-text transition-colors duration-150">
+                <BookmarkPlus size={11} strokeWidth={2.5} />{language === "ar" ? "حفظ كقالب" : "Save as template"}
+              </button>
+            )}
           </div>
         </div>
 
