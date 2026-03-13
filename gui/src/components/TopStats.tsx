@@ -1,7 +1,15 @@
-import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity, Zap, CheckCircle, Cpu } from "lucide-react";
+import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity, Zap, CheckCircle, Cpu, PenLine, Send, Clock as ClockIcon, HardDrive, Hash } from "lucide-react";
 import { useState, useEffect, useRef, type ElementType } from "react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
 import { t } from "../utils/i18n";
+
+export type StudioStatsEvent = {
+  status: string;
+  time: string;
+  reqSize: string;
+  resSize: string;
+  phase: number;
+};
 
 /* ─── E3: Animated number counter hook ──────────────────────────── */
 function useAnimatedNumber(value: number): number {
@@ -57,7 +65,7 @@ function StatCard({ label, value, icon: Icon, accent, animate, children }: {
   label: string;
   value: string | number;
   icon: ElementType;
-  accent?: "default" | "critical" | "warning" | "success" | "rps-low" | "rps-med" | "rps-high";
+  accent?: "default" | "critical" | "warning" | "success" | "rps-low" | "rps-med" | "rps-high" | "studio-info";
   animate?: boolean;
   children?: React.ReactNode;
 }) {
@@ -73,6 +81,7 @@ function StatCard({ label, value, icon: Icon, accent, animate, children }: {
     "rps-low": "text-status-success",
     "rps-med": "text-status-warning",
     "rps-high": "text-status-critical",
+    "studio-info": "text-accent-text",
   };
 
   return (
@@ -97,6 +106,13 @@ const PHASES = [
   { label: "Complete", Icon: CheckCircle },
 ];
 
+const STUDIO_PHASES = [
+  { label: "Draft", Icon: PenLine },
+  { label: "Dispatch", Icon: Send },
+  { label: "Await", Icon: ClockIcon },
+  { label: "Render", Icon: CheckCircle },
+];
+
 function getPhaseIndex(progress: number): number {
   if (progress < 20) return 0;
   if (progress < 50) return 1;
@@ -104,12 +120,14 @@ function getPhaseIndex(progress: number): number {
   return 3;
 }
 
-function PhaseTimeline({ progress, scanning }: { progress: number; scanning: boolean }) {
-  const activePhase = scanning ? getPhaseIndex(progress) : -1;
+function PhaseTimeline({ progress, scanning, activeTab, studioPhase }: { progress: number; scanning: boolean, activeTab?: string, studioPhase?: number }) {
+  const isStudio = activeTab === "studio";
+  const activePhase = isStudio ? (studioPhase ?? 0) : (scanning ? getPhaseIndex(progress) : -1);
+  const phases = isStudio ? STUDIO_PHASES : PHASES;
 
   return (
-    <div className={`flex items-center justify-center py-3 transition-opacity duration-500 ${scanning ? "opacity-100" : "opacity-25"}`}>
-      {PHASES.map((phase, idx) => {
+    <div className={`flex items-center justify-center py-3 transition-opacity duration-500 ${scanning || isStudio ? "opacity-100" : "opacity-25"}`}>
+      {phases.map((phase, idx) => {
         const isActive = idx === activePhase;
         const isDone = idx < activePhase;
 
@@ -130,7 +148,7 @@ function PhaseTimeline({ progress, scanning }: { progress: number; scanning: boo
                 isActive ? "text-accent-text" : isDone ? "text-status-success" : "text-text-ghost"
               }`}>{phase.label}</span>
             </div>
-            {idx < PHASES.length - 1 && (
+            {idx < phases.length - 1 && (
               <div className={`h-px w-24 mb-5 mx-3 transition-colors duration-700 ${isDone ? "bg-status-success" : isActive ? "bg-accent/40" : "bg-border-subtle"}`} />
             )}
           </div>
@@ -181,18 +199,35 @@ export function ThinProgressBar({ progress, status }: { progress: number; status
 }
 
 /* ─── TopStats ───────────────────────────────────────────────────── */
-export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = "en" }: {
+export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = "en", activeTab }: {
   stats: ScanStatsEvent;
   scanStatus: ScanStatus;
   scanProgress: number;
   rps?: number;
   language?: "en" | "ar";
+  activeTab?: string;
 }) {
   // E1: Rolling RPS history buffer
   const [rpsHistory, setRpsHistory] = useState<number[]>(() => Array(20).fill(0));
+  
+  // Studio specific stats
+  const [studioStats, setStudioStats] = useState<StudioStatsEvent>({
+    status: "Idle",
+    time: "—",
+    reqSize: "0 KB",
+    resSize: "0 KB",
+    phase: 0
+  });
+
   useEffect(() => {
     setRpsHistory(prev => [...prev.slice(1), scanStatus === "running" ? rps : 0]);
   }, [rps, scanStatus]);
+
+  useEffect(() => {
+    const handler = (e: CustomEvent<StudioStatsEvent>) => setStudioStats(e.detail);
+    window.addEventListener("studio-stats", handler as EventListener);
+    return () => window.removeEventListener("studio-stats", handler as EventListener);
+  }, []);
 
   const rpsAccent = scanStatus !== "running" ? "default" : rps > 200 ? "rps-high" : rps > 50 ? "rps-med" : "rps-low";
   const isScanning = scanStatus === "running";
@@ -201,25 +236,34 @@ export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = 
     <div className="shrink-0 flex flex-col">
       {/* Stat cards + phase timeline */}
       <div className="px-6 pt-5 pb-3 space-y-3">
-        <div className="grid grid-cols-7 gap-3">
-          <StatCard label={t("targets", language)} value={stats.targets} icon={Crosshair} animate />
-          <StatCard label={t("urls", language)} value={stats.urls} icon={Globe} animate />
-          <StatCard label={t("critical", language)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} animate />
-          <StatCard label={t("medium", language)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} animate />
-          <StatCard label={t("safe", language)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} animate />
-          <StatCard label={t("elapsed", language)} value={stats.elapsed} icon={Timer} />
-          <StatCard
-            label={language === "ar" ? "طلب/ث" : "req/s"}
-            value={scanStatus === "running" ? rps : "—"}
-            icon={Activity}
-            accent={rpsAccent}
-          >
-            <Sparkline values={rpsHistory} />
-          </StatCard>
-        </div>
+        {activeTab === "studio" ? (
+          <div className="grid grid-cols-4 gap-3">
+            <StatCard label="Status" value={studioStats.status} icon={Hash} accent={studioStats.status === "Idle" ? "default" : studioStats.status.startsWith("2") ? "success" : studioStats.status.startsWith("4") || studioStats.status.startsWith("5") ? "critical" : "warning"} />
+            <StatCard label="Time" value={studioStats.time} icon={ClockIcon} accent="studio-info" />
+            <StatCard label="Req Size" value={studioStats.reqSize} icon={Send} accent="studio-info" />
+            <StatCard label="Res Size" value={studioStats.resSize} icon={HardDrive} accent="studio-info" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-7 gap-3">
+            <StatCard label={t("targets", language)} value={stats.targets} icon={Crosshair} animate />
+            <StatCard label={t("urls", language)} value={stats.urls} icon={Globe} animate />
+            <StatCard label={t("critical", language)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} animate />
+            <StatCard label={t("medium", language)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} animate />
+            <StatCard label={t("safe", language)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} animate />
+            <StatCard label={t("elapsed", language)} value={stats.elapsed} icon={Timer} />
+            <StatCard
+              label={language === "ar" ? "طلب/ث" : "req/s"}
+              value={scanStatus === "running" ? rps : "—"}
+              icon={Activity}
+              accent={rpsAccent}
+            >
+              <Sparkline values={rpsHistory} />
+            </StatCard>
+          </div>
+        )}
 
         {/* E2: Phase Timeline — always shown, dimmed when idle */}
-        <PhaseTimeline progress={scanProgress} scanning={isScanning} />
+        <PhaseTimeline progress={scanProgress} scanning={isScanning} activeTab={activeTab} studioPhase={studioStats.phase} />
       </div>
     </div>
   );

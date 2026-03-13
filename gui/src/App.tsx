@@ -3,8 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { X, Settings, PanelLeftClose, PanelLeft, Info, Minus, Square } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
 
 import { ToastContainer, type Toast, type ToastType } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
@@ -14,7 +12,7 @@ import { StatusDot, ConfirmationModal, Logo } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
-import StudioPanel from "./components/StudioPanel";
+import { type StudioRequest, type StudioHistoryItem } from "./components/StudioPanel";
 import { SettingsModal, loadSettings, applyAccentColor, type AppSettings } from "./components/SettingsModal";
 import { InfoModal } from "./components/InfoModal";
 import { t } from "./utils/i18n";
@@ -65,13 +63,15 @@ function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [findings, setFindings] = useState<ScanFindingEvent[]>([]);
   const [activeTab, setActiveTab] = useState<"terminal" | "findings" | "history" | "studio">("terminal");
+  const [initialStudioRequest, setInitialStudioRequest] = useState<Partial<StudioRequest> | null>(null);
+  const [studioHistory, setStudioHistory] = useState<StudioHistoryItem[]>([]);
+  const [selectedStudioHistoryId, setSelectedStudioHistoryId] = useState<string | null>(null);
   const activeTabRef = useRef<"terminal" | "findings" | "history" | "studio">("terminal");
   const [scanProgress, setScanProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [isResizing, setIsResizing] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
@@ -310,15 +310,6 @@ const removeToast = useCallback((id: string) => {
 }, [addLog, addToast]);
 
   // H1: Export findings (for CommandPalette)
-  const handleExportFindings = useCallback(async () => {
-    if (findings.length === 0) return;
-    const filePath = await save({
-      defaultPath: `arkenar-findings-${new Date().toISOString().slice(0, 10)}.json`,
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (filePath) await writeTextFile(filePath, JSON.stringify(findings, null, 2));
-  }, [findings]);
-
   const handleStartScan = useCallback(async () => {
     if (!config.target && !config.listFile) return;
     // Clear any pending finished→idle timer if user starts a new scan immediately
@@ -544,6 +535,21 @@ const removeToast = useCallback((id: string) => {
     setScanQueue(prev => prev.filter((_, i) => i !== index));
   }, []);
 
+  const handleSendToStudio = useCallback((finding: ScanFindingEvent) => {
+    const payload = finding.payload?.trim() || "";
+    const useBody = payload.length > 0 && !finding.url.includes(payload) && !finding.url.includes(encodeURIComponent(payload));
+
+    const initialReq: Partial<StudioRequest> = {
+      url: finding.url,
+      method: useBody ? "POST" : "GET",
+      headers: "",
+      body: useBody ? payload : "",
+    };
+
+    setInitialStudioRequest(initialReq);
+    setActiveTab("studio");
+  }, []);
+
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden rounded-xl">
      
@@ -686,7 +692,7 @@ const removeToast = useCallback((id: string) => {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-      <div
+        <div
           className="relative shrink-0 h-full transition-all duration-300 ease-in-out"
           style={{ width: sidebarCollapsed ? 0 : 320, overflow: "hidden" }}
         >
@@ -699,26 +705,35 @@ const removeToast = useCallback((id: string) => {
               onAddToQueue={handleAddToQueue}
               onRemoveFromQueue={handleRemoveFromQueue}
               language={appSettings.language}
+              isStudioMode={activeTab === "studio"}
+              studioHistory={studioHistory}
+              selectedStudioHistoryId={selectedStudioHistoryId}
+              onSelectStudioHistoryItem={(id) => { setSelectedStudioHistoryId(id); setActiveTab("studio"); }}
+              onNewStudioRequest={() => { setSelectedStudioHistoryId(null); setActiveTab("studio"); }}
             />
           </div>
         </div>
-        <main className="flex flex-1 flex-col overflow-hidden min-w-0">
-          <div className="px-4 pt-3">
-            {activeTab === "studio" ? (
+      
+        <main className="flex flex-1 flex-col overflow-hidden min-w-0 bg-transparent">
+          <div className="flex justify-center pt-3 pb-0 z-10 w-full shrink-0">
+            <div className="relative flex items-center rounded-full bg-bg-panel/40 p-1 border border-border-subtle shadow-sm">
+              <div 
+                className="absolute top-1 bottom-1 w-[120px] rounded-full bg-bg-card border border-border-subtle shadow-sm transition-transform duration-300 ease-in-out"
+                style={{ transform: activeTab === 'studio' ? 'translateX(120px)' : 'translateX(0)' }}
+              />
               <button
-                onClick={() => setActiveTab("terminal")}
-                className="rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-11px text-text-secondary hover:border-accent/30 hover:text-accent-text transition-all duration-300"
+                onClick={() => { if (activeTab === 'studio') setActiveTab('terminal'); }}
+                className={`relative z-10 w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${activeTab !== 'studio' ? 'text-accent-text' : 'text-text-muted hover:text-text-primary'}`}
               >
-                Back To Scan View
+                Basic
               </button>
-            ) : (
               <button
-                onClick={() => setActiveTab("studio")}
-                className="rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-11px text-text-secondary hover:border-accent/30 hover:text-accent-text transition-all duration-300"
+                onClick={() => setActiveTab('studio')}
+                className={`relative z-10 w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${activeTab === 'studio' ? 'text-accent-text' : 'text-text-muted hover:text-text-primary'}`}
               >
-                Open Exploit Studio
+                Studio
               </button>
-            )}
+            </div>
           </div>
           <TopStats
             stats={stats}
@@ -726,26 +741,28 @@ const removeToast = useCallback((id: string) => {
             scanProgress={scanProgress}
             rps={rps}
             language={appSettings.language}
+            activeTab={activeTab}
           />
-          {activeTab === "studio" ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <StudioPanel />
-            </div>
-          ) : (
-            <TerminalView
-              logs={logs}
-              findings={findings}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              onRequestClear={requestClear}
-              scanHistory={scanHistory}
-              onLoadFromHistory={handleLoadFromHistory}
-              language={appSettings.language}
-              scanProgress={scanProgress}
-              scanStatus={scanStatus}
-              onQuickRescan={handleQuickRescan}
-            />
-          )}
+          <TerminalView
+            logs={logs}
+            findings={findings}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            onRequestClear={requestClear}
+            scanHistory={scanHistory}
+            onLoadFromHistory={handleLoadFromHistory}
+            language={appSettings.language}
+            scanProgress={scanProgress}
+            scanStatus={scanStatus}
+            onQuickRescan={handleQuickRescan}
+            onSendToStudio={handleSendToStudio}
+            initialStudioRequest={initialStudioRequest}
+            onInitialRequestConsumed={() => setInitialStudioRequest(null)}
+            studioHistory={studioHistory}
+            setStudioHistory={setStudioHistory}
+            selectedStudioHistoryId={selectedStudioHistoryId}
+            setSelectedStudioHistoryId={setSelectedStudioHistoryId}
+          />
         </main>
       </div>
 

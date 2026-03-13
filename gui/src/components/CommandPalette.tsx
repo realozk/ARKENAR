@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Search, Play, Square, Terminal, ScanSearch, History,
+  Play, Square, Terminal, ScanSearch, History,
   Settings, Trash2, PanelLeftClose, Download, X
 } from "lucide-react";
 

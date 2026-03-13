@@ -3,7 +3,7 @@ import {
   FlaskConical, Bug, Shield,
   AlertTriangle, ChevronDown, Copy, Check, Trash2,
   Search, ArrowUpDown, Clock, Download, ExternalLink, AlertOctagon, X,
-  Clipboard, ArrowDownToLine, ArrowUpToLine, RotateCcw, Terminal as TerminalIcon,
+  Clipboard, ArrowDownToLine, ArrowUpToLine, RotateCcw, Terminal as TerminalIcon, Zap
 } from "lucide-react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -11,6 +11,7 @@ import type { LogEntry, ScanFindingEvent, ScanHistoryEntry, ScanStatus } from ".
 import { ThinProgressBar } from "./TopStats";
 import { CustomDropdown } from "./primitives";
 import { t } from "../utils/i18n";
+import StudioPanel, { type StudioRequest, type StudioHistoryItem } from "./StudioPanel";
 
 /** Detect suspicious shell metacharacters in curl commands */
 const SHELL_META = /[;&|`$(){}]/;
@@ -57,7 +58,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function FindingDetailModal({ finding, onClose, language }: { finding: FindingWithMeta; onClose: () => void; language: "en" | "ar" }) {
+function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { finding: FindingWithMeta; onClose: () => void; language: "en" | "ar"; onSendToStudio: (finding: ScanFindingEvent) => void }) {
   const [closing, setClosing] = useState(false);
   const isCritical = finding.severity === "critical";
   const hasSuspiciousChars = SHELL_META.test(finding.curl_cmd);
@@ -144,6 +145,13 @@ function FindingDetailModal({ finding, onClose, language }: { finding: FindingWi
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">{t("reproduce", language)}</p>
+              <button
+                onClick={() => onSendToStudio(finding)}
+                className="rounded-md border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-text hover:bg-accent/20 transition-all duration-200"
+                title="Send to Studio"
+              >
+                Send to Studio
+              </button>
               {hasSuspiciousChars && (
                 <span className="flex items-center gap-1 rounded-full bg-status-warning/15 px-2 py-0.5 text-[10px] font-bold text-status-warning uppercase">
                   <AlertOctagon size={10} strokeWidth={3} />{t("reproduceDesc", language)}
@@ -182,11 +190,12 @@ function FindingDetailModal({ finding, onClose, language }: { finding: FindingWi
 }
 
 /* ─── FindingCard ────────────────────────────────────────────────── */
-function FindingCardInner({ finding, index, language, onOpenDetail }: {
+function FindingCardInner({ finding, index, language, onOpenDetail, onSendToStudio }: {
   finding: ScanFindingEvent;
   index: number;
   language: "en" | "ar";
   onOpenDetail: () => void;
+  onSendToStudio: (finding: ScanFindingEvent) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -235,6 +244,13 @@ function FindingCardInner({ finding, index, language, onOpenDetail }: {
           className="rounded-lg p-1.5 text-text-ghost hover:text-accent-text hover:bg-accent-dim transition-all duration-200 hover:scale-110"
         >
           <ExternalLink size={14} strokeWidth={2.5} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onSendToStudio(finding); }}
+          title="Send to Studio"
+          className="rounded-lg p-1.5 text-text-ghost hover:text-accent-text hover:bg-accent-dim transition-all duration-200 hover:scale-110"
+        >
+          <Zap size={14} strokeWidth={2.5} />
         </button>
         <ChevronDown size={16} className={`text-text-ghost transition-transform duration-300 ${expanded ? "rotate-180" : ""}`} onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} />
       </div>
@@ -318,8 +334,8 @@ function LogLine({ log, absIdx, showTimestamps }: { log: LogEntry; absIdx: numbe
 interface TerminalViewProps {
   logs: LogEntry[];
   findings: ScanFindingEvent[];
-  activeTab: "terminal" | "findings" | "history";
-  onTabChange: (tab: "terminal" | "findings" | "history") => void;
+  activeTab: "terminal" | "findings" | "history" | "studio";
+  onTabChange: (tab: "terminal" | "findings" | "history" | "studio") => void;
   onRequestClear: () => void;
   scanHistory: ScanHistoryEntry[];
   onLoadFromHistory?: (target: string) => void;
@@ -327,9 +343,16 @@ interface TerminalViewProps {
   scanProgress?: number;
   scanStatus?: ScanStatus;
   onQuickRescan?: (target: string) => void;
+  onSendToStudio?: (finding: ScanFindingEvent) => void;
+  initialStudioRequest?: Partial<StudioRequest> | null;
+  onInitialRequestConsumed?: () => void;
+  studioHistory: StudioHistoryItem[];
+  setStudioHistory: React.Dispatch<React.SetStateAction<StudioHistoryItem[]>>;
+  selectedStudioHistoryId: string | null;
+  setSelectedStudioHistoryId: (id: string | null) => void;
 }
 
-export function TerminalView({ logs, findings, activeTab, onTabChange, onRequestClear, scanHistory, onLoadFromHistory, language, scanProgress = 0, scanStatus = "idle", onQuickRescan }: TerminalViewProps) {
+export function TerminalView({ logs, findings, activeTab, onTabChange, onRequestClear, scanHistory, onLoadFromHistory, language, scanProgress = 0, scanStatus = "idle", onQuickRescan, onSendToStudio, initialStudioRequest, onInitialRequestConsumed, studioHistory, setStudioHistory, selectedStudioHistoryId, setSelectedStudioHistoryId }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termSearchRef = useRef<HTMLInputElement>(null);
   const findingsSearchRef = useRef<HTMLInputElement>(null);
@@ -617,7 +640,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
               </div>
             )}
             {processedFindings.map(f => (
-              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} language={language} onOpenDetail={() => setDetailFinding(f)} />
+              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} language={language} onOpenDetail={() => setDetailFinding(f)} onSendToStudio={(finding) => onSendToStudio?.(finding)} />
             ))}
           </div>
         </div>
@@ -680,10 +703,24 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
       )}
 
       {/* H3: Finding Detail Modal */}
-      {detailFinding && <FindingDetailModal finding={detailFinding} onClose={() => setDetailFinding(null)} language={language} />}
+      {detailFinding && <FindingDetailModal finding={detailFinding} onClose={() => setDetailFinding(null)} language={language} onSendToStudio={(finding) => onSendToStudio?.(finding)} />}
+
+      {/* Studio Tab */}
+      {activeTab === "studio" && (
+        <div className="flex-1 overflow-hidden">
+          <StudioPanel 
+            initialRequest={initialStudioRequest}
+            onInitialRequestConsumed={onInitialRequestConsumed}
+            history={studioHistory}
+            setHistory={setStudioHistory}
+            selectedHistoryId={selectedStudioHistoryId}
+            setSelectedHistoryId={setSelectedStudioHistoryId}
+          />
+        </div>
+      )}
 
       {/* Progress bar at the bottom of the terminal panel */}
-      <ThinProgressBar progress={scanProgress} status={scanStatus} />
+      {activeTab !== "studio" && <ThinProgressBar progress={scanProgress} status={scanStatus} />}
     </div>
   );
 }
