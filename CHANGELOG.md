@@ -4,6 +4,32 @@ All notable changes to Arkenar are documented here.
 
 ---
 
+## [1.1.0] — 2026-03-14
+
+### Added
+- **Arkenar Studio (New Architecture)** — Completely refactored the Studio environment into a modular, high-performance architecture using a dedicated Custom Hook (`useStudio`).
+- **Smart Auto-Login** — Added a CSRF-aware authentication handshake (GET -> Parse -> POST) that automatically captures and injects session cookies into Studio requests.
+- **Traffic History Drawer** — Added a sidebar to track, search, and recall previous manual HTTP requests within the current session.
+- **Advanced PoC Exporter** — One-click generation of Proof-of-Concept snippets in `cURL`, `Python Requests`, and `Raw HTTP` formats.
+- **New Utility Toolkit** — Integrated real-time data manipulation tools: Base64 (Encode/Decode), URL Encoding, and Hex conversion directly within the request builder.
+- **Beautify & Diff** — Added JSON beautifier for responses and a "Git-style" Diff mode to compare results between different payloads.
+
+### Changed
+- **Codebase Modularization** — Split the monolithic `StudioPanel.tsx` into five distinct, specialized components (`StudioRequest`, `StudioResponse`, `TrafficDrawer`, etc.) for better maintainability.
+- **State Management Logic** — Moved all business logic, HTTP calls, and data transformation out of the UI components and into the `useStudio` state manager.
+- **Tauri IPC Optimization** — Streamlined communication between the React frontend and Rust backend for manual HTTP requests to bypass CORS and utilize the native Arkenar engine.
+
+### Fixed
+- **State Desynchronization** — Resolved issues where request headers or body would get lost when switching between different scan tabs.
+- **UI Freezing** — Fixed long-standing UI hangs during large response rendering by implementing optimized line-by-line code display.
+- **CSS Layout Issues** — Improved the Studio's responsiveness and scrolling behavior for very long HTTP requests and responses.
+
+### Security
+- **Logic Isolation** — Improved security by keeping all sensitive data manipulation (like Smart Login handshakes) within the Rust backend, away from the browser context.
+- **Input Sanitization** — Enhanced validation for manual request fields to prevent accidental command injection during PoC generation.
+
+---
+
 ## [1.0.4] — 2026-03-12
 
 ### Fixed
