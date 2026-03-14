@@ -1,7 +1,7 @@
 import React from "react";
 import { ChevronDown, Plus, Trash, Check, FileCode, LogIn, Share2, Binary, Link2, Braces, RefreshCw, Send, X } from "lucide-react";
 import { METHODS, REQUEST_TABS, HttpMethod, QueryParam, RequestTab } from "./useStudio";
-
+import { Copy, ClipboardPaste } from 'lucide-react';
 function ActionButton({ icon: Icon, title, label, onClick }: { icon: React.ElementType; title: string; label: string; onClick: () => void; }) {
   return (
     <button
@@ -43,6 +43,7 @@ export interface StudioRequestProps {
     onSend: () => void;
     updateQueryParams: (params: QueryParam[]) => void;
     applyTextMutation: (mutator: (val: string) => string) => void;
+    onImportCurl: () => void;
   };
   refs: {
     headersRef: React.RefObject<HTMLTextAreaElement>;
@@ -121,6 +122,18 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           {state.isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
           Execute
         </button>
+
+        {/* CHANGE D: Magic cURL Import button */}
+      <button
+        type="button"
+        onClick={handlers.onImportCurl}
+        title="Paste a cURL command from clipboard and auto-fill all fields"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10 transition-all duration-200"
+      >
+        <ClipboardPaste size={13} />
+        Import cURL
+      </button>
+
 
         <button
           type="button"

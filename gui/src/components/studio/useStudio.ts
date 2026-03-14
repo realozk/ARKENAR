@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 export type StudioRequest = {
@@ -274,6 +275,13 @@ export function useStudio(props: {
     return rawSnippet;
   }, [pocTab, curlSnippet, pythonSnippet, rawSnippet]);
 
+  const isResponseJson = useMemo(() => {
+  if (!response) return false;
+  return response.headers.some(([k, v]) =>
+    k.toLowerCase() === 'content-type' && v.toLowerCase().includes('application/json')
+  );
+}, [response]);
+
   useEffect(() => {
     let phase = 0;
     if (isLoading) phase = 1;
@@ -411,14 +419,29 @@ export function useStudio(props: {
         headers: finalRequest.headers,
         body: finalRequest.body,
       };
+      
+      const res = await invoke<StudioResponse>('studio_send', { req });
 
-      const res = await invoke<StudioResponse>("studio_send", { req });
-      setResponse(res);
+      const isJsonContentType = res.headers.some(([k, v]) =>
+      k.toLowerCase() === 'content-type' && v.toLowerCase().includes('application/json')
+    );
+    
+
+      let finalRes = res;
+      if (isJsonContentType) {
+        try {
+          const pretty = JSON.stringify(JSON.parse(res.body), null, 2);
+          finalRes = { ...res, body: pretty };
+        } catch {
+        }
+      }
+
+      
 
       const item: StudioHistoryItem = {
         id: crypto.randomUUID(),
         request: req,
-        response: res,
+        response: finalRes,
         error: null,
         createdAt: Date.now(),
       };
@@ -462,6 +485,61 @@ export function useStudio(props: {
     }
   };
 
+  const onMirrorToRequest = () => {
+  if (!response?.body) return;
+  setBody(response.body);
+  setRequestTab('body');
+};
+
+const onImportCurl = async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    const raw = text.trim();
+
+    if (!raw.startsWith('curl')) {
+      setError('Clipboard does not contain a cURL command.');
+      return;
+    }
+
+    const urlMatch = raw.match(/['"]?(https?:\/\/[^\s'"\\]+)['"]?/);
+    const parsedUrl = urlMatch?.[1] ?? '';
+
+    const methodMatch = raw.match(/(?:-X|--request)\s+([A-Z]+)/);
+    const VALID_METHODS = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'] as const;
+    const raw_method = methodMatch?.[1] ?? 'GET';
+    const parsedMethod = (VALID_METHODS.includes(raw_method as any) ? raw_method : 'GET') as HttpMethod;
+
+    const headerMatches = [...raw.matchAll(/(?:-H|--header)\s+['"]([^'"]+)['"]/g)];
+    const parsedHeaders = headerMatches
+      .map(m => m[1])
+      .filter(h => !h.toLowerCase().startsWith('content-length'))
+      .join('\n');
+
+const bodySingle = raw.match(/(?:--data-raw|--data-binary|--data|-d)\s+'([\s\S]*?)'/);
+
+const bodyDouble = raw.match(/(?:--data-raw|--data-binary|--data|-d)\s+"([\s\S]*?)"/);
+const parsedBody = bodySingle?.[1] ?? bodyDouble?.[1] ?? '';
+
+
+    if (!parsedUrl) {
+      setError('Could not parse a valid URL from the cURL command.');
+      return;
+    }
+
+    // Fire all setters
+    setUrl(parsedUrl);
+    setMethod(parsedMethod);
+    setHeadersInput(parsedHeaders);
+    setBody(parsedBody);
+    if (parsedBody) setRequestTab('body');
+    setError(null);
+
+  } catch {
+    setError('Failed to read clipboard. Please grant clipboard permissions.');
+  }
+};
+
+
   const onCopyPoc = async () => {
     await navigator.clipboard.writeText(activePocSnippet);
     setPocCopied(true);
@@ -476,7 +554,7 @@ export function useStudio(props: {
       showPocModal, pocTab, pocCopied,
       compareMode, showSmartLogin,
       isBodyDisabled, responseCookies, displayBody, codeLines, diffLines,
-      activePocSnippet
+      activePocSnippet,isResponseJson,  
     },
     refs: {
       headersRef, bodyRef
@@ -489,7 +567,7 @@ export function useStudio(props: {
       setCompareMode, setShowSmartLogin
     },
     handlers: {
-      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader
+      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,
     }
   };
 }

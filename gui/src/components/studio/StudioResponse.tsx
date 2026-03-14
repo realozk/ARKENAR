@@ -1,6 +1,7 @@
 import React from "react";
-import { Copy, Braces, GitCompare } from "lucide-react";
+import { Copy, Braces, GitCompare, ArrowLeftToLine } from "lucide-react";
 import { ResponseTab, StudioResponse as StudioResponseType, getStatusClass, RESPONSE_TABS } from "./useStudio";
+
 
 export interface StudioResponseProps {
   state: {
@@ -13,6 +14,7 @@ export interface StudioResponseProps {
     codeLines: string[];
     diffLines: Array<{ type: "same" | "added" | "removed"; text: string }>;
     responseCookies: [string, string][];
+    isResponseJson: boolean;
   };
   setters: {
     setResponseTab: (t: ResponseTab) => void;
@@ -21,6 +23,7 @@ export interface StudioResponseProps {
   };
   handlers: {
     onBeautifyResponse: () => void;
+    onMirrorToRequest: () => void;
   };
 }
 
@@ -34,7 +37,7 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
         </div>
       )}
 
-      {/* Status Bar */}
+     {/* Status Bar */}
       <div className="mb-3 flex items-center justify-between rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs tracking-wider">
         <div className="flex items-center gap-3 text-text-secondary">
           <span className={state.response ? `${getStatusClass(state.response.status)} font-semibold uppercase tracking-wider` : "text-text-muted font-semibold uppercase tracking-wider"}>
@@ -49,24 +52,36 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
             </span>
           )}
         </div>
-      </div>
+                {/* Tabs */}
+        <div className="mb-0 flex items-center gap-2   px-0 pt-0">
+          {RESPONSE_TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setters.setResponseTab(tab.id)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
+                state.responseTab === tab.id
+                  ? 'bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20'
+                  : 'bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      {/* Tabs */}
-      <div className="mb-3 flex items-center gap-2 border-b border-border-subtle pb-3">
-        {RESPONSE_TABS.map((tab) => (
+
+        {state.isResponseJson && (
           <button
-            key={tab.id}
             type="button"
-            onClick={() => setters.setResponseTab(tab.id)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
-              state.responseTab === tab.id
-                ? "bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20"
-                : "bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary"
-            }`}
+            onClick={handlers.onMirrorToRequest}
+            title="Copy JSON response to Request Body"
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-text hover:bg-accent/20 hover:border-accent/50 transition-all duration-200"
           >
-            {tab.label}
+            <ArrowLeftToLine size={13} strokeWidth={2.5} />
+            Send to Request
           </button>
-        ))}
+        )}
       </div>
 
       {/* Content Area */}
@@ -152,6 +167,7 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
           onClick={() => navigator.clipboard.writeText(state.response?.body ?? "")}
           className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
         >
+          
           <Copy size={13} />
           Copy Body
         </button>
@@ -169,11 +185,14 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
           className={`inline-flex items-center gap-1 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
             state.compareMode ? "bg-accent/10 text-accent-text ring-1 ring-accent/20" : "bg-bg-card text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           }`}
+          
         >
           <GitCompare size={13} />
           Compare (Diff)
         </button>
-      </div>
+      
+        </div>
+
     </section>
   );
 }
