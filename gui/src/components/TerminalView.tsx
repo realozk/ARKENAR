@@ -498,21 +498,25 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
       {/* Tab bar */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
         <div className="flex items-center gap-2">
-          <button onClick={() => handleTabChange("terminal")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "terminal" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
-            <FlaskConical size={15} strokeWidth={2.5} className={activeTab === "terminal" ? "text-accent-text" : ""} />{t("terminal", language)}
-          </button>
-          <button onClick={() => handleTabChange("findings")} className={`relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "findings" ? "bg-bg-card text-text-primary border-status-critical/40 shadow-[0_4px_12px_rgba(244,63,94,0.15)] ring-1 ring-status-critical/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
-            <Bug size={15} strokeWidth={2.5} className={activeTab === "findings" ? "text-status-critical" : ""} />{t("findings", language)}
-            {findings.length > 0 && <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-status-critical/20 text-status-critical px-2 py-0.5 text-[10px] font-black`}>{findings.length}</span>}
-            {/* F4: new findings badge */}
-            {newFindingsBadge > 0 && activeTab !== "findings" && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-[9px] font-black text-bg-root px-1 animate-pulse shadow-[0_0_6px_var(--color-accent)]">{newFindingsBadge}</span>
-            )}
-          </button>
-          <button onClick={() => handleTabChange("history")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "history" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
-            <Clock size={15} strokeWidth={2.5} className={activeTab === "history" ? "text-accent-text" : ""} />{language === "ar" ? "السجل" : "History"}
-            {scanHistory.length > 0 && <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-accent/20 text-accent-text px-2 py-0.5 text-[10px] font-black`}>{scanHistory.length}</span>}
-          </button>
+          {activeTab !== "studio" && (
+            <>
+              <button onClick={() => handleTabChange("terminal")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "terminal" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
+                <FlaskConical size={15} strokeWidth={2.5} className={activeTab === "terminal" ? "text-accent-text" : ""} />{t("terminal", language)}
+              </button>
+              <button onClick={() => handleTabChange("findings")} className={`relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "findings" ? "bg-bg-card text-text-primary border-status-critical/40 shadow-[0_4px_12px_rgba(244,63,94,0.15)] ring-1 ring-status-critical/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
+                <Bug size={15} strokeWidth={2.5} className={activeTab === "findings" ? "text-status-critical" : ""} />{t("findings", language)}
+                {findings.length > 0 && <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-status-critical/20 text-status-critical px-2 py-0.5 text-[10px] font-black`}>{findings.length}</span>}
+                {/* F4: new findings badge */}
+                {newFindingsBadge > 0 && activeTab !== "findings" && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-[9px] font-black text-bg-root px-1 animate-pulse shadow-[0_0_6px_var(--color-accent)]">{newFindingsBadge}</span>
+                )}
+              </button>
+              <button onClick={() => handleTabChange("history")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "history" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
+                <Clock size={15} strokeWidth={2.5} className={activeTab === "history" ? "text-accent-text" : ""} />{language === "ar" ? "السجل" : "History"}
+                {scanHistory.length > 0 && <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-accent/20 text-accent-text px-2 py-0.5 text-[10px] font-black`}>{scanHistory.length}</span>}
+              </button>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

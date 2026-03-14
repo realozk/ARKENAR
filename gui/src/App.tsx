@@ -38,10 +38,7 @@ function validateHistory(data: unknown): ScanHistoryEntry[] {
 
 function App() {
 
-  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
-    const s = loadSettings();
-    return s;
-  });
+  const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
   const appSettingsRef = useRef(appSettings);
   useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
 
@@ -228,19 +225,18 @@ const removeToast = useCallback((id: string) => {
       }),
     ]);
 
+    let cancelled = false;
+
     setup.then((fns) => {
-      // Unlisten any that resolved after we already cleaned up
-      if (unlistenRef.current.length === 0) {
-        unlistenRef.current = fns;
-      } else {
-        // already cleaned up (effect ran again before promise resolved)
+      if (cancelled) {
         fns.forEach(fn => fn());
+      } else {
+        unlistenRef.current = fns;
       }
     });
 
     return () => {
-      // Synchronously clear the ref so next effect doesn't double-call,
-      // and call any already-resolved unlisteners immediately.
+      cancelled = true;
       const fns = unlistenRef.current;
       unlistenRef.current = [];
       fns.forEach(fn => fn());
@@ -363,7 +359,7 @@ const removeToast = useCallback((id: string) => {
       addLog("error", `Failed to stop: ${msg}`);
       setScanStatus("running"); // Revert if failed
     }
-  }, [addLog]);
+  }, [addLog, addToast]);
 
   // Confirmation handles
   const handleClearHistory = useCallback(() => {
@@ -373,13 +369,16 @@ const removeToast = useCallback((id: string) => {
   }, []);
 
   const handleClear = useCallback(() => {
-    if (activeTab === "terminal") setLogs([]);
-    else if (activeTab === "findings") setFindings([]);
-    else if (activeTab === "history") handleClearHistory();
-
-    if (activeTab !== "history") {
+    if (activeTab === "terminal") {
+      setLogs([]);
       playSound("clear", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnClear, appSettingsRef.current.soundVolume);
+    } else if (activeTab === "findings") {
+      setFindings([]);
+      playSound("clear", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnClear, appSettingsRef.current.soundVolume);
+    } else if (activeTab === "history") {
+      handleClearHistory(); // plays sound internally
     }
+    // studio: intentional no-op
   }, [activeTab, handleClearHistory]);
 
   const requestClear = useCallback(() => {
@@ -620,7 +619,7 @@ const removeToast = useCallback((id: string) => {
                   {isHoldingStop && (
                     <div
                       className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
-                      style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
+                      style={{ width: `${((1 - holdTimeRemaining) / 1) * 100}%` }}
                     />
                   )}
                   <div className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" />

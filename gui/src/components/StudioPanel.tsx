@@ -32,7 +32,8 @@ export type StudioResponse = {
 
 type RequestTab = "headers" | "body" | "params";
 type ResponseTab = "body" | "headers" | "cookies";
-type PocTab = "curl" | "python" | "markdown";
+type PocTab = "curl" | "python" | "raw";
+type QueryParam = { id: string; key: string; value: string; enabled: boolean };
 
 const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -51,7 +52,7 @@ const RESPONSE_TABS: { id: ResponseTab; label: string }[] = [
 const POC_TABS: { id: PocTab; label: string }[] = [
   { id: "curl", label: "cURL" },
   { id: "python", label: "Python Requests" },
-  { id: "markdown", label: "Markdown Report" },
+  { id: "raw", label: "Raw HTTP" },
 ];
 
 export type StudioHistoryItem = {
@@ -93,44 +94,7 @@ function parseHeaderLines(headersInput: string): Array<[string, string]> {
     .filter((v): v is [string, string] => v !== null);
 }
 
-function paramsToUrl(url: string, paramsInput: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
 
-  const lines = paramsInput
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) return trimmed;
-
-  try {
-    const parsed = new URL(trimmed);
-    parsed.search = "";
-
-    for (const line of lines) {
-      const [keyRaw, ...rest] = line.split("=");
-      const key = keyRaw?.trim();
-      if (!key) continue;
-      const value = rest.join("=").trim();
-      parsed.searchParams.append(key, value);
-    }
-
-    return parsed.toString();
-  } catch {
-    return trimmed;
-  }
-}
-
-function urlToParams(url: string): string {
-  try {
-    const parsed = new URL(url.trim());
-    const entries = Array.from(parsed.searchParams.entries());
-    return entries.map(([k, v]) => `${k}=${v}`).join("\n");
-  } catch {
-    return "";
-  }
-}
 
 function safeBase64Encode(input: string): string {
   const bytes = new TextEncoder().encode(input);
@@ -186,28 +150,28 @@ function buildPythonSnippet(request: StudioRequest): string {
   ].join("\n");
 }
 
-function buildMarkdownSnippet(request: StudioRequest): string {
-  return [
-    "# Exploit Studio PoC",
-    "",
-    `- **Method:** ${request.method}`,
-    `- **URL:** ${request.url}`,
-    "",
-    "## Headers",
-    "```http",
-    request.headers || "(none)",
-    "```",
-    "",
-    "## Body",
-    "```",
-    request.body || "(empty)",
-    "```",
-    "",
-    "## Reproduction (cURL)",
-    "```bash",
-    buildCurlSnippet(request),
-    "```",
-  ].join("\n");
+function buildRawHttpSnippet(request: StudioRequest): string {
+  let urlPath = "/";
+  let host = "";
+  try {
+    const parsed = new URL(request.url);
+    urlPath = parsed.pathname + parsed.search;
+    host = parsed.host;
+  } catch {
+    host = request.url;
+  }
+  const headers = parseHeaderLines(request.headers);
+  const lines = [
+    `${request.method} ${urlPath} HTTP/1.1`,
+    `Host: ${host}`,
+    ...headers.map(([k, v]) => `${k}: ${v}`),
+  ];
+  if (request.body.trim() && request.method !== "GET" && request.method !== "HEAD") {
+    lines.push("", request.body);
+  } else {
+    lines.push("");
+  }
+  return lines.join("\r\n");
 }
 
 function diffBodies(previousBody: string, currentBody: string): Array<{ type: "same" | "added" | "removed"; text: string }> {
@@ -239,10 +203,12 @@ function diffBodies(previousBody: string, currentBody: string): Array<{ type: "s
 function ActionButton({
   icon,
   title,
+  label,
   onClick,
 }: {
   icon: React.ElementType;
   title: string;
+  label: string;
   onClick: () => void;
 }) {
   const Icon = icon;
@@ -251,9 +217,10 @@ function ActionButton({
       type="button"
       onClick={onClick}
       title={title}
-      className="inline-flex items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-2.5 py-1.5 text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
     >
-      <Icon size={14} strokeWidth={2.3} />
+      <Icon size={13} strokeWidth={2.3} />
+      <span>{label}</span>
     </button>
   );
 }
@@ -277,7 +244,7 @@ export default function StudioPanel({
   const [url, setUrl] = useState("");
   const [headersInput, setHeadersInput] = useState("");
   const [body, setBody] = useState("");
-  const [paramsInput, setParamsInput] = useState("");
+  const [queryParams, setQueryParams] = useState<QueryParam[]>([]);
 
   const [showMethodMenu, setShowMethodMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -296,7 +263,7 @@ export default function StudioPanel({
 
   const headersRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
-  const paramsRef = useRef<HTMLTextAreaElement | null>(null);
+  const suppressUrlEffect = useRef(false);
 
   const isBodyDisabled = useMemo(() => method === "GET" || method === "HEAD", [method]);
 
@@ -319,22 +286,22 @@ export default function StudioPanel({
 
   const finalRequest = useMemo<StudioRequest>(() => {
     return {
-      url: paramsToUrl(url, paramsInput),
+      url,
       method,
       headers: headersInput,
       body: isBodyDisabled ? "" : body,
     };
-  }, [url, paramsInput, method, headersInput, body, isBodyDisabled]);
+  }, [url, method, headersInput, body, isBodyDisabled]);
 
   const curlSnippet = useMemo(() => buildCurlSnippet(finalRequest), [finalRequest]);
   const pythonSnippet = useMemo(() => buildPythonSnippet(finalRequest), [finalRequest]);
-  const markdownSnippet = useMemo(() => buildMarkdownSnippet(finalRequest), [finalRequest]);
+  const rawSnippet = useMemo(() => buildRawHttpSnippet(finalRequest), [finalRequest]);
 
   const activePocSnippet = useMemo(() => {
     if (pocTab === "curl") return curlSnippet;
     if (pocTab === "python") return pythonSnippet;
-    return markdownSnippet;
-  }, [pocTab, curlSnippet, pythonSnippet, markdownSnippet]);
+    return rawSnippet;
+  }, [pocTab, curlSnippet, pythonSnippet, rawSnippet]);
 
   useEffect(() => {
     let phase = 0;
@@ -373,18 +340,47 @@ export default function StudioPanel({
     if (!initialRequest) return;
 
     if (initialRequest.method) setMethod(initialRequest.method);
-    if (typeof initialRequest.url === "string") {
-      setUrl(initialRequest.url);
-      setParamsInput(urlToParams(initialRequest.url));
-    }
+    if (typeof initialRequest.url === "string") setUrl(initialRequest.url);
     if (typeof initialRequest.headers === "string") setHeadersInput(initialRequest.headers);
     if (typeof initialRequest.body === "string") setBody(initialRequest.body);
 
     onInitialRequestConsumed?.();
   }, [initialRequest, onInitialRequestConsumed]);
 
+  const updateQueryParams = (newParams: QueryParam[]) => {
+    setQueryParams(newParams);
+    const base = url.split("?")[0];
+    const qp = new URLSearchParams();
+    for (const p of newParams) {
+      if (p.enabled && p.key.trim()) qp.append(p.key.trim(), p.value);
+    }
+    const qs = qp.toString();
+    suppressUrlEffect.current = true;
+    setUrl(qs ? `${base}?${qs}` : base);
+  };
+
+  useEffect(() => {
+    if (suppressUrlEffect.current) {
+      suppressUrlEffect.current = false;
+      return;
+    }
+    try {
+      const parsed = new URL(url);
+      setQueryParams(
+        Array.from(parsed.searchParams.entries()).map(([k, v]) => ({
+          id: crypto.randomUUID(),
+          key: k,
+          value: v,
+          enabled: true,
+        }))
+      );
+    } catch {
+      setQueryParams([]);
+    }
+  }, [url]);
+
   const applyTextMutation = (mutator: (value: string) => string) => {
-    const targetRef = requestTab === "headers" ? headersRef : requestTab === "body" ? bodyRef : paramsRef;
+    const targetRef = requestTab === "headers" ? headersRef : bodyRef;
     const textarea = targetRef.current;
     if (!textarea) return;
 
@@ -406,7 +402,6 @@ export default function StudioPanel({
 
     if (requestTab === "headers") setHeadersInput(next);
     else if (requestTab === "body") setBody(next);
-    else setParamsInput(next);
 
     requestAnimationFrame(() => {
       textarea.focus();
@@ -421,7 +416,6 @@ export default function StudioPanel({
       if (item) {
         setMethod(item.request.method);
         setUrl(item.request.url);
-        setParamsInput(urlToParams(item.request.url));
         setHeadersInput(item.request.headers);
         setBody(item.request.body);
         setResponse(item.response);
@@ -500,7 +494,7 @@ export default function StudioPanel({
   const onCopyPoc = async () => {
     await navigator.clipboard.writeText(activePocSnippet);
     setPocCopied(true);
-    setTimeout(() => setPocCopied(false), 1200);
+    setTimeout(() => setPocCopied(false), 2000);
   };
 
   return (
@@ -514,7 +508,7 @@ export default function StudioPanel({
               <button
                 type="button"
                 onClick={() => setShowMethodMenu((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold text-text-primary hover:bg-bg-hover transition-all duration-200"
+                className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
               >
                 {method}
                 <ChevronDown size={13} strokeWidth={2.2} className="text-text-secondary" />
@@ -530,7 +524,7 @@ export default function StudioPanel({
                         setMethod(m);
                         setShowMethodMenu(false);
                       }}
-                      className="block w-full border-b border-border-subtle px-3 py-2 text-left text-xs font-medium text-text-primary hover:bg-bg-hover last:border-b-0"
+                      className="block w-full border-b border-border-subtle px-3 py-2 text-left text-xs font-semibold tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary last:border-b-0"
                     >
                       {m}
                     </button>
@@ -542,11 +536,7 @@ export default function StudioPanel({
             <input
               type="text"
               value={url}
-              onChange={(e) => {
-                const next = e.target.value;
-                setUrl(next);
-                setParamsInput(urlToParams(next));
-              }}
+              onChange={(e) => setUrl(e.target.value)}
               placeholder="https://target.tld/path"
               className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/20"
             />
@@ -566,11 +556,11 @@ export default function StudioPanel({
               onClick={() => {
                 setHeadersInput("");
                 setBody("");
-                setParamsInput("");
+                updateQueryParams([]);
                 setError(null);
                 setCompareMode(false);
               }}
-              className="rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+              className="rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
             >
               Reset
             </button>
@@ -578,7 +568,7 @@ export default function StudioPanel({
             <button
               type="button"
               onClick={() => setShowPocModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
             >
               <FileCode size={14} />
               Export PoC
@@ -591,7 +581,7 @@ export default function StudioPanel({
                 key={tab.id}
                 type="button"
                 onClick={() => setRequestTab(tab.id)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all duration-200 ${
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
                   requestTab === tab.id
                     ? "bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20"
                     : "bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary"
@@ -604,11 +594,11 @@ export default function StudioPanel({
 
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-card px-3 py-2">
             <span className="text-[13px] font-semibold uppercase tracking-wider text-text-muted">Utility</span>
-            <ActionButton icon={Binary} title="Base64 Encode" onClick={() => applyTextMutation((v) => safeBase64Encode(v))} />
-            <ActionButton icon={Binary} title="Base64 Decode" onClick={() => applyTextMutation((v) => safeBase64Decode(v))} />
-            <ActionButton icon={Link2} title="URL Encode" onClick={() => applyTextMutation((v) => encodeURIComponent(v))} />
-            <ActionButton icon={Link2} title="URL Decode" onClick={() => applyTextMutation((v) => decodeURIComponent(v))} />
-            <ActionButton icon={Braces} title="To Hex" onClick={() => applyTextMutation((v) => toHex(v))} />
+            <ActionButton icon={Binary} title="Base64 Encode selected text" label="B64 Encode" onClick={() => applyTextMutation((v) => safeBase64Encode(v))} />
+            <ActionButton icon={Binary} title="Base64 Decode selected text" label="B64 Decode" onClick={() => applyTextMutation((v) => safeBase64Decode(v))} />
+            <ActionButton icon={Link2} title="URL Encode selected text" label="URL Encode" onClick={() => applyTextMutation((v) => encodeURIComponent(v))} />
+            <ActionButton icon={Link2} title="URL Decode selected text" label="URL Decode" onClick={() => applyTextMutation((v) => decodeURIComponent(v))} />
+            <ActionButton icon={Braces} title="Convert selected text to hexadecimal" label="→ Hex" onClick={() => applyTextMutation((v) => toHex(v))} />
           </div>
 
           <div className="min-h-0 h-[calc(100%-143px)]">
@@ -636,29 +626,113 @@ export default function StudioPanel({
             )}
 
             {requestTab === "params" && (
-              <textarea
-                ref={paramsRef}
-                value={paramsInput}
-                onChange={(e) => setParamsInput(e.target.value)}
-                placeholder={"q=admin\npage=1"}
-                className="h-full w-full resize-none rounded-lg border border-border-subtle bg-bg-input p-3 font-mono text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none"
-              />
+              <div className="flex h-full flex-col overflow-hidden">
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <table className="w-full border-separate border-spacing-0 text-[13px]">
+                    <thead>
+                      <tr>
+                        <th className="w-8 border-b border-border-subtle pb-2 text-center" />
+                        <th className="border-b border-border-subtle pb-2 px-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Key</th>
+                        <th className="border-b border-border-subtle pb-2 px-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Value</th>
+                        <th className="w-8 border-b border-border-subtle pb-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {queryParams.map((param) => (
+                        <tr key={param.id} className="group">
+                          <td className="py-1 text-center align-middle">
+                            <input
+                              type="checkbox"
+                              checked={param.enabled}
+                              onChange={(e) =>
+                                updateQueryParams(queryParams.map((p) =>
+                                  p.id === param.id ? { ...p, enabled: e.target.checked } : p
+                                ))
+                              }
+                              className="h-3.5 w-3.5 cursor-pointer"
+                              style={{ accentColor: 'var(--color-accent)' }}
+                            />
+                          </td>
+                          <td className="py-1 px-1">
+                            <input
+                              type="text"
+                              value={param.key}
+                              onChange={(e) =>
+                                updateQueryParams(queryParams.map((p) =>
+                                  p.id === param.id ? { ...p, key: e.target.value } : p
+                                ))
+                              }
+                              placeholder="key"
+                              style={{ color: 'var(--color-text-primary)' }}
+                              className="w-full rounded border border-transparent bg-transparent px-2 py-0.5 font-mono placeholder:text-text-muted hover:border-border-subtle focus:border-accent/40 focus:bg-bg-input focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
+                            />
+                          </td>
+                          <td className="py-1 px-1">
+                            <input
+                              type="text"
+                              value={param.value}
+                              onChange={(e) =>
+                                updateQueryParams(queryParams.map((p) =>
+                                  p.id === param.id ? { ...p, value: e.target.value } : p
+                                ))
+                              }
+                              placeholder="value"
+                              style={{ color: 'var(--color-text-primary)' }}
+                              className="w-full rounded border border-transparent bg-transparent px-2 py-0.5 font-mono placeholder:text-text-muted hover:border-border-subtle focus:border-accent/40 focus:bg-bg-input focus:outline-none focus:ring-1 focus:ring-accent/20 transition-colors"
+                            />
+                          </td>
+                          <td className="py-1 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={() => updateQueryParams(queryParams.filter((p) => p.id !== param.id))}
+                              className="rounded p-1 text-text-muted opacity-0 group-hover:opacity-100 hover:bg-status-critical/10 hover:text-status-critical transition-all"
+                            >
+                              <X size={12} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {queryParams.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-[13px] text-text-muted">
+                            No parameters yet — type{" "}
+                            <code className="rounded bg-bg-card px-1.5 py-0.5 font-mono text-xs tracking-wider">?key=value</code>{" "}
+                            in the URL bar or add one below.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateQueryParams([
+                      ...queryParams,
+                      { id: crypto.randomUUID(), key: "", value: "", enabled: true },
+                    ])
+                  }
+                  className="mt-2 text-left text-[12px] font-semibold uppercase tracking-wider text-accent hover:text-accent/70 transition-colors"
+                >
+                  + Add Parameter
+                </button>
+              </div>
             )}
           </div>
         </section>
 
         <section className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
           {error && (
-            <div className="mb-3 rounded-lg border border-status-critical/25 bg-status-critical/10 px-3 py-2 text-xs text-status-critical">
+            <div className="mb-3 rounded-lg border border-status-critical/25 bg-status-critical/10 px-3 py-2 text-xs font-semibold tracking-wider text-status-critical">
               {error}
             </div>
           )}
 
-          <div className="mb-3 flex items-center justify-between rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs">
+          <div className="mb-3 flex items-center justify-between rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs tracking-wider">
             <div className="flex items-center gap-3 text-text-secondary">
-              <span className={response ? getStatusClass(response.status) : "text-text-muted"}>Status: {response ? response.status : "—"}</span>
-              <span>Time: {response ? `${response.timing_ms} ms` : "—"}</span>
-              {response?.body_truncated && <span className="rounded-full bg-status-warning/10 px-2 py-0.5 text-[12px] text-status-warning">TRUNCATED</span>}
+              <span className={response ? `${getStatusClass(response.status)} font-semibold uppercase tracking-wider` : "text-text-muted font-semibold uppercase tracking-wider"}>STATUS: {response ? response.status : "—"}</span>
+              <span className="font-semibold uppercase tracking-wider text-text-muted">TIME: {response ? `${response.timing_ms} ms` : "—"}</span>
+              {response?.body_truncated && <span className="rounded-full bg-status-warning/10 px-2 py-0.5 text-[12px] font-semibold uppercase tracking-wider text-status-warning">TRUNCATED</span>}
             </div>
           </div>
 
@@ -668,7 +742,7 @@ export default function StudioPanel({
                 key={tab.id}
                 type="button"
                 onClick={() => setResponseTab(tab.id)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all duration-200 ${
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
                   responseTab === tab.id
                     ? "bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20"
                     : "bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary"
@@ -751,14 +825,14 @@ export default function StudioPanel({
             <button
               type="button"
               onClick={() => setResponse(null)}
-              className="rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+              className="rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
             >
               Clear Response
             </button>
             <button
               type="button"
               onClick={() => navigator.clipboard.writeText(response?.body ?? "")}
-              className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+              className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
             >
               <Copy size={13} />
               Copy Body
@@ -766,7 +840,7 @@ export default function StudioPanel({
             <button
               type="button"
               onClick={onBeautifyResponse}
-              className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+              className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
             >
               <Braces size={13} />
               Beautify {"{}"}
@@ -774,7 +848,7 @@ export default function StudioPanel({
             <button
               type="button"
               onClick={() => setCompareMode((v) => !v)}
-              className={`inline-flex items-center gap-1 rounded-lg border border-border-subtle px-3 py-1.5 text-xs transition-all duration-200 ${
+              className={`inline-flex items-center gap-1 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
                 compareMode ? "bg-accent/10 text-accent-text ring-1 ring-accent/20" : "bg-bg-card text-text-secondary hover:bg-bg-hover hover:text-text-primary"
               }`}
             >
@@ -791,7 +865,7 @@ export default function StudioPanel({
             <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-text-primary">Export PoC</h3>
-                <p className="text-xs text-text-muted">Generate ready-to-share exploit proof of concept snippets.</p>
+                <p className="text-xs tracking-wider text-text-muted">Generate ready-to-share exploit proof of concept snippets.</p>
               </div>
               <button
                 type="button"
@@ -809,7 +883,7 @@ export default function StudioPanel({
                     key={tab.id}
                     type="button"
                     onClick={() => setPocTab(tab.id)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all duration-200 ${
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
                       pocTab === tab.id
                         ? "bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20"
                         : "bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary"
@@ -820,7 +894,7 @@ export default function StudioPanel({
                 ))}
               </div>
 
-              <div className="rounded-lg border border-border-subtle bg-bg-input p-3">
+              <div className="rounded-lg border border-border-subtle bg-neutral-950 p-3">
                 <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[13px] text-text-primary">
                   {activePocSnippet}
                 </pre>
