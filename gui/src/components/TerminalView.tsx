@@ -19,19 +19,18 @@ const CRITICAL_PATTERNS = ["sqli", "sql", "rce", "exec", "command injection", "l
 
 interface VulnInfo { description: string; impact: string; remediation: string; }
 
-function getVulnInfo(vulnType: string, language: "en" | "ar"): VulnInfo {
+function getVulnInfo(vulnType: string): VulnInfo {
   const v = vulnType.toLowerCase();
-  const isAr = language === "ar";
-  if (v.includes("sqli") || v.includes("sql injection")) return isAr ? { description: "حقن SQL يسمح للمهاجم بالتلاعب في استعلامات قاعدة البيانات عبر إدخال بيانات غير موثوقة.", impact: "سرقة البيانات الحساسة، تجاوز المصادقة، حذف أو تعديل البيانات، وفي بعض الحالات تنفيذ أوامر على الخادم.", remediation: "استخدم Prepared Statements والاستعلامات المعلّمة. تحقق من صحة المدخلات وفلترتها على جانب الخادم." } : { description: "SQL Injection allows an attacker to manipulate database queries by injecting untrusted input into SQL statements.", impact: "Sensitive data theft, authentication bypass, data deletion or modification, and in some cases remote command execution.", remediation: "Use prepared statements and parameterized queries. Validate and sanitize all user input server-side." };
-  if (v.includes("xss") || v.includes("cross-site scripting")) return isAr ? { description: "XSS يسمح للمهاجم بحقن سكريبت ضار في صفحات الويب التي يشاهدها المستخدمون الآخرون.", impact: "سرقة الجلسات وملفات تعريف الارتباط، انتحال هوية المستخدم، وإعادة التوجيه إلى مواقع خبيثة.", remediation: "طبّق HTML encoding على المخرجات. نفّذ Content Security Policy (CSP) وتحقق من جميع المدخلات." } : { description: "Cross-Site Scripting (XSS) allows an attacker to inject malicious scripts into web pages viewed by other users.", impact: "Session and cookie theft, user impersonation, page defacement, and redirection to malicious sites.", remediation: "Apply output encoding (HTML encoding) and implement Content Security Policy (CSP). Validate and sanitize all input." };
-  if (v.includes("lfi") || v.includes("local file inclusion")) return isAr ? { description: "إدراج الملفات المحلية (LFI) يسمح للمهاجم بتضمين ملفات من الخادم في استجابة التطبيق.", impact: "قراءة ملفات حساسة كـ /etc/passwd، كشف كود المصدر، وقد يؤدي إلى تنفيذ أوامر عن بُعد.", remediation: "تحقق من مسارات الملفات وفلترتها. لا تسمح للمستخدم بتحديد مسارات مباشرة واستخدم القوائم البيضاء." } : { description: "Local File Inclusion (LFI) allows an attacker to include files from the server itself in the application response.", impact: "Reading sensitive files like /etc/passwd, source code disclosure, and potentially leading to remote code execution.", remediation: "Validate and filter file paths. Avoid user-controlled file paths and use an allowlist of permitted files." };
-  if (v.includes("rfi") || v.includes("remote file inclusion")) return isAr ? { description: "إدراج الملفات عن بُعد (RFI) يسمح للمهاجم بتحميل وتنفيذ ملفات من خادم خارجي.", impact: "تنفيذ أوامر عشوائية على الخادم، اختراق كامل للنظام، نشر برمجيات خبيثة.", remediation: "أوقف تشغيل allow_url_include في PHP. تحقق من جميع مسارات الملفات واستخدم القوائم البيضاء." } : { description: "Remote File Inclusion (RFI) allows an attacker to load and execute files from an external server.", impact: "Arbitrary code execution on the server, full system compromise, and malware deployment.", remediation: "Disable allow_url_include in PHP. Validate all file paths and use an allowlist of permitted resources." };
-  if (v.includes("ssrf") || v.includes("server-side request forgery")) return isAr ? { description: "SSRF يجبر الخادم على إرسال طلبات HTTP إلى موارد داخلية أو خارجية يحددها المهاجم.", impact: "الوصول إلى الخدمات الداخلية المحمية، قراءة بيانات Cloud الوصفية، والتحرك الجانبي داخل الشبكة.", remediation: "تحقق وفلتر جميع عناوين URL المقدمة من المستخدم. استخدم قوائم بيضاء للنطاقات وابتعد عن عناوين IP الداخلية." } : { description: "Server-Side Request Forgery (SSRF) forces the server to make HTTP requests to internal or external resources controlled by the attacker.", impact: "Access to protected internal services, cloud metadata exfiltration, and lateral movement within the network.", remediation: "Validate and sanitize all user-supplied URLs. Use an allowlist of permitted domains and block internal IP ranges." };
-  if (v.includes("rce") || v.includes("remote code execution") || v.includes("command injection")) return isAr ? { description: "تنفيذ الأوامر عن بُعد (RCE) يسمح للمهاجم بتنفيذ أوامر عشوائية على الخادم مباشرةً.", impact: "اختراق كامل للخادم، سرقة البيانات، نشر برمجيات الفدية، والسيطرة التامة على النظام.", remediation: "لا تمرر مدخلات المستخدم مباشرة إلى أوامر النظام. استخدم APIs آمنة وطبّق مبدأ الحد الأدنى من الصلاحيات." } : { description: "Remote Code Execution (RCE) allows an attacker to run arbitrary commands directly on the server.", impact: "Full server compromise, data theft, ransomware deployment, and complete system takeover.", remediation: "Never pass user input directly to system commands. Use safe APIs instead of shell commands and apply least-privilege principles." };
-  if (v.includes("open redirect") || v.includes("redirect")) return isAr ? { description: "إعادة التوجيه المفتوحة تسمح للمهاجم بإعادة توجيه المستخدمين إلى مواقع خارجية خبيثة.", impact: "هجمات التصيد الاحتيالي، سرقة بيانات الاعتماد، والإضرار بسمعة الموقع.", remediation: "تحقق من عناوين URL عند إعادة التوجيه. استخدم قائمة بيضاء للوجهات المسموح بها." } : { description: "Open Redirect allows an attacker to redirect users to arbitrary external websites.", impact: "Phishing attacks, credential theft, and reputational damage to the affected site.", remediation: "Validate redirect URLs against an allowlist of permitted destinations. Avoid user-controlled redirect parameters." };
-  if (v.includes("idor") || v.includes("insecure direct object")) return isAr ? { description: "IDOR يسمح للمهاجم بالوصول إلى موارد مستخدمين آخرين بتعديل المعرّفات.", impact: "الوصول غير المصرح به للبيانات الحساسة، تعديل أو حذف بيانات المستخدمين الآخرين.", remediation: "طبّق التحقق من الصلاحيات على مستوى الكائنات. استخدم معرّفات UUID وتحقق دائماً من ملكية المورد." } : { description: "IDOR (Insecure Direct Object Reference) allows an attacker to access other users' resources by manipulating object identifiers.", impact: "Unauthorized access to sensitive data, modification or deletion of other users' data.", remediation: "Enforce object-level authorization checks. Use unpredictable identifiers (UUIDs) and always verify resource ownership." };
-  if (v.includes("path traversal") || v.includes("directory traversal")) return isAr ? { description: "اختراق المسار يسمح للمهاجم بالوصول إلى ملفات ومجلدات خارج الدليل المسموح به.", impact: "قراءة ملفات حساسة من نظام الملفات كملفات الإعداد وكلمات المرور والمفاتيح الخاصة.", remediation: "قم بتطهير مسارات الملفات وإزالة تسلسلات '../'. استخدم realpath() للتحقق من حدود الدليل المسموح به." } : { description: "Path Traversal allows an attacker to access files and directories outside the intended root directory.", impact: "Reading sensitive files from the filesystem, including configuration files, passwords, and private keys.", remediation: "Sanitize file paths by removing '../' sequences. Use realpath() to ensure the path stays within the allowed directory." };
-  return isAr ? { description: "تم اكتشاف ثغرة أمنية محتملة في هذه النقطة. يُنصح بمراجعة الكود المرتبط بها بشكل دقيق.", impact: "قد تتفاوت درجة التأثير بحسب طبيعة الثغرة وموضعها في التطبيق.", remediation: "راجع وثائق OWASP ذات الصلة وطبّق أفضل الممارسات الأمنية على هذه النقطة." } : { description: "A potential security vulnerability was detected at this endpoint. Manual review of the related code is recommended.", impact: "Impact may vary depending on the nature and location of the vulnerability within the application.", remediation: "Consult the relevant OWASP documentation and apply security best practices to this endpoint." };
+  if (v.includes("sqli") || v.includes("sql injection")) return { description: "SQL Injection allows an attacker to manipulate database queries by injecting untrusted input into SQL statements.", impact: "Sensitive data theft, authentication bypass, data deletion or modification, and in some cases remote command execution.", remediation: "Use prepared statements and parameterized queries. Validate and sanitize all user input server-side." };
+  if (v.includes("xss") || v.includes("cross-site scripting")) return { description: "Cross-Site Scripting (XSS) allows an attacker to inject malicious scripts into web pages viewed by other users.", impact: "Session and cookie theft, user impersonation, page defacement, and redirection to malicious sites.", remediation: "Apply output encoding (HTML encoding) and implement Content Security Policy (CSP). Validate and sanitize all input." };
+  if (v.includes("lfi") || v.includes("local file inclusion")) return { description: "Local File Inclusion (LFI) allows an attacker to include files from the server itself in the application response.", impact: "Reading sensitive files like /etc/passwd, source code disclosure, and potentially leading to remote code execution.", remediation: "Validate and filter file paths. Avoid user-controlled file paths and use an allowlist of permitted files." };
+  if (v.includes("rfi") || v.includes("remote file inclusion")) return { description: "Remote File Inclusion (RFI) allows an attacker to load and execute files from an external server.", impact: "Arbitrary code execution on the server, full system compromise, and malware deployment.", remediation: "Disable allow_url_include in PHP. Validate all file paths and use an allowlist of permitted resources." };
+  if (v.includes("ssrf") || v.includes("server-side request forgery")) return { description: "Server-Side Request Forgery (SSRF) forces the server to make HTTP requests to internal or external resources controlled by the attacker.", impact: "Access to protected internal services, cloud metadata exfiltration, and lateral movement within the network.", remediation: "Validate and sanitize all user-supplied URLs. Use an allowlist of permitted domains and block internal IP ranges." };
+  if (v.includes("rce") || v.includes("remote code execution") || v.includes("command injection")) return { description: "Remote Code Execution (RCE) allows an attacker to run arbitrary commands directly on the server.", impact: "Full server compromise, data theft, ransomware deployment, and complete system takeover.", remediation: "Never pass user input directly to system commands. Use safe APIs instead of shell commands and apply least-privilege principles." };
+  if (v.includes("open redirect") || v.includes("redirect")) return { description: "Open Redirect allows an attacker to redirect users to arbitrary external websites.", impact: "Phishing attacks, credential theft, and reputational damage to the affected site.", remediation: "Validate redirect URLs against an allowlist of permitted destinations. Avoid user-controlled redirect parameters." };
+  if (v.includes("idor") || v.includes("insecure direct object")) return { description: "IDOR (Insecure Direct Object Reference) allows an attacker to access other users' resources by manipulating object identifiers.", impact: "Unauthorized access to sensitive data, modification or deletion of other users' data.", remediation: "Enforce object-level authorization checks. Use unpredictable identifiers (UUIDs) and always verify resource ownership." };
+  if (v.includes("path traversal") || v.includes("directory traversal")) return { description: "Path Traversal allows an attacker to access files and directories outside the intended root directory.", impact: "Reading sensitive files from the filesystem, including configuration files, passwords, and private keys.", remediation: "Sanitize file paths by removing '../' sequences. Use realpath() to ensure the path stays within the allowed directory." };
+  return { description: "A potential security vulnerability was detected at this endpoint. Manual review of the related code is recommended.", impact: "Impact may vary depending on the nature and location of the vulnerability within the application.", remediation: "Consult the relevant OWASP documentation and apply security best practices to this endpoint." };
 }
 
 /* ─── H3: Finding Detail Modal ───────────────────────────────────── */
@@ -58,12 +57,12 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { finding: FindingWithMeta; onClose: () => void; language: "en" | "ar"; onSendToStudio: (finding: ScanFindingEvent) => void }) {
+function FindingDetailModal({ finding, onClose, onSendToStudio }: { finding: FindingWithMeta; onClose: () => void; onSendToStudio: (finding: ScanFindingEvent) => void }) {
   const [closing, setClosing] = useState(false);
   const isCritical = finding.severity === "critical";
   const hasSuspiciousChars = SHELL_META.test(finding.curl_cmd);
-  const vulnInfo = getVulnInfo(finding.vuln_type, language);
-  const severityLabel = isCritical ? t("critical", language) : t("medium", language);
+  const vulnInfo = getVulnInfo(finding.vuln_type);
+  const severityLabel = isCritical ? "Critical" : "Medium";
   const severityClass = isCritical
     ? "text-status-critical bg-status-critical/10 border-status-critical/20"
     : "text-status-warning bg-status-warning/10 border-status-warning/20";
@@ -105,7 +104,7 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* URL */}
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">{t("target", language)}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Target</p>
             <div className="flex items-center gap-2 rounded-lg bg-bg-root border border-border-subtle px-3 py-2.5">
               <code className="flex-1 text-sm font-mono text-text-primary break-all select-all leading-relaxed" dir="ltr">{finding.url}</code>
               <CopyButton text={finding.url} />
@@ -115,16 +114,16 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
           {/* Meta grid */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg bg-bg-card border border-border-subtle px-4 py-3">
-              <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">{t("status", language)}</p>
+              <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">Status</p>
               <p className="font-mono text-sm font-bold text-text-primary" dir="ltr">{finding.status_code}</p>
             </div>
             <div className="rounded-lg bg-bg-card border border-border-subtle px-4 py-3">
-              <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">{t("timing", language)}</p>
+              <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">Timing</p>
               <p className="font-mono text-sm font-bold text-text-primary" dir="ltr">{finding.timing_ms}ms</p>
             </div>
             {finding.server && (
               <div className="rounded-lg bg-bg-card border border-border-subtle px-4 py-3">
-                <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">{t("server", language)}</p>
+                <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-1">Server</p>
                 <p className="font-mono text-sm font-bold text-text-primary truncate" dir="ltr">{finding.server}</p>
               </div>
             )}
@@ -133,7 +132,7 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
           {/* Payload */}
           {finding.payload && (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">{t("payload", language)}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Payload</p>
               <div className="flex items-start gap-2 rounded-lg bg-bg-root border border-border-subtle px-3 py-2.5">
                 <code className="flex-1 text-[13px] font-mono text-text-secondary break-all select-all leading-relaxed" dir="ltr">{finding.payload}</code>
                 <CopyButton text={finding.payload} />
@@ -144,7 +143,7 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
           {/* cURL */}
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">{t("reproduce", language)}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Reproduce</p>
               <button
                 onClick={() => onSendToStudio(finding)}
                 className="rounded-md border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-text hover:bg-accent/20 transition-all duration-200"
@@ -154,7 +153,7 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
               </button>
               {hasSuspiciousChars && (
                 <span className="flex items-center gap-1 rounded-full bg-status-warning/15 px-2 py-0.5 text-[10px] font-bold text-status-warning uppercase">
-                  <AlertOctagon size={10} strokeWidth={3} />{t("reproduceDesc", language)}
+                  <AlertOctagon size={10} strokeWidth={3} />Review before running
                 </span>
               )}
             </div>
@@ -168,18 +167,18 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
           <div className={`rounded-xl border p-4 space-y-3 ${isCritical ? "border-status-critical/25 bg-status-critical/5" : "border-status-warning/25 bg-status-warning/5"}`}>
             <div className="flex items-center gap-2 mb-1">
               <Shield size={14} className={isCritical ? "text-status-critical" : "text-status-warning"} strokeWidth={2.5} />
-              <span className={`text-xs font-bold ${isCritical ? "text-status-critical" : "text-status-warning"}`}>{t("vulnInfoLabel", language)}</span>
+              <span className={`text-xs font-bold ${isCritical ? "text-status-critical" : "text-status-warning"}`}>Vulnerability Info</span>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">{t("vulnDescription", language)}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">Description</p>
               <p className="text-[13px] text-text-secondary leading-relaxed">{vulnInfo.description}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">{t("vulnImpact", language)}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">Impact</p>
               <p className="text-[13px] text-text-secondary leading-relaxed">{vulnInfo.impact}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">{t("vulnRemediation", language)}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1">Remediation</p>
               <p className="text-[13px] text-text-secondary leading-relaxed">{vulnInfo.remediation}</p>
             </div>
           </div>
@@ -190,10 +189,9 @@ function FindingDetailModal({ finding, onClose, language, onSendToStudio }: { fi
 }
 
 /* ─── FindingCard ────────────────────────────────────────────────── */
-function FindingCardInner({ finding, index, language, onOpenDetail, onSendToStudio }: {
+function FindingCardInner({ finding, index, onOpenDetail, onSendToStudio }: {
   finding: ScanFindingEvent;
   index: number;
-  language: "en" | "ar";
   onOpenDetail: () => void;
   onSendToStudio: (finding: ScanFindingEvent) => void;
 }) {
@@ -212,8 +210,6 @@ function FindingCardInner({ finding, index, language, onOpenDetail, onSendToStud
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const alignClass = language === "ar" ? "text-right" : "text-left";
-
   return (
     <div
       className="finding-card animate-fade-slide-in rounded-xl border border-border-subtle bg-bg-card cursor-pointer"
@@ -227,12 +223,12 @@ function FindingCardInner({ finding, index, language, onOpenDetail, onSendToStud
         <AlertTriangle size={17} className={isCritical ? "text-status-critical" : "text-status-warning"} strokeWidth={2.5} />
         <span className="text-sm font-semibold text-text-primary truncate flex-1 text-start">{finding.vuln_type}</span>
         <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase ${severityClass}`}>
-          {isCritical ? t("critical", language) : t("medium", language)}
+          {isCritical ? "Critical" : "Medium"}
         </span>
         {/* F2: Copy cURL to clipboard */}
         <button
           onClick={(e) => { e.stopPropagation(); handleCopy(e); }}
-          title={t("copyCurl", language)}
+          title="Copy curl command"
           className="rounded-lg p-1.5 text-text-ghost hover:text-accent-text hover:bg-accent-dim transition-all duration-200 hover:scale-110"
         >
           {copied ? <Check size={14} strokeWidth={2.5} className="text-status-success" /> : <TerminalIcon size={14} strokeWidth={2.5} />}
@@ -259,40 +255,40 @@ function FindingCardInner({ finding, index, language, onOpenDetail, onSendToStud
         <div className="animate-fade-slide-in px-5 pb-4 pt-0 border-t border-border-subtle space-y-3">
           <div className="grid grid-cols-2 gap-x-5 gap-y-2.5 text-xs pt-3">
             <div className="text-start">
-              <span className="text-text-muted">{t("target", language)}</span>
-              <p className={`text-text-secondary font-mono text-[13px] truncate mt-0.5 ${alignClass}`} dir="ltr">{finding.url}</p>
+              <span className="text-text-muted">Target</span>
+              <p className="text-text-secondary font-mono text-[13px] truncate mt-0.5 text-left" dir="ltr">{finding.url}</p>
             </div>
             <div className="text-start">
-              <span className="text-text-muted">{t("payload", language)}</span>
-              <p className={`text-text-secondary font-mono text-[13px] truncate mt-0.5 ${alignClass}`} dir="ltr">{finding.payload || "—"}</p>
+              <span className="text-text-muted">Payload</span>
+              <p className="text-text-secondary font-mono text-[13px] truncate mt-0.5 text-left" dir="ltr">{finding.payload || "—"}</p>
             </div>
             <div className="text-start">
-              <span className="text-text-muted">{t("status", language)}</span>
-              <p className={`text-text-secondary font-mono mt-0.5 ${alignClass}`} dir="ltr">{finding.status_code}</p>
+              <span className="text-text-muted">Status</span>
+              <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.status_code}</p>
             </div>
             <div className="text-start">
-              <span className="text-text-muted">{t("timing", language)}</span>
-              <p className={`text-text-secondary font-mono mt-0.5 ${alignClass}`} dir="ltr">{finding.timing_ms}ms</p>
+              <span className="text-text-muted">Timing</span>
+              <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.timing_ms}ms</p>
             </div>
             {finding.server && (
               <div className="text-start">
-                <span className="text-text-muted">{t("server", language)}</span>
-                <p className={`text-text-secondary font-mono mt-0.5 ${alignClass}`} dir="ltr">{finding.server}</p>
+                <span className="text-text-muted">Server</span>
+                <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.server}</p>
               </div>
             )}
           </div>
           <div className="text-start">
             <div className="flex items-center gap-2 mb-1.5">
-              <p className="text-xs text-text-muted">{t("reproduce", language)}</p>
+              <p className="text-xs text-text-muted">Reproduce</p>
               {hasSuspiciousChars && (
                 <span className="flex items-center gap-1 rounded-full bg-status-warning/15 px-2 py-0.5 text-[10px] font-bold text-status-warning uppercase">
-                  <AlertOctagon size={10} strokeWidth={3} />{t("reproduceDesc", language)}
+                  <AlertOctagon size={10} strokeWidth={3} />Review before running
                 </span>
               )}
             </div>
             <div className="flex items-start gap-2 rounded-lg bg-bg-root border border-border-subtle p-3">
-              <code className={`flex-1 text-[13px] font-mono text-text-secondary break-all leading-relaxed select-all ${alignClass}`} dir="ltr">{finding.curl_cmd}</code>
-              <button onClick={handleCopy} className="shrink-0 rounded-md p-2 text-text-ghost hover:text-accent-text hover:bg-accent-dim transition-all duration-200 hover:scale-110 active:scale-90" title={t("copyCurl", language)}>
+              <code className="flex-1 text-[13px] font-mono text-text-secondary break-all leading-relaxed select-all text-left" dir="ltr">{finding.curl_cmd}</code>
+              <button onClick={handleCopy} className="shrink-0 rounded-md p-2 text-text-ghost hover:text-accent-text hover:bg-accent-dim transition-all duration-200 hover:scale-110 active:scale-90" title="Copy curl command">
                 {copied ? <Check size={16} strokeWidth={2.5} className="text-status-success" /> : <Copy size={16} strokeWidth={2.5} />}
               </button>
             </div>
@@ -339,7 +335,6 @@ interface TerminalViewProps {
   onRequestClear: () => void;
   scanHistory: ScanHistoryEntry[];
   onLoadFromHistory?: (target: string) => void;
-  language: "en" | "ar";
   scanProgress?: number;
   scanStatus?: ScanStatus;
   onQuickRescan?: (target: string) => void;
@@ -350,9 +345,15 @@ interface TerminalViewProps {
   setStudioHistory: React.Dispatch<React.SetStateAction<StudioHistoryItem[]>>;
   selectedStudioHistoryId: string | null;
   setSelectedStudioHistoryId: (id: string | null) => void;
+  onSendToBasic?: (url: string, headers: string) => void;
 }
 
-export function TerminalView({ logs, findings, activeTab, onTabChange, onRequestClear, scanHistory, onLoadFromHistory, language, scanProgress = 0, scanStatus = "idle", onQuickRescan, onSendToStudio, initialStudioRequest, onInitialRequestConsumed, studioHistory, setStudioHistory, selectedStudioHistoryId, setSelectedStudioHistoryId }: TerminalViewProps) {
+export function TerminalView({ logs, findings, activeTab, onTabChange,
+  onRequestClear, scanHistory, onLoadFromHistory,
+  scanProgress = 0, scanStatus = "idle", onQuickRescan,
+  onSendToStudio, initialStudioRequest, onInitialRequestConsumed,
+  studioHistory, setStudioHistory, selectedStudioHistoryId,
+  setSelectedStudioHistoryId, onSendToBasic, }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termSearchRef = useRef<HTMLInputElement>(null);
   const findingsSearchRef = useRef<HTMLInputElement>(null);
@@ -501,19 +502,19 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
           {activeTab !== "studio" && (
             <>
               <button onClick={() => handleTabChange("terminal")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "terminal" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
-                <FlaskConical size={15} strokeWidth={2.5} className={activeTab === "terminal" ? "text-accent-text" : ""} />{t("terminal", language)}
+                <FlaskConical size={15} strokeWidth={2.5} className={activeTab === "terminal" ? "text-accent-text" : ""} />{t("terminal")}
               </button>
               <button onClick={() => handleTabChange("findings")} className={`relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "findings" ? "bg-bg-card text-text-primary border-status-critical/40 shadow-[0_4px_12px_rgba(244,63,94,0.15)] ring-1 ring-status-critical/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
-                <Bug size={15} strokeWidth={2.5} className={activeTab === "findings" ? "text-status-critical" : ""} />{t("findings", language)}
-                {findings.length > 0 && <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-status-critical/20 text-status-critical px-2 py-0.5 text-[10px] font-black`}>{findings.length}</span>}
+                <Bug size={15} strokeWidth={2.5} className={activeTab === "findings" ? "text-status-critical" : ""} />{t("findings")}
+                {findings.length > 0 && <span className="ml-1 rounded-full bg-status-critical/20 text-status-critical px-2 py-0.5 text-[10px] font-black">{findings.length}</span>}
                 {/* F4: new findings badge */}
                 {newFindingsBadge > 0 && activeTab !== "findings" && (
                   <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-[9px] font-black text-bg-root px-1 animate-pulse shadow-[0_0_6px_var(--color-accent)]">{newFindingsBadge}</span>
                 )}
               </button>
               <button onClick={() => handleTabChange("history")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "history" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
-                <Clock size={15} strokeWidth={2.5} className={activeTab === "history" ? "text-accent-text" : ""} />{language === "ar" ? "السجل" : "History"}
-                {scanHistory.length > 0 && <span className={`${language === "ar" ? "mr-1" : "ml-1"} rounded-full bg-accent/20 text-accent-text px-2 py-0.5 text-[10px] font-black`}>{scanHistory.length}</span>}
+                <Clock size={15} strokeWidth={2.5} className={activeTab === "history" ? "text-accent-text" : ""} />History
+                {scanHistory.length > 0 && <span className="ml-1 rounded-full bg-accent/20 text-accent-text px-2 py-0.5 text-[10px] font-black">{scanHistory.length}</span>}
               </button>
             </>
           )}
@@ -521,8 +522,8 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
 
         <div className="flex items-center gap-2">
           {activeTab === "findings" && findings.length > 0 && (
-            <button onClick={handleExportJSON} className="group flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold text-text-primary hover:bg-bg-hover transition-all duration-200" title={language === "ar" ? "تصدير بصيغة JSON" : "Export findings as JSON"}>
-              <Download size={14} strokeWidth={2.5} className="text-text-ghost group-hover:text-accent-text transition-colors" />{language === "ar" ? "تصدير JSON" : "Export JSON"}
+            <button onClick={handleExportJSON} className="group flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold text-text-primary hover:bg-bg-hover transition-all duration-200" title="Export findings as JSON">
+              <Download size={14} strokeWidth={2.5} className="text-text-ghost group-hover:text-accent-text transition-colors" />Export JSON
             </button>
           )}
           {activeTab === "history" && scanHistory.length > 0 && (
@@ -531,7 +532,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
                 <Download size={14} strokeWidth={2.5} className="text-text-ghost group-hover:text-accent-text transition-colors" />CSV
               </button>
               <button onClick={onRequestClear} className="group flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3.5 py-2 text-xs font-semibold text-text-primary btn-danger-ghost transition-all duration-200">
-                <Trash2 size={15} strokeWidth={2.5} className="text-text-ghost group-hover:text-status-critical transition-colors" />{t("clear", language)} {language === "ar" ? "السجل" : "History"}
+                <Trash2 size={15} strokeWidth={2.5} className="text-text-ghost group-hover:text-status-critical transition-colors" />Clear History
               </button>
             </>
           )}
@@ -547,14 +548,14 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
               </button>
               <button onClick={handleCopyLogs} disabled={logs.length === 0} className="group flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3.5 py-2 text-xs font-semibold text-text-primary hover:bg-bg-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" title="Copy terminal logs to clipboard">
                 {isLogCopied ? <Check size={14} className="text-status-success" strokeWidth={3} /> : <Copy size={14} className="text-text-ghost group-hover:text-accent-text transition-colors" strokeWidth={2.5} />}
-                {isLogCopied ? (language === "ar" ? "تم النسخ" : "Copied") : t("copy", language)}
+                {isLogCopied ? "Copied" : "Copy"}
               </button>
             </>
           )}
           {activeTab !== "history" && (
             <button onClick={onRequestClear} className="group flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3.5 py-2 text-xs font-semibold text-text-primary btn-danger-ghost transition-all duration-300">
               <Trash2 size={15} strokeWidth={2.5} className="text-text-ghost group-hover:text-status-critical transition-colors" />
-              {activeTab === "terminal" ? t("clear", language) + " " + (language === "ar" ? "السجلات" : "Logs") : t("clear", language) + " " + (language === "ar" ? "النتائج" : "Findings")}
+              {activeTab === "terminal" ? "Clear Logs" : "Clear Findings"}
             </button>
           )}
         </div>
@@ -565,8 +566,8 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
         <div className="border-b border-border-subtle bg-bg-panel/30">
           <div className="flex items-center gap-3 px-5 py-2.5">
             <div className="relative flex-1 group">
-              <Search className={`absolute ${language === "ar" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 text-text-ghost group-focus-within:text-accent-text transition-colors duration-200`} size={14} />
-              <input ref={termSearchRef} type="text" placeholder={t("searchPlaceholder", language)} value={termSearchQuery} onChange={e => setTermSearchQuery(e.target.value)} className={`w-full rounded-lg border border-border-subtle bg-bg-input py-1.5 ${language === "ar" ? "pr-9 pl-4 text-right" : "pl-9 pr-4"} text-[13px] text-text-primary placeholder-text-ghost focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/40 transition-all duration-300 shadow-sm`} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-ghost group-focus-within:text-accent-text transition-colors duration-200" size={14} />
+              <input ref={termSearchRef} type="text" placeholder="Search logs (Ctrl+F)..." value={termSearchQuery} onChange={e => setTermSearchQuery(e.target.value)} className="w-full rounded-lg border border-border-subtle bg-bg-input py-1.5 pl-9 pr-4 text-[13px] text-text-primary placeholder-text-ghost focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/40 transition-all duration-300 shadow-sm" />
             </div>
             <span className="text-[11px] text-text-ghost font-mono whitespace-nowrap">{filteredLogs.length}/{logs.length}</span>
             {termSearchQuery && (
@@ -593,7 +594,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
       {activeTab === "terminal" && (
         <div ref={containerRef} onScroll={handleScroll} dir="ltr" className="flex-1 overflow-y-auto px-5 py-4 font-mono text-[13px] leading-relaxed relative scroll-smooth text-left">
           {filteredLogs.length === 0 ? (
-            <span className="text-text-ghost">{termSearchQuery || logFilter !== "all" ? (language === "ar" ? "لم يتم العثور على سجلات مطابقة." : "No matching logs.") : (language === "ar" ? "في انتظار بدء الفحص..." : "Awaiting scan configuration...")}</span>
+            <span className="text-text-ghost">{termSearchQuery || logFilter !== "all" ? "No matching logs." : "Awaiting scan configuration..."}</span>
           ) : (
             <div style={{ height: totalHeight, position: "relative" }}>
               {filteredLogs.slice(startIdx, endIdx + 1).map((log, relIdx) => {
@@ -640,11 +641,11 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
             {processedFindings.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-text-ghost">
                 <Shield size={36} strokeWidth={2} className="mb-3 opacity-30" />
-                <span className="text-sm font-medium">{searchQuery || severityFilter !== "all" ? (language === "ar" ? "لم يتم العثور على نتائج مطابقة." : "No matches found.") : t("noFindings", language)}</span>
+                <span className="text-sm font-medium">{searchQuery || severityFilter !== "all" ? "No matches found." : "No findings yet"}</span>
               </div>
             )}
             {processedFindings.map(f => (
-              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} language={language} onOpenDetail={() => setDetailFinding(f)} onSendToStudio={(finding) => onSendToStudio?.(finding)} />
+              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} onOpenDetail={() => setDetailFinding(f)} onSendToStudio={(finding) => onSendToStudio?.(finding)} />
             ))}
           </div>
         </div>
@@ -655,20 +656,20 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
         <div className="flex flex-1 flex-col overflow-hidden animate-fade-in">
           <div className="flex items-center justify-between border-b border-border-subtle bg-bg-panel/30 px-5 py-3 gap-4">
             <div className="relative flex-1 group">
-              <Search className={`absolute ${language === "ar" ? "right-3" : "left-3"} top-1/2 -translate-y-1/2 text-text-ghost group-focus-within:text-accent-text transition-colors duration-200`} size={14} />
-              <input ref={historySearchRef} type="text" placeholder={t("searchPlaceholder", language)} value={historySearchQuery} onChange={e => setHistorySearchQuery(e.target.value)} className={`w-full rounded-lg border border-border-subtle bg-bg-input py-1.5 ${language === "ar" ? "pr-9 pl-4 text-right" : "pl-9 pr-4"} text-[13px] text-text-primary placeholder-text-ghost focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/40 transition-all duration-300 shadow-sm`} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-ghost group-focus-within:text-accent-text transition-colors duration-200" size={14} />
+              <input ref={historySearchRef} type="text" placeholder="Search history (Ctrl+F)..." value={historySearchQuery} onChange={e => setHistorySearchQuery(e.target.value)} className="w-full rounded-lg border border-border-subtle bg-bg-input py-1.5 pl-9 pr-4 text-[13px] text-text-primary placeholder-text-ghost focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/40 transition-all duration-300 shadow-sm" />
             </div>
-            <CustomDropdown value={historySortBy} onChange={setHistorySortBy} options={[{ label: t("newestFirst", language), value: "newest" }, { label: t("oldestFirst", language), value: "oldest" }, { label: t("mostTargets", language), value: "targets" }, { label: t("mostFindings", language), value: "findings" }]} icon={ArrowUpDown} />
+            <CustomDropdown value={historySortBy} onChange={setHistorySortBy} options={[{ label: "Newest First", value: "newest" }, { label: "Oldest First", value: "oldest" }, { label: "Most Targets", value: "targets" }, { label: "Most Findings", value: "findings" }]} icon={ArrowUpDown} />
           </div>
           <div className="flex-1 overflow-y-auto scroll-smooth px-5 py-4 space-y-3">
             {processedHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-text-muted py-20">
-                {historySearchQuery ? <><Search size={36} strokeWidth={1.5} className="mb-3 opacity-30" /><span className="text-sm font-medium">{t("noHistoryMatch", language)}</span></> : <><Clock size={36} strokeWidth={1.5} className="mb-3 opacity-30" /><span className="text-sm font-medium">{t("noHistoryYet", language)}</span><span className="text-xs text-text-ghost mt-1">{t("historyDesc", language)}</span></>}
+                {historySearchQuery ? <><Search size={36} strokeWidth={1.5} className="mb-3 opacity-30" /><span className="text-sm font-medium">No historical match found.</span></> : <><Clock size={36} strokeWidth={1.5} className="mb-3 opacity-30" /><span className="text-sm font-medium">No scan history yet.</span><span className="text-xs text-text-ghost mt-1">Completed scans will appear here.</span></>}
               </div>
             ) : processedHistory.map(entry => {
               const date = new Date(entry.date);
-              const dateStr = date.toLocaleDateString(language === "ar" ? "ar-EG" : "en-US", { month: "short", day: "numeric", year: "numeric" });
-              const timeStr = date.toLocaleTimeString(language === "ar" ? "ar-EG" : "en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+              const dateStr = date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+              const timeStr = date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
               return (
                 <div key={entry.id} className="finding-card animate-fade-slide-in rounded-xl border border-border-subtle bg-bg-card px-5 py-4 group">
                   <div className="flex items-center justify-between mb-3">
@@ -677,8 +678,8 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
                       <span className="font-mono text-xs text-text-muted" dir="ltr">{entry.elapsed}</span>
                       <div className="flex items-center gap-1.5">
                         {onLoadFromHistory && entry.target !== "—" && (
-                          <button onClick={() => onLoadFromHistory(entry.target)} className="opacity-0 group-hover:opacity-100 flex items-center gap-1 rounded-md bg-accent/15 border border-accent/20 px-2 py-1 text-[10px] font-bold text-accent-text hover:bg-accent/25 transition-all duration-200" title={t("rescan", language)}>
-                            <ExternalLink size={10} strokeWidth={2.5} />{t("rescan", language)}
+                          <button onClick={() => onLoadFromHistory(entry.target)} className="opacity-0 group-hover:opacity-100 flex items-center gap-1 rounded-md bg-accent/15 border border-accent/20 px-2 py-1 text-[10px] font-bold text-accent-text hover:bg-accent/25 transition-all duration-200" title="Re-scan">
+                            <ExternalLink size={10} strokeWidth={2.5} />Re-scan
                           </button>
                         )}
                         {/* H1: Quick re-scan */}
@@ -692,7 +693,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
                   </div>
                   <p className="text-sm font-semibold text-text-primary truncate mb-3 font-mono text-start" dir="ltr">{entry.target}</p>
                   <div className="grid grid-cols-5 gap-2">
-                    {[{ label: t("targets", language), val: entry.targetsCount, cls: "text-text-primary" }, { label: t("urls", language), val: entry.urlsScanned, cls: "text-text-primary" }, { label: t("critical", language), val: entry.criticalCount, cls: entry.criticalCount > 0 ? "text-status-critical" : "text-text-primary" }, { label: t("medium", language), val: entry.mediumCount, cls: entry.mediumCount > 0 ? "text-status-warning" : "text-text-primary" }, { label: t("safe", language), val: entry.safeCount, cls: entry.safeCount > 0 ? "text-status-success" : "text-text-primary" }].map(s => (
+                    {[{ label: "Targets", val: entry.targetsCount, cls: "text-text-primary" }, { label: "URLs", val: entry.urlsScanned, cls: "text-text-primary" }, { label: "Critical", val: entry.criticalCount, cls: entry.criticalCount > 0 ? "text-status-critical" : "text-text-primary" }, { label: "Medium", val: entry.mediumCount, cls: entry.mediumCount > 0 ? "text-status-warning" : "text-text-primary" }, { label: "Safe", val: entry.safeCount, cls: entry.safeCount > 0 ? "text-status-success" : "text-text-primary" }].map(s => (
                       <div key={s.label} className="rounded-lg bg-bg-root px-3 py-2 text-center">
                         <p className="text-[10px] text-text-ghost uppercase tracking-wider mb-0.5">{s.label}</p>
                         <p className={`font-mono text-sm font-bold ${s.cls}`}>{s.val}</p>
@@ -707,18 +708,19 @@ export function TerminalView({ logs, findings, activeTab, onTabChange, onRequest
       )}
 
       {/* H3: Finding Detail Modal */}
-      {detailFinding && <FindingDetailModal finding={detailFinding} onClose={() => setDetailFinding(null)} language={language} onSendToStudio={(finding) => onSendToStudio?.(finding)} />}
+      {detailFinding && <FindingDetailModal finding={detailFinding} onClose={() => setDetailFinding(null)} onSendToStudio={(finding) => onSendToStudio?.(finding)} />}
 
       {/* Studio Tab */}
       {activeTab === "studio" && (
         <div className="flex-1 overflow-hidden">
-          <StudioPanel 
+          <StudioPanel
             initialRequest={initialStudioRequest}
             onInitialRequestConsumed={onInitialRequestConsumed}
             history={studioHistory}
             setHistory={setStudioHistory}
             selectedHistoryId={selectedStudioHistoryId}
             setSelectedHistoryId={setSelectedStudioHistoryId}
+            onSendToBasic={onSendToBasic}
           />
         </div>
       )}

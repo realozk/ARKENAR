@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { X, Settings, PanelLeftClose, PanelLeft, Info, Minus, Square } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-
+import "./App.css";
 import { ToastContainer, type Toast, type ToastType } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry } from "./types";
@@ -549,6 +549,21 @@ const removeToast = useCallback((id: string) => {
     setActiveTab("studio");
   }, []);
 
+  const handleSendToBasic = useCallback(
+  (studioUrl: string, studioHeaders: string) => {
+    setConfig(prev => ({
+      ...prev,
+      target:  studioUrl.trim(),
+      headers: studioHeaders.trim(),
+      // Clear the list-file so the pasted URL takes precedence
+      listFile: '',
+    }));
+    setActiveTab('terminal');
+    addToast('info', 'Data synchronized to Basic Scanner');
+  },
+  [addToast],
+);
+
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden rounded-xl">
      
@@ -750,7 +765,6 @@ const removeToast = useCallback((id: string) => {
             onRequestClear={requestClear}
             scanHistory={scanHistory}
             onLoadFromHistory={handleLoadFromHistory}
-            language={appSettings.language}
             scanProgress={scanProgress}
             scanStatus={scanStatus}
             onQuickRescan={handleQuickRescan}
@@ -761,6 +775,7 @@ const removeToast = useCallback((id: string) => {
             setStudioHistory={setStudioHistory}
             selectedStudioHistoryId={selectedStudioHistoryId}
             setSelectedStudioHistoryId={setSelectedStudioHistoryId}
+            onSendToBasic={handleSendToBasic}
           />
         </main>
       </div>

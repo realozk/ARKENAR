@@ -12,7 +12,7 @@ use arkenar_core::{
     SinkRef, TargetManager, installer, read_lines,
     run_katana_crawler, run_nuclei_scan,
 };
-
+pub mod studio;
 mod reporting;
 mod notifications;
 
@@ -717,7 +717,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report ,   studio_send,])
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report ,   studio_send, studio::studio_auto_login,])
         .setup(|app| {
             let handle = app.handle().clone();
             let setup_sink = TauriSink::new_ref(handle.clone(), None);

@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  Binary,
-  Braces,
-  ChevronDown,
-  Copy,
-  FileCode,
-  GitCompare,
-  Link2,
-  RefreshCw,
-  Send,
-  X,
-} from "lucide-react";
+  Binary, Braces, ChevronDown, Copy, FileCode, GitCompare, Link2,
+  RefreshCw, Send, X,
+  Share2,    
+  KeyRound,  
+  LogIn,     
+  CheckCircle,
+} from 'lucide-react';
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
@@ -62,6 +58,11 @@ export type StudioHistoryItem = {
   error: string | null;
   createdAt: number;
 };
+
+interface AutoLoginResult {
+  cookie_header: string;
+  status_code: number;
+}
 
 export function getStatusClass(status: number): string {
   if (status >= 200 && status < 300) return "text-status-success";
@@ -225,13 +226,234 @@ function ActionButton({
   );
 }
 
+
+interface SmartLoginModalProps {
+  onClose: () => void;
+  /** Called with the raw Cookie header value on success */
+  onSuccess: (cookieHeader: string) => void;
+}
+
+function SmartLoginModal({ onClose, onSuccess }: SmartLoginModalProps) {
+  const [loginUrl, setLoginUrl]         = useState('');
+  const [username, setUsername]         = useState('');
+  const [password, setPassword]         = useState('');
+  const [tokenField, setTokenField]     = useState('');
+  const [usernameField, setUsernameField] = useState('');
+  const [passwordField, setPasswordField] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isLoading, setIsLoading]       = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [successMsg, setSuccessMsg]     = useState<string | null>(null);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const handleSubmit = async () => {
+    if (!loginUrl.trim() || !username.trim() || !password) {
+      setError('Login URL, Username, and Password are all required.');
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const result = await invoke<AutoLoginResult>('studio_auto_login', {
+        req: {
+          login_url:      loginUrl.trim(),
+          username:       username.trim(),
+          password,                                          // intentionally untrimmed
+          username_field: usernameField.trim() || null,
+          password_field: passwordField.trim() || null,
+          token_field:    tokenField.trim()    || null,
+        },
+      });
+
+      // Surface a success hint — never log the raw token to the console
+      setSuccessMsg(`✓ Session captured (HTTP ${result.status_code}). Cookie header injected.`);
+
+      // Brief visual feedback before closing
+      setTimeout(() => {
+        onSuccess(result.cookie_header);
+        onClose();
+      }, 900);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="relative w-full max-w-md rounded-2xl border border-border-subtle bg-bg-panel shadow-2xl animate-fade-slide-in">
+
+        {/* ── Header ───────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between border-b border-border-subtle px-6 py-4 bg-gradient-surface rounded-t-2xl">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/15 border border-accent/20">
+              <KeyRound size={14} className="text-accent-text" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-text-primary leading-none">Smart Auto-Login</p>
+              <p className="text-10px text-text-muted mt-0.5 uppercase tracking-wider">CSRF-Aware Session Capture</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-text-ghost hover:text-text-primary rounded-lg hover:bg-bg-hover transition-colors"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* ── Body ─────────────────────────────────────────────────────── */}
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-xs text-text-muted leading-relaxed">
+            Performs a <strong className="text-text-secondary">GET → parse → POST</strong> handshake.
+            Hidden CSRF tokens (e.g. <code className="font-mono text-accent-text bg-accent/10 px-1 py-0.5 rounded">user_token</code>) are
+            auto-detected and submitted with your credentials.
+          </p>
+
+          {/* Login URL */}
+          <div>
+            <label className="text-10px uppercase tracking-wider font-semibold text-text-muted mb-1.5 block">
+              Login URL
+            </label>
+            <input
+              type="text"
+              value={loginUrl}
+              onChange={e => setLoginUrl(e.target.value)}
+              placeholder="http://target/login.php"
+              autoFocus
+              className="w-full rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm font-mono text-text-primary placeholder:text-text-ghost/50 outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20 transition-all"
+            />
+          </div>
+
+          {/* Username + Password */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-10px uppercase tracking-wider font-semibold text-text-muted mb-1.5 block">
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="admin"
+                autoComplete="off"
+                className="w-full rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-ghost/50 outline-none focus:border-accent/40 transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-10px uppercase tracking-wider font-semibold text-text-muted mb-1.5 block">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                className="w-full rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-ghost/50 outline-none focus:border-accent/40 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Advanced overrides toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(v => !v)}
+            className="flex items-center gap-1.5 text-11px text-text-ghost hover:text-accent-text transition-colors duration-150"
+          >
+            <ChevronDown
+              size={12}
+              strokeWidth={2.5}
+              className={`transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`}
+            />
+            Advanced field overrides
+          </button>
+
+          {showAdvanced && (
+            <div className="grid grid-cols-3 gap-3 animate-fade-slide-in">
+              {[
+                { label: 'Username field', value: usernameField, set: setUsernameField, placeholder: 'username' },
+                { label: 'Password field', value: passwordField, set: setPasswordField, placeholder: 'password' },
+                { label: 'CSRF token field', value: tokenField,   set: setTokenField,   placeholder: 'auto-detect' },
+              ].map(({ label, value, set, placeholder }) => (
+                <div key={label}>
+                  <label className="text-10px uppercase tracking-wider text-text-muted mb-1 block">{label}</label>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={e => set(e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full rounded-lg border border-border-subtle bg-bg-input px-2.5 py-1.5 text-xs font-mono text-text-primary placeholder:text-text-ghost/40 outline-none focus:border-accent/40 transition-all"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Feedback: error */}
+          {error && (
+            <div className="rounded-lg bg-status-critical/10 border border-status-critical/20 px-3 py-2.5 text-xs text-status-critical leading-relaxed animate-fade-slide-in">
+              {error}
+            </div>
+          )}
+
+          {/* Feedback: success */}
+          {successMsg && (
+            <div className="flex items-center gap-2 rounded-lg bg-status-success/10 border border-status-success/20 px-3 py-2.5 text-xs text-status-success animate-fade-slide-in">
+              <CheckCircle size={13} strokeWidth={2.5} className="shrink-0" />
+              {successMsg}
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer ───────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border-subtle bg-bg-card px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isLoading || !loginUrl.trim() || !username.trim() || !password}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-bg-root btn-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+          >
+            {isLoading
+              ? <RefreshCw size={13} className="animate-spin" />
+              : <KeyRound size={13} />
+            }
+            {isLoading ? 'Authenticating…' : 'Execute Login'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function StudioPanel({
   initialRequest,
   onInitialRequestConsumed,
   history,
   setHistory,
   selectedHistoryId,
-  setSelectedHistoryId
+  setSelectedHistoryId,
+   onSendToBasic
 }: {
   initialRequest?: Partial<StudioRequest> | null;
   onInitialRequestConsumed?: () => void;
@@ -239,6 +461,7 @@ export default function StudioPanel({
   setHistory: React.Dispatch<React.SetStateAction<StudioHistoryItem[]>>;
   selectedHistoryId: string | null;
   setSelectedHistoryId: (id: string | null) => void;
+  onSendToBasic?: (url: string, headers: string) => void;
 }) {
   const [method, setMethod] = useState<HttpMethod>("GET");
   const [url, setUrl] = useState("");
@@ -266,6 +489,17 @@ export default function StudioPanel({
   const suppressUrlEffect = useRef(false);
 
   const isBodyDisabled = useMemo(() => method === "GET" || method === "HEAD", [method]);
+
+    const [showSmartLogin, setShowSmartLogin] = useState(false);
+
+    const injectCookieHeader = (currentHeaders: string, cookieValue: string): string => {
+  const cleaned = currentHeaders
+    .split('\n')
+    .filter(line => !line.trim().toLowerCase().startsWith('cookie:'))
+    .filter(Boolean);
+  cleaned.push(`Cookie: ${cookieValue}`);
+  return cleaned.join('\n');
+};
 
   const responseCookies = useMemo(
     () => (response?.headers ?? []).filter(([k]) => k.toLowerCase() === "set-cookie"),
@@ -498,11 +732,10 @@ export default function StudioPanel({
   };
 
   return (
-    <div className="h-full w-full flex flex-col p-5 animate-fade-in bg-transparent overflow-hidden">
-      <div className="flex h-full gap-4 min-h-0 w-full overflow-hidden">
-        
+    <div className="flex flex-col h-full overflow-hidden p-5 animate-fade-in bg-transparent">
+      <div className="flex flex-1 gap-4 min-h-0 overflow-hidden">
 
-        <section className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
+        <section className="flex-1 flex flex-col min-w-0 h-full overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
           <div className="mb-3 flex items-center gap-2">
             <div className="relative">
               <button
@@ -591,6 +824,32 @@ export default function StudioPanel({
               </button>
             ))}
           </div>
+          {/* ── Action bridge row ─────────────────────────────────────────── */}
+<div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5">
+  {/* Smart Login  */}
+  <button
+    type="button"
+    onClick={() => setShowSmartLogin(true)}
+    className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-input px-2.5 py-1.5 text-11px font-semibold uppercase tracking-wider text-text-secondary hover:bg-accent/10 hover:text-accent-text hover:border-accent/30 transition-all duration-200"
+    title="Automate CSRF-protected login and inject session cookie"
+  >
+    <LogIn size={12} strokeWidth={2.3} />
+    Smart Login
+  </button>
+
+  {/* Send to Basic  */}
+  <button
+    type="button"
+    onClick={() => onSendToBasic?.(url, headersInput)}
+    disabled={!url.trim() || !onSendToBasic}
+    className="inline-flex items-center gap-1.5 rounded-lg bg-accent/15 border border-accent/25 px-2.5 py-1.5 text-11px font-semibold uppercase tracking-wider text-accent-text hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
+    title="Copy current URL + Headers to the Basic Scanner and switch tabs"
+  >
+    <Share2 size={12} strokeWidth={2.3} />
+    Send to Basic
+  </button>
+</div>
+
 
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-card px-3 py-2">
             <span className="text-[13px] font-semibold uppercase tracking-wider text-text-muted">Utility</span>
@@ -601,7 +860,7 @@ export default function StudioPanel({
             <ActionButton icon={Braces} title="Convert selected text to hexadecimal" label="→ Hex" onClick={() => applyTextMutation((v) => toHex(v))} />
           </div>
 
-          <div className="min-h-0 h-[calc(100%-143px)]">
+          <div className="flex-1 min-h-0 overflow-hidden">
             {requestTab === "headers" && (
               <textarea
                 ref={headersRef}
@@ -753,7 +1012,7 @@ export default function StudioPanel({
             ))}
           </div>
 
-          <div className="h-[calc(100%-148px)] min-h-0 rounded-lg border border-border-subtle bg-bg-card p-2">
+          <div className="flex-1 min-h-0 rounded-lg border border-border-subtle bg-bg-card p-2 overflow-hidden">
             {responseTab === "body" && (
               <div className="h-full overflow-auto rounded-lg border border-border-subtle bg-bg-input">
                 {compareMode && previousResponse && response ? (
@@ -914,6 +1173,17 @@ export default function StudioPanel({
           </div>
         </div>
       )}
+      {showSmartLogin && (
+  <SmartLoginModal
+    onClose={() => setShowSmartLogin(false)}
+    onSuccess={(cookieHeader) => {
+      setHeadersInput(prev => injectCookieHeader(prev, cookieHeader));
+      // Switch request tab to Headers so the user can see the injected cookie
+      setRequestTab('headers');
+    }}
+  />
+)}
+      
     </div>
   );
 }
