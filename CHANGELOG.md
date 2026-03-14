@@ -4,30 +4,31 @@ All notable changes to Arkenar are documented here.
 
 ---
 
-## [1.1.0] — 2026-03-14
+## [1.1.0] — Phase 1: Foundation Intelligence & Studio Refactor
 
 ### Added
-- **Arkenar Studio (New Architecture)** — Completely refactored the Studio environment into a modular, high-performance architecture using a dedicated Custom Hook (`useStudio`).
+- **Arkenar Studio (New Architecture)** — Completely refactored the Studio environment into a modular architecture using a dedicated Custom Hook (`useStudio`) for high-performance state management.
+- **Reflection Analysis (The Noise Killer)** — Implemented a pre-check system that injects randomized canary strings to detect reflected input before firing heavy payloads, drastically reducing false positives.
+- **Technology Fingerprinting Module** — Built a fast heuristic matcher for server headers and DOM tags to identify target stacks (PHP, ASP.NET, Java, etc.) and optimize scan logic.
 - **Smart Auto-Login** — Added a CSRF-aware authentication handshake (GET -> Parse -> POST) that automatically captures and injects session cookies into Studio requests.
+- **Dynamic Payload Routing** — Upgraded the mutation engine to select payloads based on the detected technology stack (e.g., routing ASP.NET-specific payloads when IIS is detected).
 - **Traffic History Drawer** — Added a sidebar to track, search, and recall previous manual HTTP requests within the current session.
 - **Advanced PoC Exporter** — One-click generation of Proof-of-Concept snippets in `cURL`, `Python Requests`, and `Raw HTTP` formats.
+- **Custom Nuclei Template Support** — Added the ability to load personal `.yaml` templates from a dedicated local folder directly via the GUI.
 - **New Utility Toolkit** — Integrated real-time data manipulation tools: Base64 (Encode/Decode), URL Encoding, and Hex conversion directly within the request builder.
-- **Beautify & Diff** — Added JSON beautifier for responses and a "Git-style" Diff mode to compare results between different payloads.
 
 ### Changed
-- **Codebase Modularization** — Split the monolithic `StudioPanel.tsx` into five distinct, specialized components (`StudioRequest`, `StudioResponse`, `TrafficDrawer`, etc.) for better maintainability.
-- **State Management Logic** — Moved all business logic, HTTP calls, and data transformation out of the UI components and into the `useStudio` state manager.
-- **Tauri IPC Optimization** — Streamlined communication between the React frontend and Rust backend for manual HTTP requests to bypass CORS and utilize the native Arkenar engine.
+- **Codebase Modularization** — Split the monolithic `StudioPanel.tsx` into five distinct, specialized components for better maintainability.
+- **Optimized Scanning Logic** — Fuzzing context now respects concurrency caps by consuming Semaphore permits during reflection pre-checks.
+- **UI Data Richness** — ScanFindingEvent now includes tech stack metadata, rendered as icons in the Findings and Terminal views.
 
 ### Fixed
 - **State Desynchronization** — Resolved issues where request headers or body would get lost when switching between different scan tabs.
 - **UI Freezing** — Fixed long-standing UI hangs during large response rendering by implementing optimized line-by-line code display.
-- **CSS Layout Issues** — Improved the Studio's responsiveness and scrolling behavior for very long HTTP requests and responses.
 
 ### Security
-- **Logic Isolation** — Improved security by keeping all sensitive data manipulation (like Smart Login handshakes) within the Rust backend, away from the browser context.
-- **Input Sanitization** — Enhanced validation for manual request fields to prevent accidental command injection during PoC generation.
-
+- **Logic Isolation** — Improved security by keeping all sensitive data manipulation (like Smart Login handshakes) within the Rust backend.
+- **Path Sanitization** — Added strict validation for custom template paths to prevent path traversal and shell metacharacter injection.
 ---
 
 ## [1.0.4] — 2026-03-12
