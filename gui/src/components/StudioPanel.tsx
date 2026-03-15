@@ -157,9 +157,15 @@ export default function StudioPanel(props: {
   selectedHistoryId: string | null;
   setSelectedHistoryId: (id: string | null) => void;
   onSendToBasic?: (url: string, headers: string) => void;
+  onCompareWithHistoryRef?: React.MutableRefObject<((body: string) => void) | null>;
 }) {
   const studio = useStudio(props);
   const { state, setters, handlers, refs } = studio;
+   useEffect(() => {
+    if (props.onCompareWithHistoryRef) {
+      props.onCompareWithHistoryRef.current = handlers.onCompareWithHistory;
+    }
+  });
 
   return (
     <div className="flex flex-col h-full overflow-hidden p-5 animate-fade-in bg-transparent">

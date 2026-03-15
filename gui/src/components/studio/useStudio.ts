@@ -258,10 +258,9 @@ export function useStudio(props: {
     return lines.length === 0 ? [""] : lines;
   }, [displayBody]);
 
-  const diffLines = useMemo(() => {
-    if (!compareMode || !previousResponse || !response) return [];
-    return diffBodies(previousResponse.body, response.body);
-  }, [compareMode, previousResponse, response]);
+  const [diffLines, setDiffLines] = useState<
+  { type: 'same' | 'added' | 'removed'; text: string }[]
+>([]);
 
   const finalRequest = useMemo<StudioRequest>(() => {
     return {
@@ -397,16 +396,16 @@ export function useStudio(props: {
     });
   };
 
-  useEffect(() => {
+ useEffect(() => {
     if (selectedHistoryId) {
       const item = history.find(i => i.id === selectedHistoryId);
       if (item) {
-        setMethod(item.request.method);
-        setUrl(item.request.url);
-        setHeadersInput(item.request.headers);
-        setBody(item.request.body);
-        setResponse(item.response);
-        setError(item.error);
+        setMethod(item.request?.method || "GET");
+        setUrl(item.request?.url || "");
+        setHeadersInput(item.request?.headers || "");
+        setBody(item.request?.body || "");
+        setResponse(item.response || null);
+        setError(item.error || null);
         setCompareMode(false);
       }
     }
@@ -427,6 +426,25 @@ export function useStudio(props: {
   }
 };
 
+const computeDiff = (a: string, b: string) => {
+  const aLines = a.split('\n');
+  const bLines = b.split('\n');
+  const result: { type: 'same' | 'removed' | 'added'; text: string }[] = [];
+
+  const maxLen = Math.max(aLines.length, bLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const aLine = aLines[i];
+    const bLine = bLines[i];
+
+    if (aLine === bLine) {
+      result.push({ type: 'same', text: aLine ?? '' });
+    } else {
+      if (aLine !== undefined) result.push({ type: 'removed', text: aLine });
+      if (bLine !== undefined) result.push({ type: 'added', text: bLine });
+    }
+  }
+  return result;
+};
 
 
 
@@ -520,7 +538,19 @@ console.log('LIVE VARS:', localStorage.getItem('arkenar-env-vars'));
   if (!response?.body) return;
   setBody(response.body);
   setRequestTab('body');
+
+ 
+
 };
+
+ const onCompareWithHistory = (historyBody: string) => {
+  if (!response?.body) return;
+  const diff = computeDiff(historyBody, response.body);
+  setDiffLines(diff);
+  setCompareMode(true);
+  setResponseTab('diff' as any);
+};
+
 
 const onImportCurl = async () => {
   try {
@@ -659,10 +689,10 @@ const onImportCurl = async () => {
       setShowMethodMenu, setIsLoading, setError,
       setResponse, setPreviousResponse, setResponseTab, setRequestTab,
       setShowPocModal, setPocTab, setPocCopied,
-      setCompareMode, setShowSmartLogin, setEnvVars,
+      setCompareMode, setShowSmartLogin, setEnvVars,setDiffLines, 
     },
     handlers: {
-      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,
+      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,  onCompareWithHistory, 
     }
   };
 }

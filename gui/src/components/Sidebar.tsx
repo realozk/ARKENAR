@@ -1,13 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  Crosshair, FileText, Layers, Radar, Telescope, Zap, RotateCcw, Plus, X, ListOrdered, FolderSearch, ClipboardPaste, BookmarkPlus, Bookmark,
-} from "lucide-react";
+import { Crosshair, FileText, Layers, Radar, Telescope, Zap,
+   RotateCcw, Plus, X, ListOrdered, FolderSearch, ClipboardPaste, 
+   BookmarkPlus, Bookmark, GitCompare } from "lucide-react";
+
 import type { ScanConfig } from "../types";
 import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
 import { t } from "../utils/i18n";
 import type { StudioHistoryItem } from "./StudioPanel";
 import { getStatusClass, buildHistoryLabel } from "./StudioPanel";
+
+
 
 interface SidebarProps {
   config: ScanConfig;
@@ -22,6 +25,7 @@ interface SidebarProps {
   selectedStudioHistoryId: string | null;
   onSelectStudioHistoryItem: (id: string | null) => void;
   onNewStudioRequest: () => void;
+  onCompareWithHistory?: (body: string) => void;
 }
 
 const TEMPLATES_KEY = "arkenar-templates";
@@ -36,7 +40,15 @@ function saveTemplates(tpls: ScanTemplate[]) {
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(tpls));
 }
 
-export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueue, onRemoveFromQueue, language, isStudioMode, studioHistory, selectedStudioHistoryId, onSelectStudioHistoryItem, onNewStudioRequest }: SidebarProps) {
+
+
+
+export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueue, 
+  onRemoveFromQueue, language, isStudioMode, studioHistory, selectedStudioHistoryId,
+   onSelectStudioHistoryItem, onNewStudioRequest,onCompareWithHistory, }: SidebarProps) {
+    const [contextMenu, setContextMenu] = useState<{
+  x: number; y: number; itemId: string;
+} | null>(null);
   const [queueInput, setQueueInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   // S1: templates
@@ -165,6 +177,10 @@ useEffect(() => {
                   <button
                     key={item.id}
                     onClick={() => onSelectStudioHistoryItem(item.id)}
+                     onContextMenu={(e) => {                                    
+                      e.preventDefault();                                        
+                      setContextMenu({ x: e.clientX, y: e.clientY, itemId: item.id }); 
+                    }}       
                     className={`w-full flex flex-col gap-2 border-b border-border-subtle p-4 text-left transition-all duration-200 ${
                       selectedStudioHistoryId === item.id ? "bg-accent/10 ring-1 ring-accent/50 shadow-[0_0_15px_rgba(var(--color-accent),0.1)]" : "hover:bg-bg-hover"
                     }`}
@@ -456,6 +472,42 @@ useEffect(() => {
       </div>
       </>
       )}
+      {contextMenu && (
+  <>
+    <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+    <div
+      className="fixed z-50 min-w-[180px] rounded-xl border border-border-subtle bg-bg-panel shadow-xl animate-fade-slide-in overflow-hidden"
+      style={{ top: contextMenu.y, left: contextMenu.x }}
+    >
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-accent-text transition-colors"
+        onClick={() => {
+          const item = studioHistory.find(h => h.id === contextMenu.itemId);
+          if (item?.response?.body) {
+            onCompareWithHistory?.(item.response.body);
+          }
+          setContextMenu(null);
+        }}
+      >
+        <GitCompare size={13} />
+        Compare with current
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors border-t border-border-subtle"
+        onClick={() => {
+          onSelectStudioHistoryItem?.(contextMenu.itemId);
+          setContextMenu(null);
+        }}
+      >
+        <RotateCcw size={13} />
+        Load this request
+      </button>
+    </div>
+  </>
+)}
+
     </aside>
   );
 }

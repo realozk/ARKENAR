@@ -71,6 +71,8 @@ function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const compareWithHistoryRef = useRef<((body: string) => void) | null>(null);
+
   
   const [scanQueue, setScanQueue] = useState<string[]>([]);
   const [isHoldingSpace, setIsHoldingSpace] = useState(false);
@@ -724,6 +726,8 @@ const removeToast = useCallback((id: string) => {
               selectedStudioHistoryId={selectedStudioHistoryId}
               onSelectStudioHistoryItem={(id) => { setSelectedStudioHistoryId(id); setActiveTab("studio"); }}
               onNewStudioRequest={() => { setSelectedStudioHistoryId(null); setActiveTab("studio"); }}
+               onCompareWithHistory={(body) => {compareWithHistoryRef.current?.(body); setActiveTab("studio");}}
+
             />
           </div>
         </div>
@@ -776,6 +780,7 @@ const removeToast = useCallback((id: string) => {
             selectedStudioHistoryId={selectedStudioHistoryId}
             setSelectedStudioHistoryId={setSelectedStudioHistoryId}
             onSendToBasic={handleSendToBasic}
+            onCompareWithHistoryRef={compareWithHistoryRef}
           />
         </main>
       </div>

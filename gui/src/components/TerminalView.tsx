@@ -346,6 +346,7 @@ interface TerminalViewProps {
   selectedStudioHistoryId: string | null;
   setSelectedStudioHistoryId: (id: string | null) => void;
   onSendToBasic?: (url: string, headers: string) => void;
+  onCompareWithHistoryRef?: React.MutableRefObject<((body: string) => void) | null>;
 }
 
 export function TerminalView({ logs, findings, activeTab, onTabChange,
@@ -353,7 +354,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
   scanProgress = 0, scanStatus = "idle", onQuickRescan,
   onSendToStudio, initialStudioRequest, onInitialRequestConsumed,
   studioHistory, setStudioHistory, selectedStudioHistoryId,
-  setSelectedStudioHistoryId, onSendToBasic, }: TerminalViewProps) {
+  setSelectedStudioHistoryId, onSendToBasic, onCompareWithHistoryRef }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termSearchRef = useRef<HTMLInputElement>(null);
   const findingsSearchRef = useRef<HTMLInputElement>(null);
@@ -721,6 +722,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
             selectedHistoryId={selectedStudioHistoryId}
             setSelectedHistoryId={setSelectedStudioHistoryId}
             onSendToBasic={onSendToBasic}
+            onCompareWithHistoryRef={onCompareWithHistoryRef}
           />
         </div>
       )}
