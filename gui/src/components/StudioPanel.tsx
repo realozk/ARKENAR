@@ -172,6 +172,7 @@ export default function StudioPanel(props: {
           handlers={handlers as any}
           refs={refs as any}
           onSendToBasic={props.onSendToBasic}
+          
         />
 
         {/* Right Side: Response */}

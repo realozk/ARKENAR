@@ -1,7 +1,8 @@
-import React from "react";
-import { ChevronDown, Plus, Trash, Check, FileCode, LogIn, Share2, Binary, Link2, Braces, RefreshCw, Send, X } from "lucide-react";
+import React, { useState } from "react";
+import { ChevronDown, FileCode, LogIn, Share2, Binary, Link2, Braces, RefreshCw, Send, X, ClipboardPaste, Vault, Trash2, PlusCircle } from "lucide-react";
 import { METHODS, REQUEST_TABS, HttpMethod, QueryParam, RequestTab } from "./useStudio";
-import { Copy, ClipboardPaste } from 'lucide-react';
+import { EnvVar } from "../../types";
+
 function ActionButton({ icon: Icon, title, label, onClick }: { icon: React.ElementType; title: string; label: string; onClick: () => void; }) {
   return (
     <button
@@ -27,6 +28,7 @@ export interface StudioRequestProps {
     isLoading: boolean;
     requestTab: RequestTab;
     isBodyDisabled: boolean;
+    envVars: EnvVar[];
   };
   setters: {
     setMethod: (m: HttpMethod) => void;
@@ -38,6 +40,7 @@ export interface StudioRequestProps {
     setShowPocModal: (s: boolean) => void;
     setShowSmartLogin: (s: boolean) => void;
     setCompareMode: (s: boolean) => void;
+    setEnvVars: (vars: EnvVar[]) => void;
   };
   handlers: {
     onSend: () => void;
@@ -72,9 +75,19 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
   const safeBase64Decode = (input: string) => new TextDecoder().decode(Uint8Array.from(atob(input), c => c.charCodeAt(0)));
   const toHex = (input: string) => Array.from(input).map(ch => ch.charCodeAt(0).toString(16).padStart(2, "0")).join("");
 
+  const [showVault, setShowVault] = useState(false);
+
+  const saveEnvVars = (updated: EnvVar[]) => {
+    setters.setEnvVars(updated);
+    localStorage.setItem('arkenar-env-vars', JSON.stringify(updated));
+  };
+
   return (
     <section className="flex-1 flex flex-col min-w-0 h-full overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
+
+      {/* ── Top Action Bar ── */}
       <div className="mb-3 flex items-center gap-2">
+        {/* Method Dropdown */}
         <div className="relative">
           <button
             type="button"
@@ -84,17 +97,13 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
             {state.method}
             <ChevronDown size={13} strokeWidth={2.2} className="text-text-secondary" />
           </button>
-
           {state.showMethodMenu && (
             <div className="absolute z-20 mt-1 w-[120px] rounded-lg border border-border-subtle bg-bg-panel shadow-lg animate-fade-slide-in">
               {METHODS.map((m) => (
                 <button
                   key={m}
                   type="button"
-                  onClick={() => {
-                    setters.setMethod(m);
-                    setters.setShowMethodMenu(false);
-                  }}
+                  onClick={() => { setters.setMethod(m); setters.setShowMethodMenu(false); }}
                   className="block w-full border-b border-border-subtle px-3 py-2 text-left text-xs font-semibold tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary last:border-b-0"
                 >
                   {m}
@@ -104,6 +113,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           )}
         </div>
 
+        {/* URL Input */}
         <input
           type="text"
           value={state.url}
@@ -113,6 +123,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           onKeyDown={(e) => { if (e.key === "Enter") handlers.onSend(); }}
         />
 
+        {/* Execute */}
         <button
           type="button"
           onClick={handlers.onSend}
@@ -123,18 +134,32 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           Execute
         </button>
 
-        {/* CHANGE D: Magic cURL Import button */}
-      <button
-        type="button"
-        onClick={handlers.onImportCurl}
-        title="Paste a cURL command from clipboard and auto-fill all fields"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10 transition-all duration-200"
-      >
-        <ClipboardPaste size={13} />
-        Import cURL
-      </button>
+        {/* Env Vars Vault */}
+        <button
+          type="button"
+          onClick={() => setShowVault(v => !v)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
+            showVault
+              ? 'border-accent/40 bg-accent/10 text-accent-text'
+              : 'border-border-subtle bg-bg-card text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10'
+          }`}
+        >
+          <Vault size={13} />
+          Env Vars
+        </button>
 
+        {/* Import cURL */}
+        <button
+          type="button"
+          onClick={handlers.onImportCurl}
+          title="Paste a cURL command from clipboard and auto-fill all fields"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10 transition-all duration-200"
+        >
+          <ClipboardPaste size={13} />
+          Import cURL
+        </button>
 
+        {/* Reset */}
         <button
           type="button"
           onClick={() => {
@@ -148,6 +173,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           Reset
         </button>
 
+        {/* Export PoC */}
         <button
           type="button"
           onClick={() => setters.setShowPocModal(true)}
@@ -158,6 +184,58 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
         </button>
       </div>
 
+      {/* ── Env Vars Vault Panel ── */}
+      {showVault && (
+        <div className="mb-3 rounded-xl border border-accent/20 bg-bg-card p-3 space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">
+            Environment Variables — use <code className="text-accent-text font-mono">{'{{key}}'}</code> in URL, Headers, Body
+          </p>
+          {state.envVars.length === 0 && (
+            <p className="text-xs text-text-ghost italic">No variables yet. Add one below.</p>
+          )}
+          {state.envVars.map((v, i) => (
+            <div key={v.id} className="flex items-center gap-2">
+              <input
+                value={v.key}
+                onChange={e => {
+                  const updated = [...state.envVars];
+                  updated[i] = { ...v, key: e.target.value };
+                  saveEnvVars(updated);
+                }}
+                placeholder="key  e.g. jwt_token"
+                className="w-36 rounded-lg border border-border-subtle bg-bg-input px-2 py-1 text-xs font-mono text-text-primary focus:outline-none focus:border-accent/40"
+              />
+              <span className="text-text-ghost text-xs font-bold">=</span>
+              <input
+                value={v.value}
+                onChange={e => {
+                  const updated = [...state.envVars];
+                  updated[i] = { ...v, value: e.target.value };
+                  saveEnvVars(updated);
+                }}
+                placeholder="value  e.g. eyJhbGci..."
+                className="flex-1 rounded-lg border border-border-subtle bg-bg-input px-2 py-1 text-xs font-mono text-text-primary focus:outline-none focus:border-accent/40"
+              />
+              <button
+                type="button"
+                onClick={() => saveEnvVars(state.envVars.filter((_, idx) => idx !== i))}
+                className="text-text-ghost hover:text-status-critical transition-colors p-1"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => saveEnvVars([...state.envVars, { id: crypto.randomUUID(), key: '', value: '' }])}
+            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent-text transition-colors pt-1"
+          >
+            <PlusCircle size={12} /> Add Variable
+          </button>
+        </div>
+      )}
+
+      {/* ── Request Tabs ── */}
       <div className="mb-3 flex items-center gap-2 border-b border-border-subtle pb-3">
         {REQUEST_TABS.map((tab) => (
           <button
@@ -175,6 +253,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
         ))}
       </div>
 
+      {/* ── Smart Login / Send to Basic ── */}
       <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5">
         <button
           type="button"
@@ -185,7 +264,6 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           <LogIn size={12} strokeWidth={2.3} />
           Smart Login
         </button>
-
         <button
           type="button"
           onClick={() => onSendToBasic?.(state.url, state.headersInput)}
@@ -198,15 +276,17 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
         </button>
       </div>
 
+      {/* ── Utility Bar ── */}
       <div className="mb-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 overflow-x-auto custom-scrollbar">
         <span className="text-[13px] font-semibold uppercase tracking-wider text-text-muted shrink-0">Utility</span>
-        <ActionButton icon={Binary} title="Base64 Encode selected text" label="B64 Encode" onClick={() => handlers.applyTextMutation((v) => safeBase64Encode(v))} />
-        <ActionButton icon={Binary} title="Base64 Decode selected text" label="B64 Decode" onClick={() => handlers.applyTextMutation((v) => safeBase64Decode(v))} />
-        <ActionButton icon={Link2} title="URL Encode selected text" label="URL Encode" onClick={() => handlers.applyTextMutation((v) => encodeURIComponent(v))} />
-        <ActionButton icon={Link2} title="URL Decode selected text" label="URL Decode" onClick={() => handlers.applyTextMutation((v) => decodeURIComponent(v))} />
-        <ActionButton icon={Braces} title="Convert selected text to hexadecimal" label="→ Hex" onClick={() => handlers.applyTextMutation((v) => toHex(v))} />
+        <ActionButton icon={Binary} title="Base64 Encode" label="B64 Encode" onClick={() => handlers.applyTextMutation(safeBase64Encode)} />
+        <ActionButton icon={Binary} title="Base64 Decode" label="B64 Decode" onClick={() => handlers.applyTextMutation(safeBase64Decode)} />
+        <ActionButton icon={Link2} title="URL Encode" label="URL Encode" onClick={() => handlers.applyTextMutation(encodeURIComponent)} />
+        <ActionButton icon={Link2} title="URL Decode" label="URL Decode" onClick={() => handlers.applyTextMutation(decodeURIComponent)} />
+        <ActionButton icon={Braces} title="To Hex" label="→ Hex" onClick={() => handlers.applyTextMutation(toHex)} />
       </div>
 
+      {/* ── Tab Content ── */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {state.requestTab === "headers" && (
           <textarea

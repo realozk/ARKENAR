@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { EnvVar } from "../../types";
 
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
@@ -223,6 +224,12 @@ export function useStudio(props: {
 
   const [compareMode, setCompareMode] = useState(false);
   const [showSmartLogin, setShowSmartLogin] = useState(false);
+  
+  const [envVars, setEnvVars] = useState<EnvVar[]>(() => {
+  try { return JSON.parse(localStorage.getItem('arkenar-env-vars') ?? '[]'); }
+  catch { return []; }
+});
+
 
   const headersRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -264,6 +271,7 @@ export function useStudio(props: {
       body: isBodyDisabled ? "" : body,
     };
   }, [url, method, headersInput, body, isBodyDisabled]);
+  
 
   const curlSnippet = useMemo(() => buildCurlSnippet(finalRequest), [finalRequest]);
   const pythonSnippet = useMemo(() => buildPythonSnippet(finalRequest), [finalRequest]);
@@ -404,6 +412,24 @@ export function useStudio(props: {
     }
   }, [selectedHistoryId, history]);
 
+ const injectEnvVars = (text: string): string => {
+  try {
+    const live: EnvVar[] = JSON.parse(
+      localStorage.getItem('arkenar-env-vars') ?? '[]'
+    );
+    return live.reduce((acc, v) => {
+      if (!v.key.trim()) return acc;
+      const escaped = v.key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return acc.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, 'g'), v.value);
+    }, text);
+  } catch {
+    return text;
+  }
+};
+
+
+
+
   const onSend = async () => {
     if (isLoading) return;
 
@@ -413,13 +439,17 @@ export function useStudio(props: {
     setPreviousResponse(response);
 
     try {
-      const req: StudioRequest = {
-        url: finalRequest.url.trim(),
-        method: finalRequest.method,
-        headers: finalRequest.headers,
-        body: finalRequest.body,
+       const req: StudioRequest = {
+        url:     injectEnvVars(finalRequest.url.trim()),
+        method:  finalRequest.method,
+        headers: injectEnvVars(finalRequest.headers),
+        body:    injectEnvVars(finalRequest.body),
       };
-      
+
+   console.log('FINAL URL:', req.url);
+console.log('LIVE VARS:', localStorage.getItem('arkenar-env-vars'));
+
+
       const res = await invoke<StudioResponse>('studio_send', { req });
 
       const isJsonContentType = res.headers.some(([k, v]) =>
@@ -453,11 +483,12 @@ export function useStudio(props: {
       setResponse(null);
 
       const failedReq: StudioRequest = {
-        url: finalRequest.url.trim(),
-        method: finalRequest.method,
-        headers: finalRequest.headers,
-        body: finalRequest.body,
+        url:     injectEnvVars(finalRequest.url.trim()),
+        method:  finalRequest.method,
+        headers: injectEnvVars(finalRequest.headers),
+        body:    injectEnvVars(finalRequest.body),
       };
+
 
       const item: StudioHistoryItem = {
         id: crypto.randomUUID(),
@@ -493,43 +524,106 @@ export function useStudio(props: {
 
 const onImportCurl = async () => {
   try {
-    const text = await navigator.clipboard.readText();
-    const raw = text.trim();
+    const text = (await navigator.clipboard.readText()).trim();
 
-    if (!raw.startsWith('curl')) {
+    if (!text.startsWith('curl')) {
       setError('Clipboard does not contain a cURL command.');
       return;
     }
 
-    const urlMatch = raw.match(/['"]?(https?:\/\/[^\s'"\\]+)['"]?/);
-    const parsedUrl = urlMatch?.[1] ?? '';
+    
+    const tokens: string[] = [];
+    let i = 0;
+    while (i < text.length) {
+      // skip whitespace and backslash-newlines
+      if (/\s/.test(text[i]) || (text[i] === '\\' && text[i + 1] === '\n')) {
+        i++;
+        continue;
+      }
+      // single-quoted token — content is literal, no escapes
+      if (text[i] === "'") {
+        i++;
+        let tok = '';
+        while (i < text.length && text[i] !== "'") tok += text[i++];
+        i++; // closing quote
+        tokens.push(tok);
+        continue;
+      }
+      // double-quoted token — honour \" escape
+      if (text[i] === '"') {
+        i++;
+        let tok = '';
+        while (i < text.length && text[i] !== '"') {
+          if (text[i] === '\\' && text[i + 1] === '"') { tok += '"'; i += 2; }
+          else tok += text[i++];
+        }
+        i++; // closing quote
+        tokens.push(tok);
+        continue;
+      }
+      // unquoted token
+      let tok = '';
+      while (i < text.length && !/\s/.test(text[i])) tok += text[i++];
+      tokens.push(tok);
+    }
 
-    const methodMatch = raw.match(/(?:-X|--request)\s+([A-Z]+)/);
-    const VALID_METHODS = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'] as const;
-    const raw_method = methodMatch?.[1] ?? 'GET';
-    const parsedMethod = (VALID_METHODS.includes(raw_method as any) ? raw_method : 'GET') as HttpMethod;
+    // ── Step 2: Walk tokens and extract fields ────────────────────
+    let parsedUrl = '';
+    let parsedMethod = 'GET';
+    const headerLines: string[] = [];
+    let parsedBody = '';
 
-    const headerMatches = [...raw.matchAll(/(?:-H|--header)\s+['"]([^'"]+)['"]/g)];
-    const parsedHeaders = headerMatches
-      .map(m => m[1])
-      .filter(h => !h.toLowerCase().startsWith('content-length'))
-      .join('\n');
+    for (let j = 0; j < tokens.length; j++) {
+      const t = tokens[j];
 
-const bodySingle = raw.match(/(?:--data-raw|--data-binary|--data|-d)\s+'([\s\S]*?)'/);
+      // URL — any unquoted token that starts with http
+      if (t.startsWith('http://') || t.startsWith('https://')) {
+        parsedUrl = t;
+        continue;
+      }
 
-const bodyDouble = raw.match(/(?:--data-raw|--data-binary|--data|-d)\s+"([\s\S]*?)"/);
-const parsedBody = bodySingle?.[1] ?? bodyDouble?.[1] ?? '';
+      // Method: -X POST  or  --request POST
+      if ((t === '-X' || t === '--request') && tokens[j + 1]) {
+        parsedMethod = tokens[++j].toUpperCase();
+        continue;
+      }
 
+      // Headers: -H 'Key: Value'  or  --header 'Key: Value'
+      if ((t === '-H' || t === '--header') && tokens[j + 1]) {
+        const h = tokens[++j];
+        // skip pseudo-headers like :authority, :method
+        if (!h.startsWith(':') && !h.toLowerCase().startsWith('content-length')) {
+          headerLines.push(h);
+        }
+        continue;
+      }
+
+      // Body: -d / --data / --data-raw / --data-binary
+      if (
+        (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary') &&
+        tokens[j + 1]
+      ) {
+        parsedBody = tokens[++j];
+        continue;
+      }
+    }
 
     if (!parsedUrl) {
       setError('Could not parse a valid URL from the cURL command.');
       return;
     }
 
-    // Fire all setters
+    // ── Step 3: Infer method from body ────────────────────────────
+    if (parsedMethod === 'GET' && parsedBody) parsedMethod = 'POST';
+
+    // ── Step 4: Validate method ───────────────────────────────────
+    const VALID = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'];
+    const safeMethod = (VALID.includes(parsedMethod) ? parsedMethod : 'GET') as HttpMethod;
+
+    // ── Step 5: Fire setters ──────────────────────────────────────
     setUrl(parsedUrl);
-    setMethod(parsedMethod);
-    setHeadersInput(parsedHeaders);
+    setMethod(safeMethod);
+    setHeadersInput(headerLines.join('\n'));
     setBody(parsedBody);
     if (parsedBody) setRequestTab('body');
     setError(null);
@@ -538,6 +632,7 @@ const parsedBody = bodySingle?.[1] ?? bodyDouble?.[1] ?? '';
     setError('Failed to read clipboard. Please grant clipboard permissions.');
   }
 };
+
 
 
   const onCopyPoc = async () => {
@@ -554,7 +649,7 @@ const parsedBody = bodySingle?.[1] ?? bodyDouble?.[1] ?? '';
       showPocModal, pocTab, pocCopied,
       compareMode, showSmartLogin,
       isBodyDisabled, responseCookies, displayBody, codeLines, diffLines,
-      activePocSnippet,isResponseJson,  
+      activePocSnippet,isResponseJson, envVars,
     },
     refs: {
       headersRef, bodyRef
@@ -564,7 +659,7 @@ const parsedBody = bodySingle?.[1] ?? bodyDouble?.[1] ?? '';
       setShowMethodMenu, setIsLoading, setError,
       setResponse, setPreviousResponse, setResponseTab, setRequestTab,
       setShowPocModal, setPocTab, setPocCopied,
-      setCompareMode, setShowSmartLogin
+      setCompareMode, setShowSmartLogin, setEnvVars,
     },
     handlers: {
       updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,

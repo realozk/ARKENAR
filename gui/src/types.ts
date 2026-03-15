@@ -91,3 +91,9 @@ export const DEFAULT_CONFIG: ScanConfig = {
   webhookUrl: "",
   htmlReport: false,
 };
+export interface EnvVar {
+  id: string;
+  key: string;    
+  value: string;  
+}
+
