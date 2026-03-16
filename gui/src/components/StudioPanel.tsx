@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { X, Copy, KeyRound, RefreshCw, ChevronDown, CheckCircle } from "lucide-react";
+import { X, Copy, KeyRound, RefreshCw, ChevronDown, CheckCircle, Zap } from "lucide-react";
 import { StudioRequest as StudioRequestPane } from "./studio/StudioRequest";
 import { StudioResponse as StudioResponsePane } from "./studio/StudioResponse";
 import { useStudio, POC_TABS } from "./studio/useStudio";
@@ -248,6 +248,130 @@ export default function StudioPanel(props: {
             setters.setRequestTab('headers');
           }}
         />
+      )}
+
+     {/* ⚡ Quick Fuzz Modal */}
+      {state.fuzzMode && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in"
+          onClick={handlers.onCancelFuzz}
+        >
+          <div 
+            className="w-full max-w-3xl rounded-2xl border border-border-subtle bg-bg-panel shadow-2xl p-6 flex flex-col max-h-[90vh]" 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
+                <Zap size={18} className="text-accent-text" /> 
+                Quick Fuzz
+              </h2>
+              <button onClick={handlers.onCancelFuzz} className="text-text-ghost hover:text-text-primary transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <p className="text-sm text-text-muted mb-4 bg-bg-card p-2 rounded-lg border border-border-subtle">
+              Targeting <span className="font-bold text-text-secondary">{state.fuzzAnchor?.field}</span>:{" "}
+              <code className="bg-bg-input px-2 py-0.5 rounded text-accent-text font-mono">
+                {state.fuzzAnchor?.anchor}
+              </code>
+            </p>
+            
+            <div className="flex gap-4 flex-1 min-h-[300px]">
+              {/* Payloads Input Box */}
+              <div className="w-1/3 flex flex-col">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  Payloads (one per line)
+                </label>
+                <textarea
+                  value={state.fuzzPayloads}
+                  onChange={(e) => setters.setFuzzPayloads(e.target.value)}
+                  disabled={state.isFuzzing}
+                  placeholder="admin&#10;test&#10;' OR 1=1--"
+                  className="flex-1 resize-none rounded-lg border border-border-subtle bg-bg-input p-3 font-mono text-[13px] text-text-primary placeholder:text-text-ghost focus:outline-none focus:border-accent/40 custom-scrollbar disabled:opacity-50"
+                  spellCheck={false}
+                />
+              </div>
+              
+              {/* Results Table */}
+              <div className="w-2/3 flex flex-col">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Live Results</label>
+                  {state.isFuzzing && (
+                    <span className="text-[10px] font-bold text-accent-text animate-pulse">
+                      {state.fuzzProgress}%
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 rounded-lg border border-border-subtle bg-bg-input overflow-hidden flex flex-col">
+                  {/* Table Header */}
+                  <div className="grid grid-cols-12 gap-2 bg-bg-card border-b border-border-subtle p-2 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                    <div className="col-span-6">Payload</div>
+                    <div className="col-span-2 text-center">Status</div>
+                    <div className="col-span-2 text-right">Length</div>
+                    <div className="col-span-2 text-right">Time</div>
+                  </div>
+                  
+                  {/* Table Body */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
+                    {state.fuzzResults.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-xs text-text-ghost italic">
+                        {state.isFuzzing ? "Waiting for responses..." : "Enter payloads and click Run."}
+                      </div>
+                    ) : (
+                      state.fuzzResults.map((res) => (
+                        <div key={res.id} className="grid grid-cols-12 gap-2 px-2 py-1.5 border-b border-border-subtle/30 text-[12px] font-mono hover:bg-bg-card transition-colors items-center">
+                          <div className="col-span-6 truncate text-text-primary" title={res.payload}>
+                            {res.payload}
+                          </div>
+                          <div className={`col-span-2 text-center font-bold ${
+                            res.status >= 200 && res.status < 300 ? "text-status-success" : 
+                            res.status >= 300 && res.status < 400 ? "text-status-warning" : "text-status-critical"
+                          }`}>
+                            {res.status || "ERR"}
+                          </div>
+                          <div className="col-span-2 text-right text-text-secondary">
+                            {res.responseLength}
+                          </div>
+                          <div className="col-span-2 text-right text-text-ghost">
+                            {res.responseTime}ms
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Controls */}
+            <div className="flex justify-between items-center mt-5 border-t border-border-subtle pt-4 shrink-0">
+               <div className="text-xs font-medium text-text-muted">
+                 {state.isFuzzing 
+                   ? "Fuzzing in progress..." 
+                   : `${state.fuzzResults.length} requests completed`
+                 }
+               </div>
+               <div className="flex gap-2">
+                  <button
+                    onClick={handlers.onCancelFuzz}
+                    className="rounded-lg px-4 py-2 text-xs font-semibold bg-bg-card border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all"
+                  >
+                    {state.isFuzzing ? "Stop" : "Close"}
+                  </button>
+                  <button
+                    onClick={handlers.onStartFuzz}
+                    disabled={state.isFuzzing || !state.fuzzPayloads.trim()}
+                    className="rounded-lg px-5 py-2 text-xs font-bold bg-accent text-bg-root btn-glow disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                  >
+                    {state.isFuzzing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                    {state.isFuzzing ? "Running..." : "Run Fuzzer"}
+                  </button>
+               </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -96,4 +96,21 @@ export interface EnvVar {
   key: string;    
   value: string;  
 }
+export interface FuzzResult {
+  id: string;
+  payload: string;
+  status: number;
+  responseTime: number;
+  responseLength: number;
+  responseBody: string;
+  error: string | null;
+}
+
+export interface FuzzConfig {
+  anchor: string;          
+  field: "url" | "body";  
+  payloads: string[];      
+  concurrency: number;      
+}
+
 

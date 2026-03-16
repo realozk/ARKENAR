@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { EnvVar } from "../../types";
+import type { FuzzResult, FuzzConfig } from '../../types';
 
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
@@ -21,7 +22,7 @@ export type StudioResponse = {
 };
 
 export type RequestTab = "headers" | "body" | "params";
-export type ResponseTab = "body" | "headers" | "cookies";
+export type ResponseTab = "body" | "headers" | "cookies" | "diff";
 export type PocTab = "curl" | "python" | "raw";
 export type QueryParam = { id: string; key: string; value: string; enabled: boolean };
 
@@ -208,6 +209,7 @@ export function useStudio(props: {
   const [headersInput, setHeadersInput] = useState("");
   const [body, setBody] = useState("");
   const [queryParams, setQueryParams] = useState<QueryParam[]>([]);
+  const abortFuzzRef = useRef(false);
 
   const [showMethodMenu, setShowMethodMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -223,6 +225,13 @@ export function useStudio(props: {
   const [pocCopied, setPocCopied] = useState(false);
 
   const [compareMode, setCompareMode] = useState(false);
+  const [fuzzMode, setFuzzMode] = useState(false);
+  const [fuzzAnchor, setFuzzAnchor] = useState<FuzzConfig | null>(null);
+  const [fuzzPayloads, setFuzzPayloads] = useState("");
+  const [fuzzResults, setFuzzResults] = useState<FuzzResult[]>([]);
+  const [isFuzzing, setIsFuzzing] = useState(false);
+  const [fuzzProgress, setFuzzProgress] = useState(0);
+
   const [showSmartLogin, setShowSmartLogin] = useState(false);
   
   const [envVars, setEnvVars] = useState<EnvVar[]>(() => {
@@ -548,8 +557,80 @@ console.log('LIVE VARS:', localStorage.getItem('arkenar-env-vars'));
   const diff = computeDiff(historyBody, response.body);
   setDiffLines(diff);
   setCompareMode(true);
-  setResponseTab('diff' as any);
+  setResponseTab('body');
 };
+
+const onStartFuzz = async () => {
+    if (!fuzzAnchor || !fuzzPayloads.trim) return;
+    const payloads = fuzzPayloads
+      .split("\n")
+      .map(p => p.trim())
+      .filter(Boolean);
+    if (payloads.length === 0) return;
+
+    setIsFuzzing(true);
+    setFuzzResults([]);
+    setFuzzProgress(0);
+    abortFuzzRef.current = false; // <-- Abort lock resets here
+
+    for (let i = 0; i < payloads.length; i++) {
+      if (abortFuzzRef.current) break; // <-- Loop checks lock here
+      
+      const payload = payloads[i];
+      const fuzzedUrl =
+        fuzzAnchor.field === "url"
+          ? finalRequest.url.replace(fuzzAnchor.anchor, payload)
+          : finalRequest.url;
+      const fuzzedBody =
+        fuzzAnchor.field === "body"
+          ? finalRequest.body.replace(fuzzAnchor.anchor, payload)
+          : finalRequest.body;
+
+      const start = Date.now();
+      try {
+        const res = await invoke<{ status: number; body: string }>("studio_send", {
+          req: {
+            url: fuzzedUrl,
+            method: finalRequest.method,
+            headers: finalRequest.headers,
+            body: fuzzedBody,
+          },
+        });
+        setFuzzResults(prev => [...prev, {
+          id: crypto.randomUUID(),
+          payload,
+          status: res.status,
+          responseTime: Date.now() - start,
+          responseLength: res.body.length,
+          responseBody: res.body,
+          error: null,
+        }]);
+      } catch (err) {
+        setFuzzResults(prev => [...prev, {
+          id: crypto.randomUUID(),
+          payload,
+          status: 0,
+          responseTime: Date.now() - start,
+          responseLength: 0,
+          responseBody: "",
+          error: err instanceof Error ? err.message : String(err),
+        }]);
+      }
+      setFuzzProgress(Math.round(((i + 1) / payloads.length) * 100));
+    }
+    setIsFuzzing(false);
+  };
+
+  const onCancelFuzz = () => {
+    abortFuzzRef.current = true; // <-- Triggers the lock
+    setIsFuzzing(false);
+    setFuzzMode(false);
+    setFuzzAnchor(null);
+    setFuzzPayloads("");
+    setFuzzResults([]);
+    setFuzzProgress(0);
+  };
+
 
 
 const onImportCurl = async () => {
@@ -679,7 +760,9 @@ const onImportCurl = async () => {
       showPocModal, pocTab, pocCopied,
       compareMode, showSmartLogin,
       isBodyDisabled, responseCookies, displayBody, codeLines, diffLines,
-      activePocSnippet,isResponseJson, envVars,
+      activePocSnippet,isResponseJson, envVars,fuzzMode, fuzzAnchor,
+       fuzzPayloads, fuzzResults, isFuzzing, fuzzProgress,
+
     },
     refs: {
       headersRef, bodyRef
@@ -689,10 +772,14 @@ const onImportCurl = async () => {
       setShowMethodMenu, setIsLoading, setError,
       setResponse, setPreviousResponse, setResponseTab, setRequestTab,
       setShowPocModal, setPocTab, setPocCopied,
-      setCompareMode, setShowSmartLogin, setEnvVars,setDiffLines, 
+      setCompareMode, setShowSmartLogin, setEnvVars,setDiffLines, setFuzzMode, setFuzzAnchor, setFuzzPayloads,
+
     },
     handlers: {
-      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,  onCompareWithHistory, 
+      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,  onCompareWithHistory,onStartFuzz, onCancelFuzz,
+ 
     }
   };
 }
+
+export type { EnvVar };

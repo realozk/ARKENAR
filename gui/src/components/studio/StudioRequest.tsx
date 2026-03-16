@@ -1,7 +1,9 @@
-import React, { useState } from "react";
-import { ChevronDown, FileCode, LogIn, Share2, Binary, Link2, Braces, RefreshCw, Send, X, ClipboardPaste, Vault, Trash2, PlusCircle } from "lucide-react";
-import { METHODS, REQUEST_TABS, HttpMethod, QueryParam, RequestTab } from "./useStudio";
-import { EnvVar } from "../../types";
+import React, { useState, useRef, useEffect } from 'react'
+import { ChevronDown, FileCode, LogIn, Share2, Binary, Link2, Braces, RefreshCw, Send, X, ClipboardPaste, Vault, Trash2, PlusCircle, Zap } from "lucide-react";
+import { METHODS, REQUEST_TABS, HttpMethod, QueryParam, RequestTab, EnvVar } from "./useStudio";
+import type { FuzzConfig } from "../../types";
+import { createPortal } from "react-dom";
+
 
 function ActionButton({ icon: Icon, title, label, onClick }: { icon: React.ElementType; title: string; label: string; onClick: () => void; }) {
   return (
@@ -29,6 +31,8 @@ export interface StudioRequestProps {
     requestTab: RequestTab;
     isBodyDisabled: boolean;
     envVars: EnvVar[];
+    fuzzMode: boolean;             
+    fuzzAnchor: FuzzConfig | null;
   };
   setters: {
     setMethod: (m: HttpMethod) => void;
@@ -41,12 +45,15 @@ export interface StudioRequestProps {
     setShowSmartLogin: (s: boolean) => void;
     setCompareMode: (s: boolean) => void;
     setEnvVars: (vars: EnvVar[]) => void;
+    setFuzzMode: (s: boolean) => void;               
+    setFuzzAnchor: (c: FuzzConfig | null) => void;
   };
   handlers: {
     onSend: () => void;
     updateQueryParams: (params: QueryParam[]) => void;
     applyTextMutation: (mutator: (val: string) => string) => void;
     onImportCurl: () => void;
+    onActivateFuzz?: (config: FuzzConfig) => void;
   };
   refs: {
     headersRef: React.RefObject<HTMLTextAreaElement>;
@@ -81,14 +88,51 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
     setters.setEnvVars(updated);
     localStorage.setItem('arkenar-env-vars', JSON.stringify(updated));
   };
+  const [fuzzPill, setFuzzPill] = useState<{
+  x: number; y: number;
+} | null>(null);
+const pendingFuzzRef = useRef<FuzzConfig | null>(null);
+useEffect(() => {
+  if (!fuzzPill) return;
+  const dismiss = () => setFuzzPill(null);
+  document.addEventListener('mousedown', dismiss);
+  return () => document.removeEventListener('mousedown', dismiss);
+}, [fuzzPill]);
+
+const handleSelectionCheck = (
+  e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
+  field: "url" | "body"
+) => {
+  const el = e.currentTarget;
+  const start = el.selectionStart ?? 0;
+  const end = el.selectionEnd ?? 0;
+  const selected = el.value.substring(start, end).trim();
+
+  if (start === end || !selected || selected.length === 0) {
+    setFuzzPill(null);
+    return;
+  }
+
+  pendingFuzzRef.current = { anchor: selected, field, payloads: [], concurrency: 5 };
+  setFuzzPill({ 
+    x: e.clientX, 
+    y: e.clientY - 10 
+  });
+};
+
+
+
+  function onActivateFuzz(current: FuzzConfig) {
+    throw new Error("Function not implemented.");
+  }
 
   return (
     <section className="flex-1 flex flex-col min-w-0 h-full overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
 
       {/* ── Top Action Bar ── */}
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-y-3 gap-x-2 w-full">
         {/* Method Dropdown */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             type="button"
             onClick={() => setters.setShowMethodMenu(!state.showMethodMenu)}
@@ -113,14 +157,15 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           )}
         </div>
 
-        {/* URL Input */}
+        {/* URL Input (Shrinks but stops at 200px) */}
         <input
           type="text"
           value={state.url}
           onChange={(e) => setters.setUrl(e.target.value)}
           placeholder="https://target.tld/path"
-          className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/20"
+          className="min-w-[200px] flex-1 rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/20"
           onKeyDown={(e) => { if (e.key === "Enter") handlers.onSend(); }}
+          onMouseUp={(e) => handleSelectionCheck(e, "url")}
         />
 
         {/* Execute */}
@@ -128,7 +173,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           type="button"
           onClick={handlers.onSend}
           disabled={state.isLoading}
-          className="inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-bg-root btn-glow disabled:opacity-60 transition-all duration-200"
+          className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-bg-root btn-glow disabled:opacity-60 transition-all duration-200"
         >
           {state.isLoading ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
           Execute
@@ -138,7 +183,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
         <button
           type="button"
           onClick={() => setShowVault(v => !v)}
-          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
+          className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
             showVault
               ? 'border-accent/40 bg-accent/10 text-accent-text'
               : 'border-border-subtle bg-bg-card text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10'
@@ -153,7 +198,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           type="button"
           onClick={handlers.onImportCurl}
           title="Paste a cURL command from clipboard and auto-fill all fields"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10 transition-all duration-200"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:text-accent-text hover:border-accent/40 hover:bg-accent/10 transition-all duration-200"
         >
           <ClipboardPaste size={13} />
           Import cURL
@@ -168,7 +213,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
             handlers.updateQueryParams([]);
             setters.setCompareMode(false);
           }}
-          className="rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+          className="shrink-0 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
         >
           Reset
         </button>
@@ -177,7 +222,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
         <button
           type="button"
           onClick={() => setters.setShowPocModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
         >
           <FileCode size={14} />
           Export PoC
@@ -194,7 +239,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
             <p className="text-xs text-text-ghost italic">No variables yet. Add one below.</p>
           )}
           {state.envVars.map((v, i) => (
-            <div key={v.id} className="flex items-center gap-2">
+            <div key={v.id} className="flex items-center gap-2 shrink-0">
               <input
                 value={v.key}
                 onChange={e => {
@@ -316,6 +361,7 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
               className={`h-full w-full resize-none rounded-lg border border-border-subtle p-3 font-mono text-[13px] placeholder:text-text-muted focus:outline-none custom-scrollbar disabled:opacity-30 ${state.isBodyDisabled ? "bg-bg-card text-text-muted" : "bg-bg-input text-text-primary"}`}
               spellCheck={false}
               placeholder='{"key": "value"}'
+              onMouseUp={(e) => handleSelectionCheck(e, "body")}
             />
           </div>
         )}
@@ -395,6 +441,43 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
           </div>
         )}
       </div>
+      {/*  Quick Fuzz floating pill */}
+{fuzzPill && createPortal(
+  <div
+  className="fixed z-[50] pointer-events-auto animate-fade-slide-in -translate-y-[calc(100%+12px)] -translate-x-1/2 "
+  style={{ 
+    left: fuzzPill.x, 
+    top: fuzzPill.y, 
+    // ↓ Change this line to push it 15px higher
+    transform: "translate(-50%, calc(-100% - 15px))" 
+  }}
+  onClick={(e) => e.stopPropagation()}
+>
+    <button
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (pendingFuzzRef.current) {
+          
+      
+          setters.setFuzzAnchor?.(pendingFuzzRef.current);
+          setters.setFuzzMode?.(true);
+        }
+        setFuzzPill(null);
+        
+      }}
+    
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-bg-root text-xs font-black shadow-lg border border-accent hover:brightness-110 transition-all cursor-pointer"
+    >
+      <Zap size={11} />
+      Quick Fuzz
+    </button>
+  </div>,
+  document.body 
+)}
+
+
     </section>
   );
 }

@@ -10,6 +10,11 @@ use reqwest::redirect::Policy;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::sync::OnceLock;
+
+static HIDDEN_INPUT_SEL: OnceLock<Selector> = OnceLock::new();
+static FORM_SEL: OnceLock<Selector> = OnceLock::new();
+static PASS_SEL: OnceLock<Selector> = OnceLock::new();
 
 // ─── Input / Output types ────────────────────────────────────────────────────
 
@@ -74,7 +79,7 @@ const CSRF_HINTS: &[&str] = &[
 /// returned (ignoring CSRF heuristics).
 fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, String)> {
     // Parse once; unwrap is safe — this is a compile-time-checked literal.
-    let selector = Selector::parse("input[type='hidden']").unwrap();
+   let selector = HIDDEN_INPUT_SEL.get_or_init(|| Selector::parse("input[type='hidden']").unwrap());
     let mut results = Vec::new();
 
     for el in doc.select(&selector) {
@@ -104,8 +109,8 @@ fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, St
 /// Tries to find the `action` attribute of the login form (the `<form>` that
 /// contains a `<input type="password">`).  Falls back to `login_url`.
 fn resolve_form_action(doc: &Html, base_url: &url::Url) -> String {
-    let form_sel = Selector::parse("form").unwrap();
-    let pass_sel = Selector::parse("input[type='password']").unwrap();
+    let form_sel = FORM_SEL.get_or_init(|| Selector::parse("form").unwrap());
+    let pass_sel = PASS_SEL.get_or_init(|| Selector::parse("input[type='password']").unwrap());
 
     for form in doc.select(&form_sel) {
         if form.select(&pass_sel).next().is_none() {

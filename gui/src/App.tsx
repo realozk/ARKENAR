@@ -21,9 +21,7 @@ import { playSound } from "./utils/audio";
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
 
-// Module-level store for active Tauri unlisten functions.
-// Lives outside the component so it survives Vite HMR reloads.
-let pendingCleanup: (() => void)[] = [];
+
 
 /** Validates scan history entries loaded from localStorage. */
 function validateHistory(data: unknown): ScanHistoryEntry[] {
@@ -135,12 +133,12 @@ const removeToast = useCallback((id: string) => {
 
   // Handle Tauri Listeners
   const unlistenRef = useRef<(() => void)[]>([]);
+  
   useEffect(() => {
-    // Tear down any previous listeners first
+    
+    invoke('show_main_window');
     unlistenRef.current.forEach(fn => fn());
     unlistenRef.current = [];
-    pendingCleanup.forEach((fn) => fn());
-    pendingCleanup = [];
 
     const setup = Promise.all([
       listen<ScanLogEvent>("scan-log", (event) => {
@@ -571,61 +569,75 @@ const removeToast = useCallback((id: string) => {
      
 
       <div className="relative z-0 flex flex-1 flex-col min-h-0">
-      <header data-tauri-drag-region className="relative flex h-16 shrink-0 items-center justify-between border-b border-border-subtle px-8 bg-bg-panel/50 backdrop-blur-md z-10">
-        <div className="flex items-center gap-4">
+      <header data-tauri-drag-region className="relative flex h-[56px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
+        
+        {/* Left: App Controls */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setSidebarCollapsed(p => !p)}
             title={sidebarCollapsed ? "Show sidebar (Ctrl+B)" : "Hide sidebar (Ctrl+B)"}
-            className="flex items-center rounded-xl p-2.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-95 border border-transparent hover:border-border-subtle"
+            className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
           >
-            {sidebarCollapsed ? <PanelLeft size={22} strokeWidth={2} /> : <PanelLeftClose size={22} strokeWidth={2} />}
+            {sidebarCollapsed ? <PanelLeft size={18} strokeWidth={2.5} /> : <PanelLeftClose size={18} strokeWidth={2.5} />}
           </button>
           <button
             onClick={() => setShowInfo(true)}
             title="Info"
-            className="flex items-center gap-2 rounded-xl py-2.5 px-3.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-95 border border-transparent hover:border-border-subtle"
+            className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
           >
-            <Info size={22} strokeWidth={2} />
+            <Info size={18} strokeWidth={2.5} />
           </button>
           <button
             onClick={() => setShowSettings(true)}
             title={appSettings.language === "ar" ? "الإعدادات (Ctrl+,)" : "Settings (Ctrl+,)"}
-            className="flex items-center gap-2 rounded-xl py-2.5 px-4 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:scale-110 active:scale-95 border border-transparent hover:border-border-subtle"
+            className="flex items-center gap-2 h-8 px-3 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
           >
-            <Settings size={22} strokeWidth={2} />
-            <span className="text-base font-semibold">{t("settings", appSettings.language)}</span>
-          </button>
+            <Settings size={18} strokeWidth={2.5} />
+           <span className="text-[11px] font-bold uppercase tracking-wider">Settings</span>          </button>
         </div>
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-          <Logo size="sm" className="opacity-100 scale-[1.35]" />
+
+        {/* Center: Sleek Technical Branding */}
+        <div data-tauri-drag-region className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none shrink-0">
+          <h1 className="text-[11px] font-black uppercase tracking-[0.3em] text-text-muted drop-shadow-sm">
+            Arkenar
+          </h1>
         </div>
-        <div className="flex items-center gap-5">
-          {scanQueue.length > 0 && (
-            <span className="rounded-full bg-accent-dim px-3 py-1 text-xs font-bold text-accent-text font-mono border border-accent/20">
-              {t("queue", appSettings.language)}: {scanQueue.length}
-            </span>
-          )}
-          <div className="flex items-center gap-2">
-            <StatusDot status={scanStatus} className="h-3 w-3" />
-            <span
-              key={scanStatus}
-              className="text-sm font-semibold text-text-secondary capitalize tracking-tight animate-fade-slide-in"
-            >
-              {t(scanStatus === "error" ? "scanError" : scanStatus, appSettings.language)}
-            </span>
+
+        {/* Right: Scan Logic & Window Controls */}
+        <div className="flex items-center gap-4 shrink-0">
+          
+          {/* Status & Queue */}
+          <div className="flex items-center gap-4 border-r border-border-subtle/40 pr-4">
+            {scanQueue.length > 0 && (
+              <span className="rounded-md bg-bg-panel border border-border-subtle px-2 py-1 text-[10px] font-black uppercase tracking-wider text-text-secondary">
+                {t("queue", appSettings.language)}: {scanQueue.length}
+              </span>
+            )}
+            <div className="flex items-center gap-2">
+              <StatusDot status={scanStatus} className="h-2 w-2" />
+              <span
+                key={scanStatus}
+                className="text-[11px] font-bold uppercase tracking-widest text-text-secondary animate-fade-slide-in"
+              >
+                {t(scanStatus === "error" ? "scanError" : scanStatus, appSettings.language)}
+              </span>
+            </div>
           </div>
+
+          {/* Action Buttons */}
           {scanStatus === "running" || scanStatus === "stopping" ? (
             <button
               onClick={handleStopScan}
               disabled={scanStatus === "stopping"}
-              className={`relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${scanStatus === "stopping"
-                ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
-                : `bg-status-critical text-white hover:brightness-110 btn-glow shadow-[0_0_20px_rgba(244,63,94,0.4)] ${isHoldingStop ? "animate-pulse scale-110" : ""}`
-                }`}
+              className={`relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
+                scanStatus === "stopping"
+                  ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
+                  : `bg-status-critical text-white hover:brightness-110 shadow-[0_0_15px_rgba(244,63,94,0.3)] ${isHoldingStop ? "animate-pulse scale-105" : ""}`
+              }`}
             >
               {scanStatus === "stopping" ? (
-                <div className="flex items-center gap-2">
-                  <svg width="12" height="14" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
+                <div className="flex items-center gap-2 ">
+                  <svg width="10" height="12" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
                     <rect x="0" y="0" width="4" height="14" rx="1" />
                     <rect x="8" y="0" width="4" height="14" rx="1" />
                   </svg>
@@ -635,11 +647,11 @@ const removeToast = useCallback((id: string) => {
                 <>
                   {isHoldingStop && (
                     <div
-                      className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
+                      className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
                       style={{ width: `${((1 - holdTimeRemaining) / 1) * 100}%` }}
                     />
                   )}
-                  <div className="h-2.5 w-2.5 rounded-full bg-white animate-pulse" />
+                  <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
                   {t("stopScan", appSettings.language)}
                   {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
                 </>
@@ -649,51 +661,58 @@ const removeToast = useCallback((id: string) => {
             <button
               onClick={handleStartScan}
               disabled={!config.target && !config.listFile}
-              className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-all duration-300 active:scale-95 ${config.target || config.listFile
-                ? `btn-glow ${isHoldingSpace ? "scale-110" : "hover:brightness-110"}`
-                : "bg-bg-card text-text-ghost cursor-not-allowed border border-border-subtle/50"
-                }`}
+              className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
+                config.target || config.listFile
+                  ? `text-white ${isHoldingSpace ? "scale-105" : "hover:brightness-110"}`
+                  : "bg-bg-panel text-text-ghost cursor-not-allowed border border-border-subtle/50"
+              }`}
               style={config.target || config.listFile ? {
                 backgroundColor: "#10b981",
-                color: appSettings.theme === "light" ? "#ffffff" : "#052e1c",
                 boxShadow: isHoldingSpace
-                  ? "0 0 20px rgba(16,185,129,0.5), 0 0 40px rgba(16,185,129,0.2)"
-                  : "0 0 14px rgba(16,185,129,0.25)",
+                  ? "0 0 20px rgba(16,185,129,0.4)"
+                  : "0 0 12px rgba(16,185,129,0.2)",
               } : undefined}
             >
               {isHoldingSpace && (
                 <div
-                  className="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 transition-all duration-100 ease-linear"
+                  className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
                   style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
                 />
               )}
-              <svg width="12" height="12" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
               {isHoldingSpace ? `${t("ready", appSettings.language)} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan", appSettings.language)}
             </button>
           )}
-          {/* Window Controls */}
-          <div className="flex items-center ml-3 border-l border-border-subtle pl-3 gap-0.5">
-            <button
-              onClick={() => getCurrentWindow().minimize()}
-              title="Minimize"
-              className="flex items-center justify-center w-[46px] h-[32px] text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-200 active:scale-90"
-            >
-              <Minus size={20} strokeWidth={2.5} />
-            </button>
-            <button
-              onClick={() => getCurrentWindow().toggleMaximize()}
-              title="Maximize / Restore"
-              className="flex items-center justify-center w-[46px] h-[32px] text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-200 active:scale-90"
-            >
-              <Square size={16} strokeWidth={2.5} />
-            </button>
-            <button
-              onClick={() => getCurrentWindow().close()}
-              title="Close"
-              className="flex items-center justify-center w-[46px] h-[32px] text-text-muted hover:bg-red-600 hover:text-white transition-all duration-200 active:scale-90"
-            >
-              <X size={20} strokeWidth={2.5} />
-            </button>
+
+        {/* Window Controls (Automatic Mac vs Windows) */}
+          <div className="flex items-center h-full ml-2">
+            {navigator.userAgent.toLowerCase().includes('mac') ? (
+              /* Mac OS "Traffic Light" Style */
+              <div className="flex items-center gap-2 px-3 group">
+                <button onClick={() => getCurrentWindow().close()} className="w-[13px] h-[13px] rounded-full bg-[#ff5f56] border border-black/10 flex items-center justify-center hover:brightness-110">
+                  <X size={8} className="opacity-0 group-hover:opacity-100 text-[#990000]" strokeWidth={4} />
+                </button>
+                <button onClick={() => getCurrentWindow().minimize()} className="w-[13px] h-[13px] rounded-full bg-[#ffbd2e] border border-black/10 flex items-center justify-center hover:brightness-110">
+                  <Minus size={8} className="opacity-0 group-hover:opacity-100 text-[#995700]" strokeWidth={4} />
+                </button>
+                <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-[13px] h-[13px] rounded-full bg-[#27c93f] border border-black/10 flex items-center justify-center hover:brightness-110">
+                  <Square size={6} className="opacity-0 group-hover:opacity-100 text-[#006500]" strokeWidth={4} />
+                </button>
+              </div>
+            ) : (
+              /* Windows Normal Native Size */
+              <div className="flex items-center">
+                <button onClick={() => getCurrentWindow().minimize()} title="Minimize" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
+                  <Minus size={18} strokeWidth={2} />
+                </button>
+                <button onClick={() => getCurrentWindow().toggleMaximize()} title="Maximize / Restore" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
+                  <Square size={14} strokeWidth={2} />
+                </button>
+                <button onClick={() => getCurrentWindow().close()} title="Close" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:bg-[#e81123] hover:text-white transition-colors">
+                  <X size={18} strokeWidth={2} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>

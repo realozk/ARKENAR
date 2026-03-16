@@ -24,6 +24,7 @@ export interface StudioResponseProps {
   handlers: {
     onBeautifyResponse: () => void;
     onMirrorToRequest: () => void;
+     onCompareWithHistory: (historyBody: string) => void;
   };
 }
 
@@ -88,20 +89,18 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
       <div className="flex-1 min-h-0 rounded-lg border border-border-subtle bg-bg-card p-2 overflow-hidden">
         {state.responseTab === "body" && (
           <div className="h-full overflow-auto rounded-lg border border-border-subtle bg-bg-input">
-            {state.compareMode && state.previousResponse && state.response ? (
-              <div className="h-full overflow-auto p-2 font-mono text-[13px] leading-6">
-                {state.diffLines.length === 0 ? (
-                  <div className="text-text-muted">No diff available.</div>
-                ) : (
-                  state.diffLines.map((line, idx) => (
-                    <div
-                      key={`${line.type}-${idx}`}
-                      className={`px-2 py-0.5 ${
-                        line.type === "added"
-                          ? "bg-status-success/10 text-status-success"
-                          : line.type === "removed"
-                          ? "bg-status-critical/10 text-status-critical"
-                          : "text-text-primary"
+            {state.compareMode ? (
+            <div className="h-full overflow-auto p-2 font-mono text-13px leading-6">
+              {state.diffLines.length === 0 ? (
+                <div className="text-text-muted p-4 text-center">
+                  Send a second request to see the diff against this response.
+                </div>
+              ) : (
+               state.diffLines.map((line, idx) => (
+                  <div key={line.type + '-' + idx} className={`px-2 py-0.5 ${
+                    line.type === 'added' ? 'bg-status-success10 text-status-success' :
+                    line.type === 'removed' ? 'bg-status-critical10 text-status-critical' :
+                    'text-text-primary'
                       }`}
                     >
                       {line.type === "added" ? "+ " : line.type === "removed" ? "- " : "  "}
@@ -181,7 +180,13 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
         </button>
         <button
           type="button"
-          onClick={() => setters.setCompareMode((v: boolean) => !v)}
+          onClick={() => {
+  const next = !state.compareMode;
+  setters.setCompareMode(next);
+  if (next && state.previousResponse && state.response) {
+    handlers.onCompareWithHistory(state.previousResponse.body);
+  }
+}}
           className={`inline-flex items-center gap-1 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
             state.compareMode ? "bg-accent/10 text-accent-text ring-1 ring-accent/20" : "bg-bg-card text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           }`}

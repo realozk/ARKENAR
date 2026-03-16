@@ -37,10 +37,10 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
   --color-border-focus: rgba(0, 213, 190, 0.4);
 
   /* Text — lifted for readability */
-  --color-text-primary: #e1e1e6;
-  --color-text-secondary: #94949e;
-  --color-text-muted: #64647a;
-  --color-text-ghost: #3e3e52;
+  --color-text-primary: #f8f8f8;     /* Made slightly brighter */
+  --color-text-secondary: #b4b4be;   /* Was #94949e - now much brighter */
+  --color-text-muted: #868699;       /* Was #64647a - now clearly visible */
+  --color-text-ghost: #5a5a6e;
 
   /* Accent — orange */
   --color-accent: #EA580C;
@@ -154,8 +154,8 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 html {
   background: var(--color-bg-root);
   color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: calc(14px * var(--ui-scale, 1));
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: calc(16px * var(--ui-scale, 1));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -304,18 +304,18 @@ input[type="number"] {
 }
 
 .terminal-line {
-  line-height: 1.75;
+  height: 28px !important;
+  line-height: 28px;
   letter-spacing: -0.01em;
   border-radius: 4px;
   padding: 0 4px;
   will-change: transform, opacity;
   animation: slide-up-fade 0.4s ease-out both;
   animation-delay: calc(0.05s * var(--i, 0));
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;             
+  overflow: hidden;              
+  text-overflow: ellipsis;      
   display: block;
-  height: auto !important;
-  margin-bottom: 4px;
 }
 
 .terminal-line:nth-child(1) {

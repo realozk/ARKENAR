@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use tauri::Manager;
 
 use reqwest::redirect::Policy;
 use serde::Serialize;
@@ -555,14 +556,19 @@ async fn studio_send(req: StudioRequest) -> Result<StudioResponse, String> {
     };
 
     // ── Lazy-init Studio client (cookie store ON, redirects ON
-    let client = STUDIO_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .cookie_store(true)
-            .redirect(Policy::limited(5))
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("Failed to build Studio HTTP client")
-    });
+    let client = match STUDIO_CLIENT.get() {
+        Some(c) => c.clone(),
+        None => {
+            let c = reqwest::Client::builder()
+                .cookie_store(true)
+                .redirect(Policy::limited(5))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .map_err(|e| format!("Failed to build Studio HTTP client: {}", e))?;
+            let _ = STUDIO_CLIENT.set(c.clone());
+            c
+        }
+    };
 
     let mut builder = client.request(method, &req.url);
 
@@ -708,6 +714,10 @@ async fn export_report(
         .map_err(|e| format!("Failed to write report: {}", e))?;
     Ok(output_path)
 }
+#[tauri::command]
+fn show_main_window(window: tauri::WebviewWindow) {
+    let _ = window.show();
+}
 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -717,10 +727,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report ,   studio_send, studio::studio_auto_login,])
+        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report, studio_send, studio::studio_auto_login, show_main_window])
         .setup(|app| {
-            let handle = app.handle().clone();
-            let setup_sink = TauriSink::new_ref(handle.clone(), None);
+            
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.maximize();
+                
+            }
+
+            let handle: AppHandle = app.handle().clone();
+            let setup_sink: Arc<dyn ScanEventSink> = TauriSink::new_ref(handle.clone(), None);
             tauri::async_runtime::spawn(async move {
                 setup_sink.on_log("info", "Checking dependencies (Katana, Nuclei)...");
                 installer::check_and_install_tools().await;

@@ -60,43 +60,57 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-/* ─── StatCard — centered layout ─────────────────────────────────── */
+// Replace StatCard component
 function StatCard({ label, value, icon: Icon, accent, animate, children }: {
   label: string;
   value: string | number;
   icon: ElementType;
-  accent?: "default" | "critical" | "warning" | "success" | "rps-low" | "rps-med" | "rps-high" | "studio-info";
+  accent?: 'default' | 'critical' | 'warning' | 'success' | 'rps-low' | 'rps-med' | 'rps-high' | 'studio-info';
   animate?: boolean;
   children?: React.ReactNode;
 }) {
-  const numVal = typeof value === "number" ? value : 0;
+  const numVal = typeof value === 'number' ? value : 0;
   const animatedNum = useAnimatedNumber(numVal);
-  const displayValue = (animate && typeof value === "number") ? animatedNum : value;
+  const displayValue = animate && typeof value === 'number' ? animatedNum : value;
 
-  const valueClass: Record<string, string> = {
-    default: "text-text-primary",
-    critical: "text-status-critical",
-    warning: "text-status-warning",
-    success: "text-status-success",
-    "rps-low": "text-status-success",
-    "rps-med": "text-status-warning",
-    "rps-high": "text-status-critical",
-    "studio-info": "text-accent-text",
+  const accentColor: Record<string, string> = {
+    default: 'var(--color-text-primary)',
+    critical: 'var(--color-status-critical)',
+    warning: 'var(--color-status-warning)',
+    success: 'var(--color-status-success)',
+    'rps-low': 'var(--color-status-success)',
+    'rps-med': 'var(--color-status-warning)',
+    'rps-high': 'var(--color-status-critical)',
+    'studio-info': 'var(--color-accent)',
   };
 
+  const color = accentColor[accent ?? 'default'];
+
   return (
-    <div className="stat-card rounded-xl border border-border-subtle bg-bg-card px-4 py-4 flex flex-col items-center justify-center text-center transition-all duration-200 hover:bg-bg-hover hover:border-border-hover group min-h-[84px]">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Icon size={13} className="text-text-muted group-hover:text-text-secondary transition-colors duration-200 shrink-0" strokeWidth={2.5} />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">{label}</span>
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-bg-card border border-border-subtle hover:border-border-hover transition-all duration-200 group min-w-0">
+      <Icon
+        size={15}
+        strokeWidth={2}
+        style={{ color, opacity: 0.7 }}
+        className="shrink-0"
+      />
+      <div className="flex flex-col min-w-0">
+        <span className="text-9px font-bold uppercase tracking-widest text-text-ghost mb-0.5 truncate">
+          {label}
+        </span>
+        <span
+          className="font-mono text-sm font-bold leading-none tabular-nums"
+          style={{ color }}
+          dir="ltr"
+        >
+          {displayValue}
+        </span>
       </div>
-      <span className={`stat-value font-mono text-[22px] font-bold tracking-tight leading-none ${valueClass[accent ?? "default"]}`} dir="ltr">
-        {displayValue}
-      </span>
       {children}
     </div>
   );
 }
+
 
 /* ─── E2: Phase Timeline — always visible, no pop ───────────────── */
 const PHASES = [
