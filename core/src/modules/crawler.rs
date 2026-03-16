@@ -4,11 +4,36 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use serde_json::Value;
+use serde::Deserialize;
 use url::Url;
 use crate::utils;
 use crate::ScanConfig;
 use crate::SinkRef;
+
+#[derive(Deserialize, Debug)]
+struct KatanaRequest {
+    endpoint: Option<String>,
+    url: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct KatanaOutput {
+    endpoint: Option<String>,
+    url: Option<String>,
+    request: Option<KatanaRequest>,
+}
+
+impl KatanaOutput {
+    fn extract_url(&self) -> Option<String> {
+        if let Some(ref e) = self.endpoint { return Some(e.clone()); }
+        if let Some(ref u) = self.url { return Some(u.clone()); }
+        if let Some(ref req) = self.request {
+            if let Some(ref e) = req.endpoint { return Some(e.clone()); }
+            if let Some(ref u) = req.url { return Some(u.clone()); }
+        }
+        None
+    }
+}
 
 fn katana_binary() -> anyhow::Result<String> {
     match utils::get_binary_path("katana") {
@@ -27,7 +52,7 @@ pub async fn run_katana_crawler(
 ) -> anyhow::Result<Vec<String>> {
     let binary = katana_binary()?;
     let depth_str = config.crawler_depth.to_string();
-    let timeout_str = format!("{}s", config.crawler_timeout); // Go duration needs a unit suffix
+    let timeout_str = format!("{}s", config.crawler_timeout); 
     let max_urls = config.crawler_max_urls;
 
     if config.verbose {
@@ -46,7 +71,7 @@ pub async fn run_katana_crawler(
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        std_cmd.creation_flags(0x0800_0000); 
     }
 
     let mut child = Command::from(std_cmd).spawn()?;
@@ -66,29 +91,17 @@ pub async fn run_katana_crawler(
             break;
         }
 
-        let line = raw_line.trim().to_string();
+        let line = raw_line.trim();
         if line.is_empty() { continue; }
 
-        let parsed: Value = match serde_json::from_str(&line) {
+        let parsed: KatanaOutput = match serde_json::from_str(line) {
             Ok(v) => v,
             Err(_) => continue,
         };
 
-        let extracted = parsed
-            .get("endpoint")
-            .or_else(|| parsed.get("url"))
-            .and_then(|val| val.as_str());
-
-        let extracted = extracted.or_else(|| {
-            parsed
-                .get("request")
-                .and_then(|req| req.get("endpoint").or_else(|| req.get("url")))
-                .and_then(|val| val.as_str())
-        });
-
-        if let Some(url_str) = extracted {
+        if let Some(url_str) = parsed.extract_url() {
             if config.scope {
-                if let Ok(parsed_url) = Url::parse(url_str) {
+                if let Ok(parsed_url) = Url::parse(&url_str) {
                     let url_domain = parsed_url.host_str().map(|h| h.to_lowercase());
                     if url_domain != target_domain {
                         continue;
@@ -96,7 +109,7 @@ pub async fn run_katana_crawler(
                 }
             }
 
-            if seen.insert(url_str.to_string()) {
+            if seen.insert(url_str.clone()) {
                 if config.verbose {
                     sink.on_log("info", &format!("[+] Discovered: {}", url_str));
                 }

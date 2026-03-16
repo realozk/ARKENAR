@@ -136,7 +136,7 @@ async fn main() {
     let sink = ConsoleSink::new_ref();
 
     if args.resume {
-        match ScanState::load(ScanState::default_path()) {
+        match ScanState::load(ScanState::default_path()).await {
             Some(state) => {
                 sink.on_log("success", &format!(
                     "[+] Resuming scan with {} pending URL(s), {} prior result(s)",
@@ -146,7 +146,7 @@ async fn main() {
                 for target in &state.pending_urls {
                     run_scan_sequence(target, &config, &sink).await;
                 }
-                ScanState::delete(ScanState::default_path());
+                ScanState::delete(ScanState::default_path()).await;
                 sink.on_log("success", "[+] Resumed scan complete.");
             }
             None => {

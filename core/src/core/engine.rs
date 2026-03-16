@@ -10,7 +10,6 @@ use reqwest::header::HeaderMap;
 use url::Url;
 
 use crate::core::throttle::ThrottleController;
-
 use crate::core::mutator::{self, InjectionPoint};
 use crate::core::result_aggregator::ScanResult;
 use crate::core::target_manager::TargetManager;
@@ -20,15 +19,7 @@ use crate::utils::detector::VulnerabilityDetector;
 use crate::utils::payload_loader::PayloadLoader;
 use crate::utils::fingerprint::{fingerprint_response, TechProfile};
 
-
 /// Smart mutation-based vulnerability scanner engine
-///
-/// The engine:
-/// 1. Takes targets from TargetManager or HttpRequest directly
-/// 2. Extracts all injection points using the mutator
-/// 3. Gets context aware payloads for each injection point
-/// 4. Mutates requests and sends them concurrently with precise timing
-/// 5. Passes responses to the detector for vulnerability classification
 pub struct ScanEngine {
     target_manager: TargetManager,
     client: Arc<HttpClient>,
@@ -56,12 +47,12 @@ impl ScanEngine {
         }
     }
 
-    /// Runs the scan engine on all targets from the target manager.
-    /// `abort` — when set to `true`, the engine stops launching new tasks and
-    /// in-flight per-payload tasks skip the network call before the next
-    /// throttle wait, keeping stop latency bounded to ~1 request timeout.
     pub async fn run(mut self, result_tx: mpsc::Sender<ScanResult>, abort: Arc<AtomicBool>) {
-        let semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
+        // STRICT GLOBAL NETWORK BOUND: Ensures we never exceed concurrency_limit active sockets
+        let network_semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
+        // TARGET BOUND: Prevents memory bloat if the crawler queues 50,000 URLs
+        let target_semaphore = Arc::new(Semaphore::new(100)); 
+        
         let mut tasks = Vec::new();
 
         while let Some(target_url) = self.target_manager.next() {
@@ -69,10 +60,10 @@ impl ScanEngine {
                 break;
             }
 
-            let permit = match semaphore.clone().acquire_owned().await {
+            let permit = match target_semaphore.clone().acquire_owned().await {
                 Ok(p) => p,
                 Err(_) => {
-                    warn!("Semaphore closed while acquiring permit — stopping engine.");
+                    warn!("Target semaphore closed — stopping engine.");
                     break;
                 }
             };
@@ -82,7 +73,7 @@ impl ScanEngine {
             let detector = Arc::clone(&self.detector);
             let throttle = Arc::clone(&self.throttle);
             let tx = result_tx.clone();
-            let concurrency = self.concurrency_limit;
+            let network_sem = Arc::clone(&network_semaphore);
             let abort_task = Arc::clone(&abort);
 
             let handle = tokio::spawn(async move {
@@ -100,31 +91,23 @@ impl ScanEngine {
                     return;
                 }
 
-                const CANARY: &str = "ARK-1337";
+                let canary_req = mutator::build_canary_request(&request); 
 
-                let canary_url = {
-
-            let mut u = request.url.clone();
-            u.query_pairs_mut().append_pair("canary", CANARY);
-            u
-                };
-
-                let canary_req = HttpRequest::new(
-                    Method::GET,
-                    canary_url,
-                    HeaderMap::new(),
-                    String::new(),
-                );   
-
-                throttle.wait().await;
-                let reflects =  match client.send_request(&canary_req).await {
-                    Ok(resp) => {
-                        let _canary_headers = resp.headers().clone();
-                        let status = resp.status().as_u16();
-                        throttle.record_response(status);
-                        matches!(resp.text().await, Ok(body) if body.contains(CANARY))
+                let reflects = {
+                    let _net_permit = network_sem.acquire().await.ok();
+                    throttle.wait().await;
+                    match client.send_request(&canary_req).await {
+                        Ok(resp) => {
+                            let status = resp.status().as_u16();
+                            throttle.record_response(status);
+                            
+                            // SAFE PARSING: Handle malformed UTF-8 from targets gracefully
+                            let bytes = resp.bytes().await.unwrap_or_default();
+                            let body = String::from_utf8_lossy(&bytes);
+                            body.contains(mutator::CANARY_TOKEN)
+                        }
+                        Err(_) => false,
                     }
-                    Err(_) => false,
                 };     
 
                 if !reflects {
@@ -133,33 +116,36 @@ impl ScanEngine {
 
                 let fp_req = match create_request_from_url(&target_url) {
                    Ok(r) => r,
-                     Err(_) => request.clone(), 
-                       
+                   Err(_) => request.clone(), 
                 };
 
-                throttle.wait().await;
-                let tech_profile = match client.send_request(&fp_req).await {
-                    Ok(resp) => {
-                      throttle.record_response(resp.status().as_u16());
-                      let headers = resp.headers().clone();
-                      let body = resp.text().await.unwrap_or_default();
-                      fingerprint_response(&headers, &body)
+                // Acquire global network permit for fingerprinting
+                let tech_profile = {
+                    let _net_permit = network_sem.acquire().await.ok();
+                    throttle.wait().await;
+                    match client.send_request(&fp_req).await {
+                        Ok(resp) => {
+                            throttle.record_response(resp.status().as_u16());
+                            let headers = resp.headers().clone();
+                            let bytes = resp.bytes().await.unwrap_or_default();
+                            let body = String::from_utf8_lossy(&bytes);
+                            fingerprint_response(&headers, &body)
+                        }
+                        Err(_) => TechProfile::default(),
                     }
-                    Err(_) => TechProfile::default(),
                 };
                 
                 let _ = &tech_profile; 
 
-
-
+                // Pass the request as an Arc to prevent massive memory clones during mutation
                 scan_single_request(
-                    request,
+                    Arc::new(request),
                     client,
                     payload_loader,
                     detector,
                     throttle,
                     tx,
-                    concurrency,
+                    network_sem,
                     abort_task,
                 ).await;
             });
@@ -176,32 +162,30 @@ impl ScanEngine {
         }
     }
 
-    /// Scans a single HTTP request directly (no abort support — for one-off use only)
     pub async fn scan_request(&self, request: HttpRequest, result_tx: mpsc::Sender<ScanResult>) {
         let no_abort = Arc::new(AtomicBool::new(false));
+        let network_semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
+        
         scan_single_request(
-            request,
+            Arc::new(request),
             Arc::clone(&self.client),
             Arc::clone(&self.payload_loader),
             Arc::clone(&self.detector),
             Arc::clone(&self.throttle),
             result_tx,
-            self.concurrency_limit,
+            network_semaphore,
             no_abort,
         ).await;
     }
 }
 
-/// Creates an HttpRequest from a URL string
 fn create_request_from_url(url_str: &str) -> Result<HttpRequest, url::ParseError> {
     let url = Url::parse(url_str)?;
     let headers = HeaderMap::new();
     let body = String::new();
-
     Ok(HttpRequest::new(Method::GET, url, headers, body))
 }
 
-/// Extracts server name from response headers
 fn extract_server(response: &reqwest::Response) -> Option<String> {
     response.headers()
         .get("server")
@@ -211,26 +195,24 @@ fn extract_server(response: &reqwest::Response) -> Option<String> {
 
 fn headers_to_vec(headers: &HeaderMap) -> Vec<(String, String)> {
     headers.iter().map(|(k, v)| {
-        (k.to_string(), v.to_str().unwrap_or("").to_string())
+        (k.to_string(), v.to_str().unwrap_or_default().to_string())
     }).collect()
 }
 
-/// Scans a single HTTP request using mutation-based injection.
-/// All results are sent via `result_tx` for the aggregator to handle.
 async fn scan_single_request(
-    request: HttpRequest,
+    request: Arc<HttpRequest>,
     client: Arc<HttpClient>,
     payload_loader: Arc<PayloadLoader>,
     detector: Arc<VulnerabilityDetector>,
     throttle: Arc<ThrottleController>,
     result_tx: mpsc::Sender<ScanResult>,
-    concurrency_limit: usize,
+    network_semaphore: Arc<Semaphore>,
     abort: Arc<AtomicBool>,
 ) {
     let injection_points = mutator::extract_injection_points(&request);
 
     if injection_points.is_empty() {
-        let _ = basic_scan(&request, &client, &detector, &result_tx).await;
+        let _ = basic_scan(&request, &client, &detector, &result_tx, &network_semaphore).await;
         return;
     }
 
@@ -243,8 +225,6 @@ async fn scan_single_request(
         }
     }
 
-    let request = Arc::new(request);
-
     stream::iter(scan_tasks)
         .map(|(point, payload)| {
             let request = Arc::clone(&request);
@@ -254,12 +234,18 @@ async fn scan_single_request(
             let result_tx = result_tx.clone();
             let payload_clone = payload.clone();
             let abort = Arc::clone(&abort);
+            let network_sem = Arc::clone(&network_semaphore);
 
             async move {
-                // Honour abort before spending a network slot
                 if abort.load(Ordering::Relaxed) { return; }
 
                 let mutated_request = mutator::mutate_request(&request, &point, &payload);
+
+                // Wait for a global network slot before doing ANY work
+                let _permit = match network_sem.acquire().await {
+                    Ok(p) => p,
+                    Err(_) => return,
+                };
 
                 throttle.wait().await;
 
@@ -277,43 +263,45 @@ async fn scan_single_request(
                             .and_then(|v| v.to_str().ok())
                             .map(|s| s.to_string());
 
-                        if let Ok(body) = response.text().await {
-                            let vuln = detector.detect(
-                                &body,
-                                &payload,
-                                content_type.as_deref(),
-                                duration_ms,
-                            );
+                        // SAFE PARSING
+                        let bytes = response.bytes().await.unwrap_or_default();
+                        let body = String::from_utf8_lossy(&bytes);
 
-                            if let Some(vuln_type) = vuln {
-                                let vuln_label = format_vuln_type(&vuln_type, &point);
-                                let result = ScanResult {
-                                    url: mutated_request.url.to_string(),
-                                    vuln_type: vuln_label,
-                                    payload: payload_clone,
-                                    timing_ms: duration_ms,
-                                    status_code,
-                                    server,
-                                    method: mutated_request.method.to_string(),
-                                    request_headers: headers_to_vec(&mutated_request.headers),
-                                    request_body: if mutated_request.body.is_empty() { None } else { Some(mutated_request.body.clone()) },
-                                };
+                        let vuln = detector.detect(
+                            &body,
+                            &payload,
+                            content_type.as_deref(),
+                            duration_ms,
+                        );
 
-                                let _ = result_tx.send(result).await;
-                            }
+                        if let Some(vuln_type) = vuln {
+                            let vuln_label = format_vuln_type(&vuln_type, &point);
+                            let result = ScanResult {
+                                url: mutated_request.url.to_string(),
+                                vuln_type: vuln_label,
+                                payload: payload_clone,
+                                timing_ms: duration_ms,
+                                status_code,
+                                server,
+                                method: mutated_request.method.to_string(),
+                                request_headers: headers_to_vec(&mutated_request.headers),
+                                request_body: if mutated_request.body.is_empty() { None } else { Some(mutated_request.body.clone()) },
+                            };
+
+                            let _ = result_tx.send(result).await;
                         }
                     }
-                    Err(_) => {
-                    }
+                    Err(_) => {}
                 }
             }
         })
-        .buffer_unordered(concurrency_limit)
+        // We buffer high here to allow the engine to map out tasks, 
+        // but the actual execution is strictly bottlenecked by the network_semaphore
+        .buffer_unordered(1000)
         .collect::<Vec<()>>()
         .await;
 }
 
-/// Format vulnerability type with injection point context
 fn format_vuln_type(vuln: &VulnerabilityType, point: &InjectionPoint) -> String {
     let type_str = vuln.to_string();
     match point {
@@ -324,13 +312,15 @@ fn format_vuln_type(vuln: &VulnerabilityType, point: &InjectionPoint) -> String 
     }
 }
 
-/// Performs a basic scan for URLs without structured injection points 
 async fn basic_scan(
     request: &HttpRequest,
     client: &HttpClient,
     detector: &VulnerabilityDetector,
     result_tx: &mpsc::Sender<ScanResult>,
+    network_semaphore: &Arc<Semaphore>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _permit = network_semaphore.acquire().await.ok();
+    
     let start = Instant::now();
     let response = client.send_request(request).await?;
     let duration_ms = start.elapsed().as_millis();
@@ -341,7 +331,9 @@ async fn basic_scan(
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let body = response.text().await?;
+        
+    let bytes = response.bytes().await?;
+    let body = String::from_utf8_lossy(&bytes);
 
     let vuln = detector.detect(&body, "", content_type.as_deref(), duration_ms);
 

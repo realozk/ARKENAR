@@ -1,23 +1,32 @@
 use crate::http::{BodyType, HttpRequest};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::header::{HeaderName, HeaderValue, CONTENT_LENGTH};
 use serde_json::Value;
 use std::collections::HashSet;
+use url::form_urlencoded;
+
+pub const CANARY_TOKEN: &str = "ARK-1337";
+
+pub fn build_canary_request(base_req: &HttpRequest) -> HttpRequest {
+    let mut canary_req = base_req.clone();
+    canary_req.url.query_pairs_mut().append_pair("canary", CANARY_TOKEN);
+    update_content_length(&mut canary_req); 
+    canary_req
+}
 
 const MAX_JSON_DEPTH: usize = 32;
 
-
-/// Represents different points in an HTTP request where payloads can be injected
 #[derive(Debug, Clone, PartialEq)]
 pub enum InjectionPoint {
-    /// Injection into a URL query parameter. Contains the parameter name
     UrlParam(String),
-    /// Injection into an HTTP header. Contains the header name
     Header(String),
-    /// Injection into a JSON field. Contains the JSON path (e.g., "user.profile.name")
     JsonField(String),
-    /// Injection into a form-urlencoded parameter. Contains the parameter name
     FormParam(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum JsonPathNode {
+    ObjectKey(String),
+    ArrayIndex(usize),
 }
 
 fn get_blacklisted_headers() -> HashSet<&'static str> {
@@ -37,12 +46,6 @@ fn get_blacklisted_headers() -> HashSet<&'static str> {
     blacklist
 }
 
-/// Recursively traverses a JSON value and extracts all injectable field paths
-/// 
-/// # Arguments
-/// * `value` - The JSON value to traverse
-/// * `current_path` - The current path in the JSON tree (e.g., "user.profile")
-/// * `points` - Mutable vector to collect discovered injection points
 fn extract_json_paths_recursive(
     value: &Value,
     current_path: &str,
@@ -81,20 +84,6 @@ fn extract_json_paths_recursive(
     }
 }
 
-/// Extracts all potential injection points from an HTTP request
-/// 
-/// This function analyzes the request and identifies all locations where
-/// payloads could be injected for security testing, including:
-/// - URL query parameters
-/// - HTTP headers (excluding blacklisted ones)
-/// - JSON body fields (for JSON content type)
-/// - Form parameters (for form-urlencoded content type)
-/// 
-/// # Arguments
-/// `req` - Reference to the HTTP request to analyze
-/// 
-/// # Returns
-/// A vector of all discovered injection points
 pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
     let mut points = Vec::new();
     
@@ -117,11 +106,11 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
             }
         }
         BodyType::FormUrlEncoded => {
-            for pair in req.body.split('&') {
-                if let Some((key, _value)) = pair.split_once('=') {
-                    if !key.is_empty() {
-                        points.push(InjectionPoint::FormParam(key.to_string()));
-                    }
+            // SAFE PARSING: Use form_urlencoded to safely extract form parameters
+            let parsed = form_urlencoded::parse(req.body.as_bytes());
+            for (key, _) in parsed {
+                if !key.is_empty() {
+                    points.push(InjectionPoint::FormParam(key.into_owned()));
                 }
             }
         }
@@ -131,81 +120,86 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
     points
 }
 
-/// Modifies a JSON value at the specified path with a payload
-/// 
-/// # Arguments
-/// * `value` - Mutable reference to the JSON value
-/// * `path_parts` - Iterator over the path components
-/// * `payload` - The payload string to inject
-/// 
-/// # Returns
-/// `true` if the modification was successful, `false` otherwise
-fn inject_into_json(value: &mut Value, path: &str, payload: &str) -> bool {
-    let parts: Vec<&str> = path.split('.').collect();
-    inject_into_json_recursive(value, &parts, 0, payload)
+/// Tokenizes a raw JSON path string (e.g., "user.data[0].id") into safe enum nodes
+fn tokenize_json_path(path: &str) -> Vec<JsonPathNode> {
+    let mut nodes = Vec::new();
+    for part in path.split('.') {
+        if part.is_empty() { continue; }
+        
+        if let Some(bracket_idx) = part.find('[') {
+            let key = &part[..bracket_idx];
+            if !key.is_empty() {
+                nodes.push(JsonPathNode::ObjectKey(key.to_string()));
+            }
+            
+            let mut remaining = &part[bracket_idx..];
+            while let Some(start) = remaining.find('[') {
+                if let Some(end) = remaining.find(']') {
+                    if let Ok(idx) = remaining[start + 1..end].parse::<usize>() {
+                        nodes.push(JsonPathNode::ArrayIndex(idx));
+                    }
+                    remaining = &remaining[end + 1..];
+                } else {
+                    break;
+                }
+            }
+        } else {
+            nodes.push(JsonPathNode::ObjectKey(part.to_string()));
+        }
+    }
+    nodes
 }
 
-fn inject_into_json_recursive(value: &mut Value, parts: &[&str], index: usize, payload: &str) -> bool {
-    if index >= parts.len() || index > MAX_JSON_DEPTH {
+fn inject_into_json(value: &mut Value, path: &str, payload: &str) -> bool {
+    let nodes = tokenize_json_path(path);
+    if nodes.is_empty() {
+        return false;
+    }
+    inject_into_json_recursive(value, &nodes, 0, payload)
+}
+
+fn inject_into_json_recursive(value: &mut Value, nodes: &[JsonPathNode], index: usize, payload: &str) -> bool {
+    if index >= nodes.len() || index > MAX_JSON_DEPTH {
         return false;
     }
     
-    let current_part = parts[index];
+    let is_last = index == nodes.len() - 1;
+    let node = &nodes[index];
     
-    if let Some(bracket_pos) = current_part.find('[') {
-        let field_name = &current_part[..bracket_pos];
-        let rest = &current_part[bracket_pos..];
-        
-        let mut current_value = if field_name.is_empty() {
-            value
-        } else {
-            match value.get_mut(field_name) {
-                Some(v) => v,
-                None => return false,
-            }
-        };
-        
-        let mut remaining = rest;
-        while let Some(start) = remaining.find('[') {
-            if let Some(end) = remaining.find(']') {
-                if let Ok(arr_index) = remaining[start + 1..end].parse::<usize>() {
-                    current_value = match current_value.get_mut(arr_index) {
-                        Some(v) => v,
-                        None => return false,
-                    };
-                    remaining = &remaining[end + 1..];
-                } else {
-                    return false;
+    match node {
+        JsonPathNode::ObjectKey(key) => {
+            if is_last {
+                if let Some(target) = value.get_mut(key) {
+                    inject_payload_into_value(target, payload);
+                    return true;
                 }
+                false
             } else {
-                return false;
+                if let Some(next_value) = value.get_mut(key) {
+                    inject_into_json_recursive(next_value, nodes, index + 1, payload)
+                } else {
+                    false
+                }
             }
         }
-        
-        if index == parts.len() - 1 {
-            inject_payload_into_value(current_value, payload);
-            return true;
-        } else {
-            return inject_into_json_recursive(current_value, parts, index + 1, payload);
-        }
-    }
-    
-    if index == parts.len() - 1 {
-        if let Some(target) = value.get_mut(current_part) {
-            inject_payload_into_value(target, payload);
-            return true;
-        }
-        false
-    } else {
-        if let Some(next_value) = value.get_mut(current_part) {
-            inject_into_json_recursive(next_value, parts, index + 1, payload)
-        } else {
-            false
+        JsonPathNode::ArrayIndex(arr_idx) => {
+            if is_last {
+                if let Some(target) = value.get_mut(*arr_idx) {
+                    inject_payload_into_value(target, payload);
+                    return true;
+                }
+                false
+            } else {
+                if let Some(next_value) = value.get_mut(*arr_idx) {
+                    inject_into_json_recursive(next_value, nodes, index + 1, payload)
+                } else {
+                    false
+                }
+            }
         }
     }
 }
 
-/// Injects a payload into a JSON value, preserving type where sensible
 fn inject_payload_into_value(value: &mut Value, payload: &str) {
     match value {
         Value::String(_) => {
@@ -233,16 +227,12 @@ fn inject_payload_into_value(value: &mut Value, payload: &str) {
                 *value = Value::String(payload.to_string());
             }
         }
-        Value::Null => {
-            *value = Value::String(payload.to_string());
-        }
         _ => {
             *value = Value::String(payload.to_string());
         }
     }
 }
 
-/// Creates a mutated copy of an HTTP request with a payload injected at the specified point.
 pub fn mutate_request(req: &HttpRequest, point: &InjectionPoint, payload: &str) -> HttpRequest {
     let mut new_request = req.clone();
     
@@ -266,7 +256,6 @@ pub fn mutate_request(req: &HttpRequest, point: &InjectionPoint, payload: &str) 
     new_request
 }
 
-/// Mutates a URL query parameter with the given payload.
 fn mutate_url_param(req: &mut HttpRequest, param_name: &str, payload: &str) {
     let mut url = req.url.clone();
     
@@ -289,7 +278,6 @@ fn mutate_url_param(req: &mut HttpRequest, param_name: &str, payload: &str) {
     req.url = url;
 }
 
-/// Mutates an HTTP header with the given payload
 fn mutate_header(req: &mut HttpRequest, header_name: &str, payload: &str) {
     if let Ok(name) = HeaderName::try_from(header_name) {
         if let Ok(value) = HeaderValue::from_str(payload) {
@@ -298,7 +286,6 @@ fn mutate_header(req: &mut HttpRequest, header_name: &str, payload: &str) {
     }
 }
 
-/// Mutates a JSON body field at the specified path with the given payload
 fn mutate_json_field(req: &mut HttpRequest, json_path: &str, payload: &str) {
     if let Ok(mut json_value) = serde_json::from_str::<Value>(&req.body) {
         if inject_into_json(&mut json_value, json_path, payload) {
@@ -309,41 +296,28 @@ fn mutate_json_field(req: &mut HttpRequest, json_path: &str, payload: &str) {
     }
 }
 
-/// Mutates a form-urlencoded parameter with the given payload
 fn mutate_form_param(req: &mut HttpRequest, form_key: &str, payload: &str) {
-    let mut new_pairs: Vec<String> = Vec::new();
+    // SAFE PARSING: Use form_urlencoded to perfectly rebuild the body without breaking on special characters
+    let parsed: Vec<(String, String)> = form_urlencoded::parse(req.body.as_bytes())
+        .into_owned()
+        .collect();
+        
+    let mut serializer = form_urlencoded::Serializer::new(String::new());
     
-    for pair in req.body.split('&') {
-        if let Some((key, _value)) = pair.split_once('=') {
-            if key == form_key {
-                let encoded_payload = url_encode(payload);
-                new_pairs.push(format!("{}={}", key, encoded_payload));
-            } else {
-                new_pairs.push(pair.to_string());
-            }
+    for (key, val) in parsed {
+        if key == form_key {
+            serializer.append_pair(&key, payload);
         } else {
-            new_pairs.push(pair.to_string());
+            serializer.append_pair(&key, &val);
         }
     }
     
-    req.body = new_pairs.join("&");
+    req.body = serializer.finish();
 }
 
-fn url_encode(input: &str) -> String {
-    utf8_percent_encode(input, NON_ALPHANUMERIC)
-        .to_string()
-        .replace("%20", "+")
-}
-
-/// Updates the Content-Length header based on the current body size.
-/// Only inserts the header when the request actually has a body;
-/// setting Content-Length: 0 on GET requests can trip WAFs and cause
-/// unexpected server behaviour.
 fn update_content_length(req: &mut HttpRequest) {
     let body_len = req.body.len();
     if body_len == 0 {
-        // Remove any existing Content-Length so we don't send "Content-Length: 0"
-        // on requests that have no body (e.g. mutated GET requests).
         req.headers.remove(CONTENT_LENGTH);
         return;
     }
@@ -352,7 +326,8 @@ fn update_content_length(req: &mut HttpRequest) {
     }
 }
 
-#[cfg(test)]
+
+ #[cfg(test)]
 mod tests {
     use super::*;
     use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT};
@@ -379,9 +354,6 @@ mod tests {
         
         HttpRequest::new(Method::POST, url, headers, body)
     }
-
-
-
 
     #[test]
     fn test_extract_url_params() {

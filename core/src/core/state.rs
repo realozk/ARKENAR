@@ -4,7 +4,7 @@
 /// after each target URL completes. Uses atomic write (tmp + rename) to prevent
 /// corruption if the process is killed mid-flush.
 
-use std::fs;
+use tokio::fs;
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 
@@ -38,22 +38,27 @@ impl ScanState {
         STATE_FILE
     }
 
-    /// Atomic write: serialize to .tmp, then rename over the real file.
-    pub fn save(&self, path: &str) -> anyhow::Result<()> {
+    /// ASYNC Atomic write: serialize to .tmp, then rename over the real file without blocking the executor.
+    pub async fn save(&self, path: &str) -> anyhow::Result<()> {
         let tmp = format!("{}.tmp", path);
+        
+        // Serialization is CPU-bound, which is fine for small/medium structs, 
+        // but the actual disk write MUST be async.
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(&tmp, &json)?;
-        fs::rename(&tmp, path)?;
+        
+        fs::write(&tmp, &json).await?;
+        fs::rename(&tmp, path).await?;
+        
         Ok(())
     }
 
-    pub fn load(path: &str) -> Option<Self> {
-        let data = fs::read_to_string(path).ok()?;
+    pub async fn load(path: &str) -> Option<Self> {
+        let data = fs::read_to_string(path).await.ok()?;
         serde_json::from_str(&data).ok()
     }
 
-    /// Merge new results, remove completed URLs, flush to disk.
-    pub fn checkpoint(
+    /// Merge new results, remove completed URLs, flush to disk asynchronously.
+    pub async fn checkpoint(
         &mut self,
         completed_url: &str,
         new_results: Vec<ScanResult>,
@@ -61,15 +66,15 @@ impl ScanState {
         self.pending_urls.retain(|u| u != completed_url);
         self.completed_results.extend(new_results);
         self.last_checkpoint = now_iso();
-        self.save(STATE_FILE)
+        self.save(STATE_FILE).await
     }
 
-    pub fn delete(path: &str) {
-        let _ = fs::remove_file(path);
+    pub async fn delete(path: &str) {
+        let _ = fs::remove_file(path).await;
     }
 
-    pub fn exists(path: &str) -> bool {
-        Path::new(path).exists()
+    pub async fn exists(path: &str) -> bool {
+        fs::try_exists(path).await.unwrap_or(false)
     }
 }
 
