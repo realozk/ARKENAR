@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { SectionLabel, TextInput, SliderWithInput, Toggle, ConfirmationModal } from "./primitives";
+import { SectionLabel, TextInput, Toggle, ConfirmationModal } from "./primitives";
 import {
     X, Sliders, KeyRound, RotateCcw, Radar,
-    Move, ZoomIn, ExternalLink, Volume2, LayoutTemplate
+    ZoomIn, Volume2, LayoutTemplate,
+    Cpu, BellRing, Link, Send
 } from "lucide-react";
 import { t } from "../utils/i18n";
 import { playSound } from "../utils/audio";
-
 
 /* ── Persisted settings shape ─────────────────────────────────── */
 export interface AppSettings {
@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoOpenReport: true,
     reduceMotion: false,
     uiScale: 100,
-    language: "en",         // 🔒 Locked to English
+    language: "en",
     soundEnabled: false,
     soundVolume: 75,
     soundOnStart: false,
@@ -60,9 +60,7 @@ export function loadSettings(): AppSettings {
             const parsed = JSON.parse(raw);
             if (typeof parsed !== "object" || parsed === null) return { ...DEFAULT_SETTINGS };
             const merged = { ...DEFAULT_SETTINGS, ...parsed };
-            
-            // ☢️ إجبار التطبيق على الهوية الأساسية
-            merged.language = "en";
+            merged.language = "en"; // Locked to English for Core Identity
             
             if (typeof merged.globalWebhookUrl !== "string") merged.globalWebhookUrl = DEFAULT_SETTINGS.globalWebhookUrl;
             if (typeof merged.defaultOutputPath !== "string") merged.defaultOutputPath = DEFAULT_SETTINGS.defaultOutputPath;
@@ -93,30 +91,53 @@ export function saveSettings(s: AppSettings) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(safeSettings)); } catch { /* ignore */ }
 }
 
+/* ── Custom Components for Settings ───────────────────────────── */
 
-interface ToggleRowProps {
-    label: string;
-    checked: boolean;
-    onChange: (v: boolean) => void;
-    onTest?: () => void;
-    testLabel?: string;
-}
-
-function ToggleRow({ label, checked, onChange, onTest, testLabel }: ToggleRowProps) {
+function SettingsToggleRow({ label, desc, checked, onChange, onTest, testLabel }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void; onTest?: () => void; testLabel?: string; }) {
     return (
-        <div className="flex items-center justify-between py-1.5 group/row">
-            <div className="flex items-center gap-2">
-                <span className="text-xs text-text-secondary">{label}</span>
-                {onTest && checked && (
-                    <button
-                        onClick={onTest}
-                        className="opacity-0 group-hover/row:opacity-100 px-1.5 py-0.5 rounded bg-accent/10 text-[9px] font-bold text-accent-text hover:bg-accent/20 transition-all duration-200"
-                    >
-                        {testLabel || "Test"}
-                    </button>
-                )}
+        <div className="flex items-center justify-between p-4 rounded-xl border border-border-subtle bg-bg-card hover:border-border-hover transition-all duration-200 group/row">
+            <div className="flex-1 pr-4">
+                <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-text-primary">{label}</span>
+                    {onTest && checked && (
+                        <button
+                            onClick={onTest}
+                            className="opacity-0 group-hover/row:opacity-100 px-2 py-0.5 rounded-md bg-accent/10 border border-accent/20 text-[10px] font-bold uppercase tracking-wider text-accent-text hover:bg-accent/20 transition-all duration-200"
+                        >
+                            {testLabel || "Test"}
+                        </button>
+                    )}
+                </div>
+                {desc && <p className="text-[11px] text-text-muted mt-1">{desc}</p>}
             </div>
             <Toggle checked={checked} onChange={onChange} />
+        </div>
+    );
+}
+
+function SettingsNumberInput({ label, value, onChange, min, max, suffix }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; suffix?: string; }) {
+    return (
+        <div className="flex flex-col gap-2">
+            {label && <label className="text-[11px] text-text-muted font-bold uppercase tracking-wider">{label}</label>}
+            <div className="relative w-32">
+                <input
+                    type="number"
+                    value={value || ""} // Allows the field to be empty while typing
+                    onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        onChange(isNaN(val) ? 0 : val); // Temporarily allow 0/empty to trigger the save button
+                    }}
+                    onBlur={(e) => {
+                        // Clamp to min/max only when the user finishes typing and clicks away
+                        const val = parseInt(e.target.value, 10);
+                        let finalVal = isNaN(val) ? min : val;
+                        finalVal = Math.max(min, Math.min(max, finalVal));
+                        onChange(finalVal);
+                    }}
+                    className="w-full bg-bg-root border border-border-subtle rounded-lg pl-3 pr-8 py-2.5 text-sm text-text-primary font-mono focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none transition-all"
+                />
+                {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-text-muted select-none pointer-events-none">{suffix}</span>}
+            </div>
         </div>
     );
 }
@@ -128,10 +149,14 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
+type TabID = "engine" | "alerts" | "workspace";
+
 export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps) {
     const [draft, setDraft] = useState<AppSettings>({ ...settings, language: "en" });
+    const [activeTab, setActiveTab] = useState<TabID>("engine");
     const [showConfirm, setShowConfirm] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
+    const [isTestingWebhook, setIsTestingWebhook] = useState(false);
     const overlayRef = useRef<HTMLDivElement>(null);
 
     const handleFinalCloseRef = useRef<() => void>(() => {});
@@ -146,27 +171,15 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
         if (e.target === overlayRef.current) handleFinalClose();
     };
 
-    const webhookError = draft.globalWebhookUrl.trim() !== "" && !/^https:\/\/.+/.test(draft.globalWebhookUrl.trim())
-        ? t("webhookUrlError", draft.language) : null;
+    // Less aggressive validation: only error if it's not empty AND doesn't start with http
+    const currentUrl = draft.globalWebhookUrl.trim();
+    const isWebhookValid = currentUrl === "" || /^https?:\/\/.+/.test(currentUrl);
+    const webhookError = !isWebhookValid ? "Invalid URL: Must start with http:// or https://" : null;
 
     const hasUnsavedChanges = () => {
-        return draft.defaultOutputPath !== settings.defaultOutputPath
-            || draft.globalWebhookUrl !== settings.globalWebhookUrl
-            || draft.defaultCrawlerDepth !== settings.defaultCrawlerDepth
-            || draft.defaultCrawlerTimeout !== settings.defaultCrawlerTimeout
-            || draft.defaultCrawlerMaxUrls !== settings.defaultCrawlerMaxUrls
-            || draft.defaultThreads !== settings.defaultThreads
-            || draft.defaultTimeout !== settings.defaultTimeout
-            || draft.defaultRateLimit !== settings.defaultRateLimit
-            || draft.autoOpenReport !== settings.autoOpenReport
-            || draft.soundEnabled !== settings.soundEnabled
-            || draft.soundVolume !== settings.soundVolume
-            || draft.soundOnStart !== settings.soundOnStart
-            || draft.soundOnComplete !== settings.soundOnComplete
-            || draft.soundOnFinding !== settings.soundOnFinding
-            || draft.soundOnClear !== settings.soundOnClear
-            || draft.reduceMotion !== settings.reduceMotion
-            || draft.uiScale !== settings.uiScale;
+        return Object.keys(draft).some(
+            (k) => draft[k as keyof AppSettings] !== settings[k as keyof AppSettings]
+        );
     };
 
     const handleFinalClose = () => {
@@ -180,24 +193,14 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
     handleFinalCloseRef.current = handleFinalClose;
 
     const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-        setDraft((prev) => {
-            let val = value;
-            if (key === "uiScale" && typeof value === "number") {
-                val = Math.max(75, Math.min(150, value)) as AppSettings[K];
-            }
-            const next = { ...prev, [key]: val };
-
-            if (key.startsWith("sound") || key === "uiScale" || key === "reduceMotion") {
-                saveSettings(next);
-                onSave(next);
-            }
-
-            return next;
-        });
+        setDraft((prev) => ({ ...prev, [key]: value }));
     };
 
     const handleSave = () => {
         const finalSettings = { ...draft, language: "en" as const };
+        // Ensure UI scale is strictly clamped before saving
+        finalSettings.uiScale = Math.max(75, Math.min(150, finalSettings.uiScale));
+        
         saveSettings(finalSettings);
         onSave(finalSettings);
         setIsClosing(true);
@@ -206,19 +209,49 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
 
     const handleResetToDefaults = () => setDraft({ ...DEFAULT_SETTINGS });
 
+    const handleTestWebhook = async () => {
+        if (!currentUrl || !isWebhookValid) return;
+        setIsTestingWebhook(true);
+        try {
+            await fetch(currentUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    content: "arkenar webhook test", 
+                    text: "arkenar webhook test"     
+                })
+            });
+        } catch (err) {
+            console.error("Webhook test failed:", err);
+        } finally {
+            setTimeout(() => setIsTestingWebhook(false), 600);
+        }
+    };
+
+    const tabs = [
+        { id: "engine", label: "Engine Config", icon: Cpu, desc: "Scanner & Crawler limits" },
+        { id: "alerts", label: "Alerts & Audio", icon: BellRing, desc: "Webhooks & Sounds" },
+        { id: "workspace", label: "Workspace", icon: LayoutTemplate, desc: "UI, Paths & Scaling" }
+    ] as const;
+
     return (
         <div
             ref={overlayRef}
             onClick={handleOverlayClick}
-            className={`settings-overlay ${isClosing ? "animate-fade-out" : ""}`}
+            className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
         >
-            <div className={`settings-panel relative w-full max-w-xl overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-2xl flex flex-col max-h-[85vh] ${isClosing ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
+            <div className={`relative w-full max-w-4xl h-[75vh] flex flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-2xl ${isClosing ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
                 
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border-subtle shrink-0 bg-gradient-surface">
-                    <div>
-                        <h2 className="text-sm font-semibold text-text-primary">{t("settingsTitle", draft.language)}</h2>
-                        <p className="text-xs text-text-muted mt-0.5">{t("settingsDesc", draft.language)}</p>
+                {/* Global Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle shrink-0 bg-gradient-surface">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-accent/10 border border-accent/20 text-accent-text">
+                            <Sliders size={18} strokeWidth={2.5} />
+                        </div>
+                        <div>
+                            <h2 className="text-base font-bold text-text-primary tracking-wide">Settings</h2>
+                            <p className="text-[11px] text-text-muted uppercase tracking-widest mt-0.5">Application Preferences</p>
+                        </div>
                     </div>
                     <button
                         onClick={handleFinalClose}
@@ -228,241 +261,205 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                     </button>
                 </div>
 
-                {/* Body — scrollable */}
-                <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8 custom-scrollbar">
-
-                    {/* Scanner & Crawler Defaults - Card Section */}
-                    <section>
-                        <SectionLabel icon={Sliders}>{t("scannerDefaults", draft.language)}</SectionLabel>
-                        <div className="mt-4 p-5 rounded-xl bg-bg-card border border-border-subtle space-y-6 shadow-sm">
-                            
-                            {/* Scanner Sub-section */}
-                            <div>
-                                <h4 className="text-xs font-bold text-text-primary mb-4 flex items-center gap-2 uppercase tracking-wider">
-                                    <Sliders size={14} className="text-accent"/> Scanner Engine
-                                </h4>
-                                <div className="grid grid-cols-2 gap-5">
+                <div className="flex flex-1 overflow-hidden min-h-0">
+                    
+                    {/* Sidebar Navigation */}
+                    <div className="w-64 shrink-0 border-r border-border-subtle bg-bg-root/50 p-4 flex flex-col gap-2">
+                        {tabs.map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as TabID)}
+                                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-left ${
+                                        isActive 
+                                            ? "bg-accent/10 border border-accent/20 shadow-[0_0_15px_rgba(var(--color-accent),0.05)]" 
+                                            : "border border-transparent hover:bg-bg-hover hover:border-border-subtle"
+                                    }`}
+                                >
+                                    <Icon size={18} className={isActive ? "text-accent-text" : "text-text-ghost"} strokeWidth={2} />
                                     <div>
-                                        <p className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider">{t("defaultThreads", draft.language)}</p>
-                                        <SliderWithInput value={draft.defaultThreads} onChange={(v) => set("defaultThreads", v)} min={1} max={500} />
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider">{t("defaultTimeout", draft.language)} (s)</p>
-                                        <SliderWithInput value={draft.defaultTimeout} onChange={(v) => set("defaultTimeout", v)} min={1} max={120} />
-                                    </div>
-                                </div>
-                                <div className="mt-4 w-1/2 pr-2">
-                                    <p className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider">{t("defaultRateLimit", draft.language)} (req/s)</p>
-                                    <SliderWithInput value={draft.defaultRateLimit} onChange={(v) => set("defaultRateLimit", v)} min={1} max={5000} />
-                                </div>
-                            </div>
-
-                            <div className="h-px bg-border-subtle/50 w-full" /> {/* Divider */}
-
-                            {/* Crawler Sub-section */}
-                            <div>
-                                <h4 className="text-xs font-bold text-text-primary mb-4 flex items-center gap-2 uppercase tracking-wider">
-                                    <Radar size={14} className="text-accent"/> Crawler Engine
-                                </h4>
-                                <div className="grid grid-cols-2 gap-5">
-                                    <div>
-                                        <p className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider">{t("maxDepth", draft.language)}</p>
-                                        <SliderWithInput value={draft.defaultCrawlerDepth} onChange={(v) => set("defaultCrawlerDepth", v)} min={1} max={10} />
-                                    </div>
-                                    <div>
-                                        <p className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider">{t("maxUrls", draft.language)}</p>
-                                        <SliderWithInput value={draft.defaultCrawlerMaxUrls} onChange={(v) => set("defaultCrawlerMaxUrls", v)} min={5} max={500} />
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </section>
-
-                    {/* Audio & Notifications */}
-                    <section>
-                        <SectionLabel icon={Volume2}>{t("audioNotifications", draft.language)}</SectionLabel>
-                        <div className="mt-4 rounded-xl border border-border-subtle bg-bg-card p-4 transition-all duration-300 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-accent/10 text-accent-text group-hover:scale-110 transition-transform duration-300">
-                                        <Volume2 size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-text-primary">{t("enableSounds", draft.language)}</p>
-                                        <p className="text-[11px] text-text-muted">{t("enableSoundsDesc", draft.language)}</p>
-                                    </div>
-                                </div>
-                                <div className="pr-1">
-                                    <Toggle checked={draft.soundEnabled} onChange={(v) => set("soundEnabled", v)} />
-                                </div>
-                            </div>
-
-                            <div className={`grid transition-all duration-300 ease-in-out ${draft.soundEnabled ? "grid-rows-[1fr] mt-4 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
-                                <div className="overflow-hidden space-y-4">
-                                    <div className="pt-3 border-t border-border-subtle/30">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <p className="text-[11px] font-bold text-text-ghost uppercase tracking-wider">{t("volume", draft.language)}</p>
-                                            <span className="text-[11px] font-mono text-accent-text">{draft.soundVolume}%</span>
+                                        <div className={`text-sm font-bold ${isActive ? "text-text-primary" : "text-text-secondary"}`}>
+                                            {tab.label}
                                         </div>
-                                        <SliderWithInput
-                                            value={draft.soundVolume}
-                                            onChange={(v) => set("soundVolume", v)}
-                                            min={0}
-                                            max={100}
+                                        <div className={`text-[10px] mt-0.5 ${isActive ? "text-accent-text/70" : "text-text-muted"}`}>
+                                            {tab.desc}
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Content Area */}
+                    <div className="flex-1 overflow-y-auto px-10 py-8 custom-scrollbar bg-bg-panel">
+                        
+                        {/* ── TAB 1: ENGINE CONFIG ── */}
+                        {activeTab === "engine" && (
+                            <div className="space-y-8 animate-fade-slide-in">
+                                <section>
+                                    <SectionLabel icon={Cpu}>Scanner Defaults</SectionLabel>
+                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm flex gap-10">
+                                        <SettingsNumberInput label="Threads" value={draft.defaultThreads} onChange={(v) => set("defaultThreads", v)} min={1} max={500} />
+                                        <SettingsNumberInput label="Timeout" value={draft.defaultTimeout} onChange={(v) => set("defaultTimeout", v)} min={1} max={120} suffix="s" />
+                                        <SettingsNumberInput label="Rate Limit" value={draft.defaultRateLimit} onChange={(v) => set("defaultRateLimit", v)} min={1} max={5000} suffix="req/s" />
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <SectionLabel icon={Radar}>Crawler Defaults</SectionLabel>
+                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm flex gap-10">
+                                        <SettingsNumberInput label="Max Depth" value={draft.defaultCrawlerDepth} onChange={(v) => set("defaultCrawlerDepth", v)} min={1} max={10} />
+                                        <SettingsNumberInput label="Max URLs" value={draft.defaultCrawlerMaxUrls} onChange={(v) => set("defaultCrawlerMaxUrls", v)} min={5} max={500} />
+                                        <SettingsNumberInput label="Timeout" value={draft.defaultCrawlerTimeout} onChange={(v) => set("defaultCrawlerTimeout", v)} min={1} max={300} suffix="s" />
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {/* ── TAB 2: ALERTS & AUDIO ── */}
+                        {activeTab === "alerts" && (
+                            <div className="space-y-8 animate-fade-slide-in">
+                                <section>
+                                    <SectionLabel icon={Link}>Integrations</SectionLabel>
+                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm">
+                                        <label className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider block">
+                                            Global Webhook URL
+                                        </label>
+                                        <div className="flex gap-3 items-start">
+                                            <div className="flex-1">
+                                                <TextInput
+                                                    value={draft.globalWebhookUrl}
+                                                    onChange={(v) => set("globalWebhookUrl", v)}
+                                                    placeholder="https://discord.com/api/webhooks/..."
+                                                    mono
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleTestWebhook}
+                                                disabled={!currentUrl || !isWebhookValid || isTestingWebhook}
+                                                className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                                                    (!currentUrl || !isWebhookValid) 
+                                                        ? 'bg-bg-hover text-text-ghost cursor-not-allowed' 
+                                                        : 'bg-accent/10 text-accent-text border border-accent/20 hover:bg-accent/20'
+                                                }`}
+                                            >
+                                                <Send size={14} />
+                                                {isTestingWebhook ? "Sending..." : "Test Webhook"}
+                                            </button>
+                                        </div>
+                                        <p className="mt-2 text-xs text-text-ghost">Automatically sends scan alerts to this webhook (supports Discord/Slack/n8n).</p>
+                                        {webhookError && <p className="mt-2 text-xs font-semibold text-status-critical bg-status-critical/10 px-3 py-2 rounded-lg border border-status-critical/20 inline-block">{webhookError}</p>}
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <SectionLabel icon={Volume2}>Audio Notifications</SectionLabel>
+                                    <div className="mt-4 space-y-3">
+                                        <SettingsToggleRow
+                                            label="Enable Master Sound"
+                                            desc="Play sound effects for important scan events"
+                                            checked={draft.soundEnabled}
+                                            onChange={(v) => set("soundEnabled", v)}
+                                        />
+
+                                        <div className={`transition-all duration-300 overflow-hidden ${draft.soundEnabled ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}>
+                                            <div className="p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm mt-3 space-y-6">
+                                                
+                                                <SettingsNumberInput label="Master Volume" value={draft.soundVolume} onChange={(v) => set("soundVolume", v)} min={0} max={100} suffix="%" />
+
+                                                <div className="grid grid-cols-2 gap-3 pt-6 border-t border-border-subtle/50">
+                                                    <SettingsToggleRow label="Scan Start" checked={draft.soundOnStart} onChange={(v) => set("soundOnStart", v)} onTest={() => playSound("start", true, draft.soundVolume)} />
+                                                    <SettingsToggleRow label="Scan Complete" checked={draft.soundOnComplete} onChange={(v) => set("soundOnComplete", v)} onTest={() => playSound("complete", true, draft.soundVolume)} />
+                                                    <SettingsToggleRow label="Finding Discovered" checked={draft.soundOnFinding} onChange={(v) => set("soundOnFinding", v)} onTest={() => playSound("finding", true, draft.soundVolume)} />
+                                                    <SettingsToggleRow label="List Cleared" checked={draft.soundOnClear} onChange={(v) => set("soundOnClear", v)} onTest={() => playSound("clear", true, draft.soundVolume)} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {/* ── TAB 3: WORKSPACE ── */}
+                        {activeTab === "workspace" && (
+                            <div className="space-y-8 animate-fade-slide-in">
+                                <section>
+                                    <SectionLabel icon={KeyRound}>Paths</SectionLabel>
+                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm">
+                                        <label className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider block">
+                                            Default Output File
+                                        </label>
+                                        <TextInput
+                                            value={draft.defaultOutputPath}
+                                            onChange={(v) => set("defaultOutputPath", v)}
+                                            placeholder="scan_results.json"
+                                            mono
+                                        />
+                                        <p className="mt-2 text-xs text-text-ghost">Relative to the Arkenar installation directory.</p>
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <SectionLabel icon={LayoutTemplate}>Interface & Behaviour</SectionLabel>
+                                    <div className="mt-4 space-y-3">
+                                        <div className="p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm flex justify-between items-center gap-4">
+                                            <div>
+                                                <div className="flex items-center gap-3 mb-1">
+                                                    <ZoomIn size={16} className="text-accent-text" />
+                                                    <span className="text-sm font-semibold text-text-primary">UI Scale</span>
+                                                </div>
+                                                <p className="text-[11px] text-text-muted">Adjust the overall size of text and interface elements. Applies on save.</p>
+                                            </div>
+                                            
+                                            <SettingsNumberInput label="" value={draft.uiScale} onChange={(v) => set("uiScale", v)} min={75} max={150} suffix="%" />
+                                        </div>
+
+                                        <SettingsToggleRow
+                                            label="Reduce Motion"
+                                            desc="Disables smooth transitions, glowing effects, and animations to save GPU resources."
+                                            checked={draft.reduceMotion}
+                                            onChange={(v) => set("reduceMotion", v)}
+                                        />
+                                        <SettingsToggleRow
+                                            label="Auto-open HTML Report"
+                                            desc="Automatically open the scan results in your default web browser once finished."
+                                            checked={draft.autoOpenReport}
+                                            onChange={(v) => set("autoOpenReport", v)}
                                         />
                                     </div>
-
-                                    <div className="space-y-1 pl-3 border-l-2 border-accent/20" dir="ltr">
-                                        <ToggleRow
-                                            label={t("soundOnStart", draft.language)}
-                                            checked={draft.soundOnStart}
-                                            onChange={(v) => set("soundOnStart", v)}
-                                            onTest={() => playSound("start", true, draft.soundVolume)}
-                                            testLabel={t("testSound", draft.language)}
-                                        />
-                                        <ToggleRow
-                                            label={t("soundOnComplete", draft.language)}
-                                            checked={draft.soundOnComplete}
-                                            onChange={(v) => set("soundOnComplete", v)}
-                                            onTest={() => playSound("complete", true, draft.soundVolume)}
-                                            testLabel={t("testSound", draft.language)}
-                                        />
-                                        <ToggleRow
-                                            label={t("soundOnFinding", draft.language)}
-                                            checked={draft.soundOnFinding}
-                                            onChange={(v) => set("soundOnFinding", v)}
-                                            onTest={() => playSound("finding", true, draft.soundVolume)}
-                                            testLabel={t("testSound", draft.language)}
-                                        />
-                                        <ToggleRow
-                                            label={t("soundOnClear", draft.language)}
-                                            checked={draft.soundOnClear}
-                                            onChange={(v) => set("soundOnClear", v)}
-                                            onTest={() => playSound("clear", true, draft.soundVolume)}
-                                            testLabel={t("testSound", draft.language)}
-                                        />
-                                    </div>
-                                </div>
+                                </section>
                             </div>
-                        </div>
-                    </section>
+                        )}
 
-                    {/* Paths & Integrations - Card Section */}
-                    <section>
-                        <SectionLabel icon={KeyRound}>Paths & Integrations</SectionLabel>
-                        <div className="mt-4 p-5 rounded-xl bg-bg-card border border-border-subtle space-y-5 shadow-sm">
-                            <div>
-                                <label className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider block">
-                                    {t("defaultOutputFile", draft.language)}
-                                </label>
-                                <TextInput
-                                    value={draft.defaultOutputPath}
-                                    onChange={(v) => set("defaultOutputPath", v)}
-                                    placeholder={t("outputFilePlaceholder", draft.language)}
-                                    mono
-                                />
-                                <p className="mt-1.5 text-[10px] text-text-ghost">{t("defaultOutputFileDesc", draft.language)}</p>
-                            </div>
-                            
-                            <div className="pt-2 border-t border-border-subtle/30">
-                                <label className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider block mt-3">
-                                    {t("webhookUrl", draft.language)}
-                                </label>
-                                <TextInput
-                                    value={draft.globalWebhookUrl}
-                                    onChange={(v) => set("globalWebhookUrl", v)}
-                                    placeholder="https://discord.com/api/webhooks/..."
-                                    mono
-                                />
-                                <p className="mt-1.5 text-[10px] text-text-ghost">{t("webhookUrlDesc", draft.language)}</p>
-                                {webhookError && <p className="mt-1.5 text-xs text-status-critical">{webhookError}</p>}
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Interface & Behaviour */}
-                    <section>
-                        <SectionLabel icon={LayoutTemplate}>Interface & Behaviour</SectionLabel>
-                        <div className="space-y-3 mt-4">
-                            <div className="p-4 rounded-xl bg-bg-card border border-border-subtle group hover:border-accent/30 transition-all duration-300 shadow-sm">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform duration-300">
-                                        <ZoomIn size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-text-primary">{t("uiScale", draft.language)}</p>
-                                        <p className="text-[11px] text-text-muted">{t("uiScaleDesc", draft.language)}</p>
-                                    </div>
-                                </div>
-                                <div className="px-2 pb-1">
-                                    <div className="relative w-[calc(100%-80px-1rem)] h-4 text-[10px] text-text-muted mb-1 font-mono uppercase tracking-tighter" dir="ltr">
-                                        <span className="absolute left-0">75%</span>
-                                        <span className="absolute left-[33.33%] -translate-x-1/2 whitespace-nowrap">100% ({t("defaultLabel", draft.language)})</span>
-                                        <span className="absolute right-0">150%</span>
-                                    </div>
-                                    <SliderWithInput
-                                        value={draft.uiScale}
-                                        onChange={(v) => set("uiScale", v)}
-                                        min={75}
-                                        max={150}
-                                        step={5}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between p-4 rounded-xl bg-bg-card border border-border-subtle group hover:border-accent/30 transition-all duration-300 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-status-info/10 text-status-info group-hover:scale-110 transition-transform duration-300">
-                                        <Move size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-text-primary">{t("reduceMotion", draft.language)}</p>
-                                        <p className="text-[11px] text-text-muted">{t("reduceMotionDesc", draft.language)}</p>
-                                    </div>
-                                </div>
-                                <Toggle checked={draft.reduceMotion} onChange={(v) => set("reduceMotion", v)} />
-                            </div>
-
-                            <div className="flex items-center justify-between p-4 rounded-xl bg-bg-card border border-border-subtle group hover:border-accent/30 transition-all duration-300 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-accent/10 text-accent-text group-hover:scale-110 transition-transform duration-300">
-                                        <ExternalLink size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-text-primary">{t("autoOpenReport", draft.language)}</p>
-                                        <p className="text-[11px] text-text-muted">{t("autoOpenReportDesc", draft.language)}</p>
-                                    </div>
-                                </div>
-                                <Toggle checked={draft.autoOpenReport} onChange={(v) => set("autoOpenReport", v)} />
-                            </div>
-                        </div>
-                    </section>
-
+                    </div>
                 </div>
 
-                {/* Footer */}
+                {/* Global Footer */}
                 <div className="px-6 py-4 border-t border-border-subtle bg-bg-card flex items-center justify-between shrink-0">
                     <button
                         onClick={handleResetToDefaults}
                         className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-text-ghost hover:text-status-critical transition-all duration-300"
                     >
                         <RotateCcw size={14} />
-                        {t("resetDefaults", draft.language)}
+                        Reset All Defaults
                     </button>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handleFinalClose}
                             className="px-5 py-2 text-xs font-bold text-text-secondary hover:text-text-primary transition-all duration-300"
                         >
-                            {t("cancel", draft.language)}
+                            Cancel
                         </button>
                         <button
                             onClick={handleSave}
-                            disabled={!!webhookError}
-                            className={`bg-accent text-bg-root px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest hover:brightness-110 btn-glow active:scale-95 transition-all duration-300 ${webhookError ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={!!webhookError || !hasUnsavedChanges()}
+                            className={`bg-accent text-bg-root px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-300 ${
+                                (webhookError || !hasUnsavedChanges()) ? 'opacity-50 cursor-not-allowed saturate-50' : 'hover:brightness-110 btn-glow active:scale-95'
+                            }`}
                         >
-                            {t("saveChanges", draft.language)}
+                            Save Changes
                         </button>
                     </div>
                 </div>
@@ -472,10 +469,10 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                 isOpen={showConfirm}
                 onClose={() => setShowConfirm(false)}
                 onConfirm={onClose}
-                title={t("unsavedTitle", draft.language)}
-                message={t("unsavedChangesWarning", draft.language)}
-                confirmText={t("discardChanges", draft.language)}
-                cancelText={t("keepEditing", draft.language)}
+                title="Unsaved Changes"
+                message="You have unsaved changes in your settings. If you leave now, they will be lost."
+                confirmText="Discard Changes"
+                cancelText="Keep Editing"
                 type="warning"
             />
         </div >
