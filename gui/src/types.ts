@@ -26,6 +26,7 @@ export type LogLevel = "info" | "success" | "error" | "warn" | "phase";
 export type ScanStatus = "idle" | "running" | "finished" | "error" | "stopping";
 
 export interface LogEntry {
+  id: string;
   time: string;
   level: LogLevel;
   message: string;

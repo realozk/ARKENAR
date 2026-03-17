@@ -300,6 +300,47 @@ function FindingCardInner({ finding, index, onOpenDetail, onSendToStudio }: {
 }
 const FindingCard = memo(FindingCardInner);
 
+/* ─── SeverityFilterPills ────────────────────────────────────────── */
+const SeverityFilterPills = memo(function SeverityFilterPills({
+  findings,
+  severityFilter,
+  onFilterChange,
+}: {
+  findings: ScanFindingEvent[];
+  severityFilter: "all" | "critical" | "medium";
+  onFilterChange: (v: "all" | "critical" | "medium") => void;
+}) {
+  const critCount = useMemo(
+    () => findings.filter(f => CRITICAL_PATTERNS.some(p => f.vuln_type.toLowerCase().includes(p))).length,
+    [findings],
+  );
+  const medCount = findings.length - critCount;
+  const pills = [
+    { v: "all" as const, label: `All (${findings.length})` },
+    { v: "critical" as const, label: `Critical (${critCount})` },
+    { v: "medium" as const, label: `Medium (${medCount})` },
+  ];
+  return (
+    <div className="flex items-center gap-2 px-5 pb-2">
+      {pills.map(({ v, label }) => (
+        <button
+          key={v}
+          onClick={() => onFilterChange(v)}
+          className={`px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all duration-150 ${
+            severityFilter === v
+              ? v === "critical" ? "bg-status-critical/20 text-status-critical border border-status-critical/30"
+              : v === "medium"   ? "bg-status-warning/20 text-status-warning border border-status-warning/30"
+              :                    "bg-accent/15 text-accent-text border border-accent/25"
+              : "bg-bg-card border border-border-subtle text-text-ghost hover:text-text-secondary"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+});
+
 /* ─── T1: Log line with copy-on-hover ───────────────────────────── */
 const ROW_HEIGHT = 28;
 const VIRT_BUFFER = 6;
@@ -618,25 +659,12 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
               </div>
               <CustomDropdown value={sortBy} onChange={setSortBy} options={[{ label: "Time ↓", value: "newest" }, { label: "Severity", value: "severity" }, { label: "URL A→Z", value: "url" }]} icon={ArrowUpDown} />
             </div>
-            {/* F1: Severity filter pills with counts */}
-            {(() => {
-              const critCount = findings.filter(f => CRITICAL_PATTERNS.some(p => f.vuln_type.toLowerCase().includes(p))).length;
-              const medCount = findings.length - critCount;
-              return (
-                <div className="flex items-center gap-2 px-5 pb-2">
-                  {([{ v: "all", label: `All (${findings.length})` }, { v: "critical", label: `Critical (${critCount})` }, { v: "medium", label: `Medium (${medCount})` }] as const).map(({ v, label }) => (
-                    <button key={v} onClick={() => setSeverityFilter(v)}
-                      className={`px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all duration-150 ${
-                        severityFilter === v
-                          ? v === "critical" ? "bg-status-critical/20 text-status-critical border border-status-critical/30"
-                          : v === "medium"   ? "bg-status-warning/20 text-status-warning border border-status-warning/30"
-                          :                    "bg-accent/15 text-accent-text border border-accent/25"
-                          : "bg-bg-card border border-border-subtle text-text-ghost hover:text-text-secondary"
-                      }`}>{label}</button>
-                  ))}
-                </div>
-              );
-            })()}
+            {/* F1: Severity filter pills with counts — memoized to avoid recalc on every render */}
+            <SeverityFilterPills
+              findings={findings}
+              severityFilter={severityFilter}
+              onFilterChange={setSeverityFilter}
+            />
           </div>
           <div className="flex-1 overflow-y-auto scroll-smooth px-5 py-4 space-y-3">
             {processedFindings.length === 0 && (
@@ -646,7 +674,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
               </div>
             )}
             {processedFindings.map(f => (
-              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} onOpenDetail={() => setDetailFinding(f)} onSendToStudio={(finding) => onSendToStudio?.(finding)} />
+              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} onOpenDetail={() => setDetailFinding(f)} onSendToStudio={onSendToStudio ?? (() => {})} />
             ))}
           </div>
         </div>

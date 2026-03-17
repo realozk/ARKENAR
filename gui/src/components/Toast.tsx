@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { X, CheckCircle, AlertTriangle, XCircle, Info } from "lucide-react";
 
 export type ToastType = "success" | "error" | "warning" | "info";
@@ -17,21 +17,38 @@ const COLORS = {
   info: "border-accent/20 bg-accent/8 text-accent-text",
 };
 
+const TOAST_DURATION_MS = 3_500;
+
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) => void }) {
   const [exiting, setExiting] = useState(false);
   const Icon = ICONS[toast.type];
+
+  // Guard against double-removal: auto-dismiss timer + manual close button
+  const dismissedRef = useRef(false);
+  const dismiss = useCallback(() => {
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
+    setExiting(true);
+    setTimeout(() => onRemove(toast.id), 300);
+  }, [onRemove, toast.id]);
+
   useEffect(() => {
-    const t = setTimeout(() => {
-      setExiting(true);
-      setTimeout(() => onRemove(toast.id), 300);
-    }, 3500);
+    const t = setTimeout(dismiss, TOAST_DURATION_MS);
     return () => clearTimeout(t);
-  }, [toast.id, onRemove]);
+  }, [dismiss]);
+
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg text-sm font-medium max-w-xs transition-all duration-300 ${COLORS[toast.type]} ${exiting ? "opacity-0 translate-x-4" : "opacity-100 translate-x-0"}`}>
+    <div
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg text-sm font-medium max-w-xs transition-all duration-300 ${COLORS[toast.type]} ${
+        exiting ? "opacity-0 translate-x-4" : "opacity-100 translate-x-0"
+      }`}
+    >
       <Icon size={16} className="shrink-0" />
       <span className="text-text-primary">{toast.message}</span>
-      <button onClick={() => { setExiting(true); setTimeout(() => onRemove(toast.id), 300); }} className="ml-auto text-text-ghost hover:text-text-primary transition-colors">
+      <button
+        onClick={dismiss}
+        className="ml-auto text-text-ghost hover:text-text-primary transition-colors"
+      >
         <X size={14} />
       </button>
     </div>

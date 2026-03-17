@@ -213,14 +213,10 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
         if (!currentUrl || !isWebhookValid) return;
         setIsTestingWebhook(true);
         try {
-            await fetch(currentUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    content: "arkenar webhook test", 
-                    text: "arkenar webhook test"     
-                })
-            });
+            // Use the Rust-side command so SSRF validation (block loopback / RFC-1918 / .local)
+            // is enforced — same path as the real scan webhook delivery.
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("test_webhook", { url: currentUrl });
         } catch (err) {
             console.error("Webhook test failed:", err);
         } finally {

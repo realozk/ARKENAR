@@ -298,38 +298,7 @@ export function useStudio(props: {
   );
 }, [response]);
 
-  useEffect(() => {
-    let phase = 0;
-    if (isLoading) phase = 1;
-    else if (response) phase = 3;
-    else if (method && url) phase = 0;
-    
-    let statusText = isLoading ? "Sending..." : "Idle";
-    if (response) {
-      statusText = String(response.status);
-    }
-
-    const reqSize = new Blob([body]).size + new Blob([headersInput]).size;
-    const resSize = response ? new Blob([response.body || ""]).size : 0;
-    
-    const formatBytes = (bytes: number) => {
-      if (bytes === 0) return "0 B";
-      const k = 1024;
-      const sizes = ["B", "KB", "MB", "GB"];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-    };
-
-    window.dispatchEvent(new CustomEvent("studio-stats", {
-      detail: {
-        status: statusText,
-        time: response ? `${response.timing_ms}ms` : "—",
-        reqSize: formatBytes(reqSize),
-        resSize: formatBytes(resSize),
-        phase
-      }
-    }));
-  }, [isLoading, response, method, url, body, headersInput]);
+  // studio-stats CustomEvent removed — no listener exists in the codebase.
 
   useEffect(() => {
     if (!initialRequest) return;
@@ -420,20 +389,21 @@ export function useStudio(props: {
     }
   }, [selectedHistoryId, history]);
 
- const injectEnvVars = (text: string): string => {
-  try {
-    const live: EnvVar[] = JSON.parse(
-      localStorage.getItem('arkenar-env-vars') ?? '[]'
-    );
-    return live.reduce((acc, v) => {
-      if (!v.key.trim()) return acc;
-      const escaped = v.key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return acc.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, 'g'), v.value);
-    }, text);
-  } catch {
-    return text;
-  }
-};
+  // Use envVars state (already loaded) instead of re-reading localStorage on every send.
+  const envVarsRef = useRef(envVars);
+  envVarsRef.current = envVars;
+
+  const injectEnvVars = (text: string): string => {
+    try {
+      return envVarsRef.current.reduce((acc, v) => {
+        if (!v.key.trim()) return acc;
+        const escaped = v.key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return acc.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, 'g'), v.value);
+      }, text);
+    } catch {
+      return text;
+    }
+  };
 
 const computeDiff = (a: string, b: string) => {
   const aLines = a.split('\n');
@@ -466,16 +436,12 @@ const computeDiff = (a: string, b: string) => {
     setPreviousResponse(response);
 
     try {
-       const req: StudioRequest = {
+      const req: StudioRequest = {
         url:     injectEnvVars(finalRequest.url.trim()),
         method:  finalRequest.method,
         headers: injectEnvVars(finalRequest.headers),
         body:    injectEnvVars(finalRequest.body),
       };
-
-   console.log('FINAL URL:', req.url);
-console.log('LIVE VARS:', localStorage.getItem('arkenar-env-vars'));
-
 
       const res = await invoke<StudioResponse>('studio_send', { req });
 

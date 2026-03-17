@@ -161,11 +161,11 @@ export default function StudioPanel(props: {
 }) {
   const studio = useStudio(props);
   const { state, setters, handlers, refs } = studio;
-   useEffect(() => {
+  useEffect(() => {
     if (props.onCompareWithHistoryRef) {
       props.onCompareWithHistoryRef.current = handlers.onCompareWithHistory;
     }
-  });
+  }, [props.onCompareWithHistoryRef, handlers.onCompareWithHistory]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden p-5 animate-fade-in bg-transparent">

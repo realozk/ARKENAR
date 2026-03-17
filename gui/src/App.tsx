@@ -141,7 +141,7 @@ function App() {
   const addLog = useCallback((level: LogLevel, message: string) => {
     const now = new Date();
     const time = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    logBuffer.current.push({ time, level, message });
+    logBuffer.current.push({ id: crypto.randomUUID(), time, level, message });
   }, []);
 
   const addToast = useCallback((type: ToastType, message: string) => {
@@ -170,7 +170,7 @@ const removeToast = useCallback((id: string) => {
         const now = new Date();
         const time = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-        logBuffer.current.push({ time, level: validLevel, message });
+        logBuffer.current.push({ id: crypto.randomUUID(), time, level: validLevel, message });
 
         if (level === "phase") {
           if (message.includes("Scan started")) setScanProgress(5);
@@ -522,6 +522,9 @@ const removeToast = useCallback((id: string) => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      // Clear hold timers so they don't fire after unmount / effect re-run
+      if (spaceTimerRef.current) { clearTimeout(spaceTimerRef.current); spaceTimerRef.current = null; }
+      if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
     };
   }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings , showPalette]);
 
