@@ -83,48 +83,67 @@ export function StudioRequest({ state, setters, handlers, refs, onSendToBasic }:
   const toHex = (input: string) => Array.from(input).map(ch => ch.charCodeAt(0).toString(16).padStart(2, "0")).join("");
 
   const [showVault, setShowVault] = useState(false);
+const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const pendingFuzzRef = useRef<FuzzConfig | null>(null);
 
   const saveEnvVars = (updated: EnvVar[]) => {
     setters.setEnvVars(updated);
     localStorage.setItem('arkenar-env-vars', JSON.stringify(updated));
   };
-  const [fuzzPill, setFuzzPill] = useState<{
-  x: number; y: number;
-} | null>(null);
-const pendingFuzzRef = useRef<FuzzConfig | null>(null);
-useEffect(() => {
-  if (!fuzzPill) return;
-  const dismiss = () => setFuzzPill(null);
-  document.addEventListener('mousedown', dismiss);
-  return () => document.removeEventListener('mousedown', dismiss);
-}, [fuzzPill]);
-
-const handleSelectionCheck = (
-  e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
-  field: "url" | "body"
-) => {
-  const el = e.currentTarget;
-  const start = el.selectionStart ?? 0;
-  const end = el.selectionEnd ?? 0;
-  const selected = el.value.substring(start, end).trim();
-
-  if (start === end || !selected || selected.length === 0) {
-    setFuzzPill(null);
-    return;
-  }
-
-  pendingFuzzRef.current = { anchor: selected, field, payloads: [], concurrency: 5 };
-  setFuzzPill({ 
-    x: e.clientX, 
-    y: e.clientY - 10 
-  });
-};
+  const [fuzzPill, setFuzzPill] = useState<{ x: number; y: number } | null>(null);
 
 
+// 1. The Context Menu State
+
+  // 2. Click anywhere else to close the menu
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = () => setContextMenu(null);
+    document.addEventListener('mousedown', dismiss);
+    return () => document.removeEventListener('mousedown', dismiss);
+  }, [contextMenu]);
+
+  // 3. THE NEW RIGHT-CLICK HANDLER
+  const handleContextMenu = (
+    e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
+    field: "url" | "body"
+  ) => {
+    const el = e.currentTarget;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const selected = el.value.substring(start, end).trim();
+
+    // If there is NO text highlighted, let the normal browser right-click happen (for Copy/Paste)
+    if (start === end || !selected || selected.length === 0) {
+      setContextMenu(null);
+      return; 
+    }
+
+    // If text IS highlighted, block the browser menu and show ours!
+    e.preventDefault(); 
+    pendingFuzzRef.current = { anchor: selected, field, payloads: [], concurrency: 5 };
+    
+    // Spawn the menu exactly at the tip of their mouse arrow
+    setContextMenu({ 
+      x: e.clientX + 10, 
+      y: e.clientY + 15 
+    });
+  };
 
   function onActivateFuzz(current: FuzzConfig) {
-    throw new Error("Function not implemented.");
+    setters.setFuzzAnchor?.(current);
+    setters.setFuzzMode?.(true);
+    
+    // Hide the orange pill
+    setFuzzPill(null);
   }
+
+  useEffect(() => {
+    if (!fuzzPill) return;
+    const dismiss = () => setFuzzPill(null);
+    document.addEventListener('mousedown', dismiss);
+    return () => document.removeEventListener('mousedown', dismiss);
+  }, [fuzzPill]);
 
   return (
     <section className="flex-1 flex flex-col min-w-0 h-full overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
@@ -165,7 +184,7 @@ const handleSelectionCheck = (
           placeholder="https://target.tld/path"
           className="min-w-[200px] flex-1 rounded-lg border border-border-subtle bg-bg-input px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/20"
           onKeyDown={(e) => { if (e.key === "Enter") handlers.onSend(); }}
-          onMouseUp={(e) => handleSelectionCheck(e, "url")}
+          onContextMenu={(e) => handleContextMenu(e, "url")}
         />
 
         {/* Execute */}
@@ -361,7 +380,7 @@ const handleSelectionCheck = (
               className={`h-full w-full resize-none rounded-lg border border-border-subtle p-3 font-mono text-[13px] placeholder:text-text-muted focus:outline-none custom-scrollbar disabled:opacity-30 ${state.isBodyDisabled ? "bg-bg-card text-text-muted" : "bg-bg-input text-text-primary"}`}
               spellCheck={false}
               placeholder='{"key": "value"}'
-              onMouseUp={(e) => handleSelectionCheck(e, "body")}
+              onContextMenu={(e) => handleContextMenu(e, "body")}
             />
           </div>
         )}
@@ -441,41 +460,32 @@ const handleSelectionCheck = (
           </div>
         )}
       </div>
-      {/*  Quick Fuzz floating pill */}
-{fuzzPill && createPortal(
-  <div
-  className="fixed z-[50] pointer-events-auto animate-fade-slide-in -translate-y-[calc(100%+12px)] -translate-x-1/2 "
-  style={{ 
-    left: fuzzPill.x, 
-    top: fuzzPill.y, 
-    // ↓ Change this line to push it 15px higher
-    transform: "translate(-50%, calc(-100% - 15px))" 
-  }}
-  onClick={(e) => e.stopPropagation()}
->
-    <button
-      onMouseDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (pendingFuzzRef.current) {
-          
-      
-          setters.setFuzzAnchor?.(pendingFuzzRef.current);
-          setters.setFuzzMode?.(true);
-        }
-        setFuzzPill(null);
-        
-      }}
-    
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-bg-root text-xs font-black shadow-lg border border-accent hover:brightness-110 transition-all cursor-pointer"
-    >
-      <Zap size={11} />
-      Quick Fuzz
-    </button>
-  </div>,
-  document.body 
-)}
+  {/* ── CUSTOM RIGHT-CLICK CONTEXT MENU ── */}
+      {contextMenu && createPortal(
+        <div
+          className="fixed z-[100] min-w-[180px] rounded-lg border border-border-subtle bg-bg-panel p-1.5 shadow-2xl animate-fade-in"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()} // Prevents immediate closing if they click inside
+        >
+          <div className="px-2 py-1 mb-1 border-b border-border-subtle">
+            <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">
+              Target: <span className="text-accent">{pendingFuzzRef.current?.anchor.substring(0, 15)}...</span>
+            </span>
+          </div>
+
+          <button 
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-xs font-bold text-text-primary hover:bg-bg-hover hover:text-accent transition-all"
+            onClick={() => {
+              if (pendingFuzzRef.current) onActivateFuzz(pendingFuzzRef.current);
+              setContextMenu(null);
+            }}
+          >
+            <Zap size={14} className="text-accent" />
+            Send to Quick Fuzz
+          </button>
+        </div>,
+        document.body 
+      )}
 
 
     </section>

@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Clock, Plus } from "lucide-react";
 import { StudioHistoryItem, getStatusClass, buildHistoryLabel } from "./useStudio";
 

@@ -1,4 +1,3 @@
-import React from "react";
 import { Copy, Braces, GitCompare, ArrowLeftToLine } from "lucide-react";
 import { ResponseTab, StudioResponse as StudioResponseType, getStatusClass, RESPONSE_TABS } from "./useStudio";
 

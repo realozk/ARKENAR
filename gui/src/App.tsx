@@ -8,16 +8,18 @@ import { ToastContainer, type Toast, type ToastType } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry } from "./types";
 import { DEFAULT_CONFIG } from "./types";
-import { StatusDot, ConfirmationModal, Logo } from "./components/primitives";
+import { StatusDot, ConfirmationModal } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
 import { type StudioRequest, type StudioHistoryItem } from "./components/StudioPanel";
-import { SettingsModal, loadSettings, applyAccentColor, type AppSettings } from "./components/SettingsModal";
+import { SettingsModal, loadSettings, type AppSettings } from "./components/SettingsModal";
 import { InfoModal } from "./components/InfoModal";
 import { t } from "./utils/i18n";
 import { playSound } from "./utils/audio";
-
+import { checkForAppUpdates } from './lib/updateChecker';
+import { ChangelogModal } from './components/ChangelogModal';
+import { Terminal, Blocks, Radar } from "lucide-react";
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
 
@@ -35,7 +37,6 @@ function validateHistory(data: unknown): ScanHistoryEntry[] {
 }
 
 function App() {
-
   const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
   const appSettingsRef = useRef(appSettings);
   useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
@@ -70,6 +71,29 @@ function App() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const compareWithHistoryRef = useRef<((body: string) => void) | null>(null);
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<any | null>(null);    
+  const CURRENT_VERSION = "1.1.0"; 
+  useEffect(() => {
+    checkForAppUpdates().then((update) => {
+      if (update) {
+        setAvailableUpdate(update);
+        setShowChangelog(true);
+      } else {
+        const lastVersion = localStorage.getItem('arkenar-version');
+        if (lastVersion !== CURRENT_VERSION) {
+          setShowChangelog(true);
+        }
+      }
+    });
+  }, []);
+
+  const handleCloseChangelog = () => {
+    setShowChangelog(false);
+    if (!availableUpdate) {
+      localStorage.setItem('arkenar-version', CURRENT_VERSION);
+    }
+  };
 
   
   const [scanQueue, setScanQueue] = useState<string[]>([]);
@@ -101,8 +125,6 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
-    applyAccentColor(appSettings.accentColor);
-    document.documentElement.setAttribute("data-theme", appSettings.theme);
     document.documentElement.style.setProperty("--ui-scale", (appSettings.uiScale / 100).toString());
     document.documentElement.lang = appSettings.language;
     document.documentElement.dir = appSettings.language === "ar" ? "rtl" : "ltr";
@@ -112,8 +134,9 @@ function App() {
     } else {
       document.documentElement.classList.remove("reduce-motion");
     }
-  }, [appSettings.accentColor, appSettings.theme, appSettings.uiScale, appSettings.reduceMotion, appSettings.language]);
 
+    getCurrentWindow().show();
+  }, [appSettings.uiScale, appSettings.reduceMotion, appSettings.language]);
 
   const addLog = useCallback((level: LogLevel, message: string) => {
     const now = new Date();
@@ -569,38 +592,77 @@ const removeToast = useCallback((id: string) => {
      
 
       <div className="relative z-0 flex flex-1 flex-col min-h-0">
-      <header data-tauri-drag-region className="relative flex h-[56px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
+    <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
         
-        {/* Left: App Controls */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => setSidebarCollapsed(p => !p)}
-            title={sidebarCollapsed ? "Show sidebar (Ctrl+B)" : "Hide sidebar (Ctrl+B)"}
-            className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-          >
-            {sidebarCollapsed ? <PanelLeft size={18} strokeWidth={2.5} /> : <PanelLeftClose size={18} strokeWidth={2.5} />}
-          </button>
-          <button
-            onClick={() => setShowInfo(true)}
-            title="Info"
-            className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-          >
-            <Info size={18} strokeWidth={2.5} />
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            title={appSettings.language === "ar" ? "الإعدادات (Ctrl+,)" : "Settings (Ctrl+,)"}
-            className="flex items-center gap-2 h-8 px-3 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-          >
-            <Settings size={18} strokeWidth={2.5} />
-           <span className="text-[11px] font-bold uppercase tracking-wider">Settings</span>          </button>
-        </div>
+        {/* Left: App Controls + Branding (رجعنا الإعدادات هنا) */}
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarCollapsed(p => !p)}
+              className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
+            >
+              {sidebarCollapsed ? <PanelLeft size={18} strokeWidth={2.5} /> : <PanelLeftClose size={18} strokeWidth={2.5} />}
+            </button>
+            <button
+              onClick={() => setShowInfo(true)}
+              className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
+            >
+              <Info size={18} strokeWidth={2.5} />
+            </button>
+            {/* 🌟 زر الإعدادات رجع لمكانه */}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
+            >
+              <Settings size={18} strokeWidth={2.5} />
+            </button>
+          </div>
 
-        {/* Center: Sleek Technical Branding */}
-        <div data-tauri-drag-region className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none shrink-0">
-          <h1 className="text-[11px] font-black uppercase tracking-[0.3em] text-text-muted drop-shadow-sm">
+          <div className="h-5 w-[1px] bg-border-subtle/50 mx-1" />
+          <h1 className="text-[13px] font-black uppercase tracking-[0.2em] text-accent drop-shadow-sm">
             Arkenar
           </h1>
+        </div>
+
+        {/* Center: BIGGER, CLEARER Tactile Workspace Switcher for 2K Monitors */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div className="relative flex items-center p-1.5 bg-black/20 rounded-xl border border-border-subtle/30 backdrop-blur-md shadow-inner">
+            
+            <div 
+              className="absolute top-1.5 bottom-1.5 w-[130px] bg-bg-panel border border-border-subtle/50 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out"
+              style={{ transform: activeTab !== 'studio' ? 'translateX(0)' : 'translateX(130px)' }}
+            />
+
+            <button
+              onClick={() => { if (activeTab === 'studio') setActiveTab('terminal'); }}
+              className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
+                activeTab !== 'studio' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
+              }`}
+            >
+              <Terminal size={16} className={activeTab !== 'studio' ? 'text-accent' : 'opacity-50'} />
+              <span>Basic</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('studio')}
+              className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
+                activeTab === 'studio' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
+              }`}
+            >
+              <Blocks size={16} className={activeTab === 'studio' ? 'text-status-warning' : 'opacity-50'} />
+              <span>Studio</span>
+            </button>
+
+            <button
+              disabled
+              title="Coming in v1.2..."
+              className="relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest text-text-ghost/30 cursor-not-allowed"
+            >
+              <Radar size={16} />
+              <span>Recon</span>
+            </button>
+
+          </div>
         </div>
 
         {/* Right: Scan Logic & Window Controls */}
@@ -752,26 +814,7 @@ const removeToast = useCallback((id: string) => {
         </div>
       
         <main className="flex flex-1 flex-col overflow-hidden min-w-0 bg-transparent">
-          <div className="flex justify-center pt-3 pb-0 z-10 w-full shrink-0">
-            <div className="relative flex items-center rounded-full bg-bg-panel/40 p-1 border border-border-subtle shadow-sm">
-              <div 
-                className="absolute top-1 bottom-1 w-[120px] rounded-full bg-bg-card border border-border-subtle shadow-sm transition-transform duration-300 ease-in-out"
-                style={{ transform: activeTab === 'studio' ? 'translateX(120px)' : 'translateX(0)' }}
-              />
-              <button
-                onClick={() => { if (activeTab === 'studio') setActiveTab('terminal'); }}
-                className={`relative z-10 w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${activeTab !== 'studio' ? 'text-accent-text' : 'text-text-muted hover:text-text-primary'}`}
-              >
-                Basic
-              </button>
-              <button
-                onClick={() => setActiveTab('studio')}
-                className={`relative z-10 w-[120px] py-1.5 text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${activeTab === 'studio' ? 'text-accent-text' : 'text-text-muted hover:text-text-primary'}`}
-              >
-                Studio
-              </button>
-            </div>
-          </div>
+         
           <TopStats
             stats={stats}
             scanStatus={scanStatus}
@@ -812,10 +855,13 @@ const removeToast = useCallback((id: string) => {
         />
       )}
 
-      {showInfo && (
-        <InfoModal onClose={() => setShowInfo(false)} language={appSettings.language} />
+     {showInfo && (
+        <InfoModal 
+          onClose={() => setShowInfo(false)} 
+          language={appSettings.language} 
+          
+        />
       )}
-
       <ConfirmationModal
         isOpen={showClearConfirm}
         onClose={() => setShowClearConfirm(false)}
@@ -851,6 +897,11 @@ const removeToast = useCallback((id: string) => {
         />
       )}
       </div>
+      <ChangelogModal 
+        isOpen={showChangelog} 
+        onClose={handleCloseChangelog} 
+        availableUpdate={availableUpdate} 
+      />
     </div>
   );
 }

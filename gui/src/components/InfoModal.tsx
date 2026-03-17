@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, Info, Sparkles, Users, Terminal, Palette, Keyboard } from "lucide-react";
+import { X, Info, Sparkles, Users, Terminal, Palette, Keyboard, ExternalLink } from "lucide-react";
 import { SectionLabel, Logo } from "./primitives";
 import { t } from "../utils/i18n";
 
@@ -68,7 +68,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                         </div>
                         <div className="flex items-center gap-3 mb-2">
                             <span className="rounded-full bg-accent/10 px-2 py-0.5 font-mono text-[9px] font-black tracking-widest text-accent-text border border-accent/20 shadow-[0_0_15px_var(--color-accent-dim)] uppercase">
-                                v1.0.4
+                                v1.1.0
                             </span>
                         </div>
                         <p className="text-sm font-medium text-text-secondary max-w-[300px] leading-relaxed">
@@ -78,17 +78,14 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
 
                     {/* What's New Section */}
                     <section>
-                        <div className="flex items-center justify-between">
-                            <SectionLabel icon={Sparkles}>{t("whatsNew", language)}</SectionLabel>
-                            <span className="text-[10px] font-mono font-bold text-text-ghost uppercase opacity-50">v1.0.4</span>
-                        </div>
+                        <SectionLabel icon={Sparkles}>{t("whatsNew", language)}</SectionLabel>
 
-                        <ul className="space-y-3.5 mt-4 text-sm text-text-secondary">
-                            {[
-                                t("update1", language),
-                                t("update2", language),
-                                t("update3", language),
-                                t("update4", language)
+                        <ul className="space-y-3.5 mt-4 text-sm text-text-secondary mb-5">
+                           {[
+                                "Added Arkenar Studio: Modular architecture for HTTP repeating.",
+                                "Smart Auto-Login: CSRF-aware authentication handshake.",
+                                "Reflection Analysis: Pre-check system to reduce false positives.",
+                                "Fixed fatal blank screen on launch caused by legacy Studio History."
                             ].map((item, i) => (
                                 <li key={i} className="flex items-start gap-3 group">
                                     <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent group-hover:scale-125 transition-transform duration-300 shadow-[0_0_8px_rgba(var(--color-accent),0.5)]" />
@@ -98,6 +95,16 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                                 </li>
                             ))}
                         </ul>
+
+                        <a
+                            href="https://github.com/realozk/ARKENAR/blob/main/CHANGELOG.md"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 w-full p-2.5 rounded-lg bg-bg-card border border-border-subtle hover:border-accent/40 hover:bg-accent/5 text-text-secondary hover:text-accent transition-all duration-300 group"
+                        >
+                            <span className="text-[11px] font-bold uppercase tracking-widest">Read Full Patch Notes</span>
+                            <ExternalLink size={14} className="group-hover:scale-110 transition-transform" />
+                        </a>
                     </section>
 
                     {/* Shortcuts Section */}
@@ -105,6 +112,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                         <SectionLabel icon={Keyboard}>{t("shortcuts", language)}</SectionLabel>
                         <div className="grid grid-cols-2 gap-3 mt-4">
                             {[
+                                { key: "Ctrl+K", desc: "Command Palette" }, // 🌟 أضفنا الاختصار الجديد هنا
                                 { key: "T", desc: t("t_terminal", language) },
                                 { key: "F", desc: t("t_findings", language) },
                                 { key: "H", desc: t("t_history", language) },
@@ -129,7 +137,6 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                         </div>
                     </section>
 
-
                     {/* Credits Section */}
                     <section>
                         <SectionLabel icon={Users}>{t("credits", language)}</SectionLabel>
@@ -151,7 +158,6 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-black leading-none mb-1">{t("uiEditor", language)}</p>
                                     <p className="text-sm font-bold text-text-primary">Meshy10, realozk</p>
                                 </div>
-
                             </div>
                         </div>
                     </section>

@@ -11,54 +11,54 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 }
 /* ===== Selection Color ===== */
 ::selection {
-  background: rgba(234, 88, 12, 0.35);
+  background: rgba(255, 94, 0, 0.35);
   color: #ffffff;
 }
 ::-moz-selection {
-  background: rgba(234, 88, 12, 0.35);
+  background: rgba(255, 94, 0, 0.35);
   color: #ffffff;
 }
 
 
 
-/* ─── Arkenar Premium Design System — Linear-inspired ────────── */
+/* ─── Arkenar Premium Design System — Core Black & Plasma Orange ─────── */
 @theme {
-  /* Surfaces — warmer, slightly lifted dark palette */
-    --color-bg-root: rgba(10, 10, 12, 0.80);
-  --color-bg-panel: rgba(17, 17, 20, 0.85);
+  /* Surfaces — deep black palette */
+  --color-bg-root: #0E0E12;
+  --color-bg-panel: #141419;
   --color-bg-card: rgba(255, 255, 255, 0.035);
-  --color-bg-input: #151518;
+  --color-bg-input: #0A0A0D;
   --color-bg-hover: rgba(255, 255, 255, 0.06);
-  --color-bg-terminal: #08080a;
+  --color-bg-terminal: #0A0A0D;
 
-  /* Borders — soft, glass-like */
-  --color-border-subtle: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.12);
-  --color-border-focus: rgba(0, 213, 190, 0.4);
+  /* Borders — sharp, subtle */
+  --color-border-subtle: #1F1F24;
+  --color-border-hover: #2A2A30;
+  --color-border-focus: rgba(255, 94, 0, 0.4);
 
   /* Text — lifted for readability */
-  --color-text-primary: #f8f8f8;     /* Made slightly brighter */
-  --color-text-secondary: #b4b4be;   /* Was #94949e - now much brighter */
-  --color-text-muted: #868699;       /* Was #64647a - now clearly visible */
+  --color-text-primary: #f8f8f8;
+  --color-text-secondary: #b4b4be;
+  --color-text-muted: #868699;
   --color-text-ghost: #5a5a6e;
 
-  /* Accent — orange */
-  --color-accent: #EA580C;
-  --color-accent-dim: rgba(234, 88, 12, 0.10);
-  --color-accent-hover: #ff630d;
-  --color-accent-text: #EA580C;
+  /* Accent — Plasma Orange */
+  --color-accent: #FF5E00;
+  --color-accent-dim: rgba(255, 94, 0, 0.10);
+  --color-accent-hover: #ff7526;
+  --color-accent-text: #FF5E00;
 
   /* Status */
   --color-status-critical: #f43f5e;
   --color-status-warning: #eab308;
   --color-status-success: #10b981;
-  --color-status-info: #EA580C;
+  --color-status-info: #FF5E00;
   --color-status-idle: #444460;
 
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-accent-glow: 0 0 24px rgba(234, 88, 12, 0.12), 0 0 48px rgba(234, 88, 12, 0.04);
-  --shadow-accent-btn: 0 0 20px rgba(234, 88, 12, 0.2), 0 0 40px rgba(234, 88, 12, 0.06);
+  --shadow-accent-glow: 0 0 24px rgba(255, 94, 0, 0.12), 0 0 48px rgba(255, 94, 0, 0.04);
+  --shadow-accent-btn: 0 0 20px rgba(255, 94, 0, 0.2), 0 0 40px rgba(255, 94, 0, 0.06);
 
   /* Font stacks */
   --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
@@ -86,68 +86,9 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 }
 
 
-/* ─── Themes ─────────────────────────────────────────────────── */
-
-/* 🌌 Dark — Original Premium */
-[data-theme="dark"] {
-  --color-bg-root: #0a0a0c;
-  --color-bg-panel: #111114;
-  --color-bg-terminal: #08080a;
-  --color-bg-card: rgba(255, 255, 255, 0.035);
-  --gradient-surface: linear-gradient(180deg, #121216 0%, #0d0d10 100%);
-}
-
-/* ☀ Light — Clean Slate */
-[data-theme="light"] {
-  --color-bg-root: #f8fafc;
-  --color-bg-panel: #ffffff;
-  --color-bg-terminal: #ffffff;
-  --color-bg-card: #ffffff;
-  --color-bg-input: #f1f5f9;
-  --color-bg-hover: rgba(15, 23, 42, 0.04);
-  --color-border-subtle: rgba(15, 23, 42, 0.1);
-  --color-border-hover: rgba(15, 23, 42, 0.2);
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-text-ghost: #94a3b8;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-  --gradient-surface: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  --glass-tint: rgba(15, 23, 42, 0.04);
-}
-
-/* 🪐 Cosmic — Deep Space Mystery */
-[data-theme="cosmic"] {
-  --color-bg-root: #0b071a;
-  --color-bg-panel: #130d2b;
-  --color-bg-terminal: #070412;
-  --color-bg-card: rgba(139, 92, 246, 0.08);
-  /* Violet tint */
-  --color-bg-input: #1b1338;
-  --color-accent: #c084fc;
-  /* Light Purple */
-  --color-accent-dim: rgba(192, 132, 252, 0.15);
-  --color-accent-text: #d8b4fe;
-  --color-border-subtle: rgba(139, 92, 246, 0.15);
-  --color-border-focus: rgba(192, 132, 252, 0.5);
-  --gradient-surface: linear-gradient(180deg, #130d2b 0%, #0b071a 100%);
-  --glass-tint: rgba(139, 92, 246, 0.05);
-}
-
-/* 🌿 Emerald — Rich Jade Matrix */
-[data-theme="emerald"] {
-  --color-bg-root: #051410;
-  --color-bg-panel: #0a1f1a;
-  --color-bg-terminal: #040e0b;
-  --color-bg-card: rgba(16, 185, 129, 0.08);
-  --color-bg-input: #0f2b25;
-  --color-accent: #34d399;
-  --color-accent-dim: rgba(52, 211, 153, 0.15);
-  --color-accent-text: #6ee7b7;
-  --color-border-subtle: rgba(16, 185, 129, 0.15);
-  --color-border-focus: rgba(52, 211, 153, 0.5);
-  --gradient-surface: linear-gradient(180deg, #0a1f1a 0%, #051410 100%);
-  --glass-tint: rgba(16, 185, 129, 0.05);
+/* Surfaces — unified */
+:root {
+  --gradient-surface: linear-gradient(180deg, var(--color-bg-panel) 0%, var(--color-bg-root) 100%);
 }
 
 /* ─── Base ────────────────────────────────────────────────────── */
@@ -742,82 +683,20 @@ select option {
   overflow: hidden;
 }
 
-/* Colour swatch buttons */
-.settings-color-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--swatch);
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-  flex-shrink: 0;
+/* ─── Shared Tooling ────────────────────────────────────────── */
+.btn-glow {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 }
 
-.settings-color-swatch:hover {
-  transform: scale(1.15);
+.btn-glow:hover {
+  filter: brightness(1.1);
+  box-shadow: var(--shadow-accent-btn);
+  transform: translateY(-1px);
 }
 
-.settings-color-swatch--active {
-  border-color: rgba(255, 255, 255, 0.8);
-  transform: scale(1.1);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
-}
-
-/* Native <input type="color"> */
-.settings-color-picker {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  padding: 0;
-  cursor: pointer;
-  background: transparent;
-  appearance: none;
-  -webkit-appearance: none;
-  overflow: hidden;
-}
-
-.settings-color-picker::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.settings-color-picker::-webkit-color-swatch {
-  border: none;
-  border-radius: 50%;
-}
-
-/* ─── Theme Transitions ────────────────────────────────────────── */
-html,
-body,
-aside,
-header,
-.settings-panel,
-.bg-bg-root,
-.bg-bg-panel,
-.bg-bg-card,
-.bg-bg-input,
-.bg-bg-terminal {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
-}
-
-[data-theme="light"] {
-
-  /* Fix toggle visibility in Light Mode */
-  .toggle-track {
-    background: #cbd5e1;
-    /* Tailwind slate-300 for solid visibility */
-    border: inset 1px rgba(0, 0, 0, 0.05);
-  }
-
-  .toggle-track.active {
-    background: var(--color-accent);
-    border: none;
-  }
-
-  .toggle-thumb {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.1);
-  }
+.btn-glow:active {
+  transform: translateY(0);
 }
 
 @keyframes loading-swipe {
