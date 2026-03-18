@@ -5,8 +5,8 @@ import {
     ZoomIn, Volume2, LayoutTemplate,
     Cpu, BellRing, Link, Send
 } from "lucide-react";
-import { t } from "../utils/i18n";
 import { playSound } from "../utils/audio";
+import { invoke } from "@tauri-apps/api/core";
 
 /* ── Persisted settings shape ─────────────────────────────────── */
 export interface AppSettings {
@@ -213,9 +213,7 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
         if (!currentUrl || !isWebhookValid) return;
         setIsTestingWebhook(true);
         try {
-            // Use the Rust-side command so SSRF validation (block loopback / RFC-1918 / .local)
-            // is enforced — same path as the real scan webhook delivery.
-            const { invoke } = await import("@tauri-apps/api/core");
+            // حذفنا سطر الـ await import من هنا، واستخدمنا invoke مباشرة
             await invoke("test_webhook", { url: currentUrl });
         } catch (err) {
             console.error("Webhook test failed:", err);

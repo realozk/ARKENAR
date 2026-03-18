@@ -9,6 +9,7 @@ import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
 import { t } from "../utils/i18n";
 import type { StudioHistoryItem } from "./StudioPanel";
 import { getStatusClass, buildHistoryLabel } from "./StudioPanel";
+import { createPortal } from "react-dom";
 
 
 
@@ -472,42 +473,58 @@ useEffect(() => {
       </div>
       </>
       )}
-      {contextMenu && (
-  <>
-    <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
-    <div
-      className="fixed z-50 min-w-[180px] rounded-xl border border-border-subtle bg-bg-panel shadow-xl animate-fade-slide-in overflow-hidden"
-      style={{ top: contextMenu.y, left: contextMenu.x }}
-    >
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-accent-text transition-colors"
-        onClick={() => {
-          const item = studioHistory.find(h => h.id === contextMenu.itemId);
-          if (item?.response?.body) {
-            onCompareWithHistory?.(item.response.body);
-          }
-          setContextMenu(null);
-        }}
-      >
-        <GitCompare size={13} />
-        Compare with current
-      </button>
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors border-t border-border-subtle"
-        onClick={() => {
-          onSelectStudioHistoryItem?.(contextMenu.itemId);
-          setContextMenu(null);
-        }}
-      >
-        <RotateCcw size={13} />
-        Load this request
-      </button>
-    </div>
-  </>
-)}
 
+ {contextMenu && createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setContextMenu(null)} />
+          <div
+            className="fixed z-[9999] min-w-[180px] rounded-xl border border-border-subtle bg-bg-panel shadow-2xl animate-fade-slide-in overflow-hidden"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-bold text-accent hover:bg-bg-hover hover:text-accent-text transition-colors"
+              onClick={() => {
+                const item = studioHistory.find(h => h.id === contextMenu.itemId);
+                if (item?.response?.body) {
+                  onCompareWithHistory?.(item.response.body);
+                }
+                setContextMenu(null);
+              }}
+            >
+              <GitCompare size={14} />
+              Compare with current
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-bold text-text-primary hover:bg-bg-hover transition-colors"
+              onClick={() => {
+                onSelectStudioHistoryItem?.(contextMenu.itemId);
+                setContextMenu(null);
+              }}
+            >
+              <RotateCcw size={14} />
+              Reload Request
+            </button>
+
+            <div className="h-px bg-border-subtle w-full" />
+
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              onClick={() => {
+                const item = studioHistory.find(h => h.id === contextMenu.itemId);
+                if (item) navigator.clipboard.writeText(item.request.url);
+                setContextMenu(null);
+              }}
+            >
+              <ClipboardPaste size={13} />
+              Copy URL
+            </button>
+          </div>
+        </>,
+        document.body 
+      )}
     </aside>
   );
 }

@@ -115,7 +115,7 @@ function App() {
   // Buffers for batching updates
   const logBuffer = useRef<LogEntry[]>([]);
   const findingBuffer = useRef<ScanFindingEvent[]>([]);
-  const rpsCountRef = useRef(0); // raw event count per flush window
+  const rpsCountRef = useRef(0); 
   const configRef = useRef(config);
   configRef.current = config;
   const scanQueueRef = useRef(scanQueue);
@@ -125,6 +125,7 @@ function App() {
   }, [activeTab]);
 
   useEffect(() => {
+    
     document.documentElement.style.setProperty("--ui-scale", (appSettings.uiScale / 100).toString());
     document.documentElement.lang = appSettings.language;
     document.documentElement.dir = appSettings.language === "ar" ? "rtl" : "ltr";
@@ -158,8 +159,13 @@ const removeToast = useCallback((id: string) => {
   const unlistenRef = useRef<(() => void)[]>([]);
   
   useEffect(() => {
+
     
-    invoke('show_main_window');
+    
+    setTimeout(() => {
+      invoke('show_main_window');
+    }, 150);
+    
     unlistenRef.current.forEach(fn => fn());
     unlistenRef.current = [];
 
