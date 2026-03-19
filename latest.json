@@ -1,7 +1,7 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "notes": "See the CHANGELOG for details.",
-  "pub_date": "2026-03-10T00:00:00Z",
+  "pub_date": "2026-03-19T00:00:00Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "",
