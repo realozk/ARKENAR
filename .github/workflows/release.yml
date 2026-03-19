@@ -8,7 +8,8 @@ on:
       - 'latest.json'
       - '**.md'
       - '.github/SECURITY.md'
-
+  workflow_dispatch:
+    
 permissions:
   contents: write
   pull-requests: write
