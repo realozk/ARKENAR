@@ -1,10 +1,10 @@
 {
   "version": "1.1.3",
   "notes": "See the CHANGELOG for details.",
-  "pub_date": "2026-03-19T10:42:56Z",
+  "pub_date": "2026-03-19T10:58:30Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTVEhmcVVvcWVSaG5WQnVmTFZ3TWFpMjVJWFF3K1N5N2JKc1hEK01FMzJvdWNDcmlwZFFFeWxrRUY2RXd3eHZuR0IzN0NvUVFxV3ZaMVR2cXBYUDNZTG45SldwVkM1NVFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczOTE3ODk3CWZpbGU6QXJrZW5hcl8xLjEuM194NjQtc2V0dXAuZXhlCmo2MmgvU2RwWWNta3BNeEkvSXhRdFZmb1AvWnZLTGw3WGQ1MCs1aTltRlRpWkJKM2JDUWVBSE5YTzcyNjdTZ01rQjl0bFZvajdXMlM0SWhHRCtIUkJ3PT0K",
       "url": "https://github.com/realozk/ARKENAR/releases/download/v1.1.3/Arkenar_1.1.3_x64-setup.exe"
     },
     "linux-x86_64": {
