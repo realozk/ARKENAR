@@ -20,6 +20,7 @@ import { playSound } from "./utils/audio";
 import { checkForAppUpdates } from './lib/updateChecker';
 import { ChangelogModal } from './components/ChangelogModal';
 import { Terminal, Blocks, Radar } from "lucide-react";
+
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
 
@@ -37,9 +38,16 @@ function validateHistory(data: unknown): ScanHistoryEntry[] {
 }
 
 function App() {
+
+
+
   const [appSettings, setAppSettings] = useState<AppSettings>(loadSettings);
   const appSettingsRef = useRef(appSettings);
-  useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
+  useEffect(() => {
+    
+    
+    
+    appSettingsRef.current = appSettings; }, [appSettings]);
 
   const [config, setConfig] = useState<ScanConfig>(() => {
     const s = loadSettings();
