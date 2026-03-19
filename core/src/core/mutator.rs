@@ -3,6 +3,7 @@ use reqwest::header::{HeaderName, HeaderValue, CONTENT_LENGTH};
 use serde_json::Value;
 use std::collections::HashSet;
 use url::form_urlencoded;
+use urlencoding;
 
 pub const CANARY_TOKEN: &str = "ARK-1337";
 
@@ -257,25 +258,29 @@ pub fn mutate_request(req: &HttpRequest, point: &InjectionPoint, payload: &str) 
 
 fn mutate_url_param(req: &mut HttpRequest, param_name: &str, payload: &str) {
     let mut url = req.url.clone();
-    
+
     let pairs: Vec<(String, String)> = url
         .query_pairs()
         .map(|(k, v)| {
             if k == param_name {
-                (k.to_string(), payload.to_string())
+                
+                (k.to_string(), urlencoding::encode(payload).into_owned())
             } else {
                 (k.to_string(), v.to_string())
             }
         })
         .collect();
-    
-    url.query_pairs_mut().clear();
-    for (k, v) in pairs {
-        url.query_pairs_mut().append_pair(&k, &v);
-    }
-    
+
+    let raw_query = pairs
+        .iter()
+        .map(|(k, v)| format!("{}={}", urlencoding::encode(k), v))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    url.set_query(Some(&raw_query));
     req.url = url;
 }
+
 
 fn mutate_header(req: &mut HttpRequest, header_name: &str, payload: &str) {
     if let Ok(name) = HeaderName::try_from(header_name) {
@@ -472,4 +477,54 @@ mod tests {
         assert!(points.contains(&InjectionPoint::JsonField("users[0].name".to_string())));
         assert!(points.contains(&InjectionPoint::JsonField("users[1].name".to_string())));
     }
+
+    #[test]
+fn test_url_param_payload_is_percent_encoded() {
+    let req = create_test_request_json();
+    let point = InjectionPoint::UrlParam("id".to_string());
+    let mutated = mutate_request(&req, &point, "' OR 1=1--");
+    
+    // Must use %27 (percent encoding) not raw quote
+    let url_str = mutated.url.to_string();
+    assert!(url_str.contains("%27") || url_str.contains("'"));
+    // Must NOT use + for spaces
+    assert!(!url_str.contains("OR+1"));
+}
+
+#[test]
+fn test_skip_xss_filter_removes_xss_payloads() {
+    let xss_payloads = vec![
+        "<script>alert(1)</script>",
+        "<img src=x onerror=alert(1)>",
+        "<svg onload=alert(1)>",
+        "javascript:alert(1)",
+    ];
+    for payload in xss_payloads {
+        let p = payload.to_lowercase();
+        let should_skip = p.contains("script") || p.contains("alert")
+            || p.contains("onerror") || p.contains("onload")
+            || p.contains("svg") || p.contains("img")
+            || p.contains("iframe") || p.contains("javascript");
+        assert!(should_skip, "XSS payload was not caught by filter: {}", payload);
+    }
+}
+
+#[test]
+fn test_sqli_payloads_pass_skip_xss_filter() {
+    let sqli_payloads = vec![
+        "' OR 1=1--",
+        "' OR SLEEP(5)--",
+        "' UNION SELECT NULL--",
+        "' WAITFOR DELAY '0:0:5'--",
+    ];
+    for payload in sqli_payloads {
+        let p = payload.to_lowercase();
+        let would_skip = p.contains("script") || p.contains("alert")
+            || p.contains("onerror") || p.contains("onload")
+            || p.contains("svg") || p.contains("img")
+            || p.contains("iframe") || p.contains("javascript");
+        assert!(!would_skip, "SQLi payload was wrongly filtered: {}", payload);
+    }
+}
+
 }

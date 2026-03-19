@@ -5,7 +5,7 @@ use std::time::Instant;
 use futures::{stream, StreamExt};
 use log::warn;
 use tokio::sync::{mpsc, Semaphore};
-use reqwest::{Method, header};
+use reqwest::Method;
 use reqwest::header::HeaderMap;
 use url::Url;
 
@@ -19,7 +19,6 @@ use crate::utils::detector::VulnerabilityDetector;
 use crate::utils::payload_loader::PayloadLoader;
 use crate::utils::fingerprint::{fingerprint_response, TechProfile};
 
-/// Smart mutation-based vulnerability scanner engine
 pub struct ScanEngine {
     target_manager: TargetManager,
     client: Arc<HttpClient>,
@@ -49,9 +48,7 @@ impl ScanEngine {
 
     pub async fn run(mut self, result_tx: mpsc::Sender<ScanResult>, abort: Arc<AtomicBool>) {
         let network_semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
-        // Hard cap: prevents memory bloat when the crawler queues tens-of-thousands of URLs.
         let target_semaphore = Arc::new(Semaphore::new(100));
-        
         let mut tasks = Vec::new();
 
         while let Some(target_url) = self.target_manager.next() {
@@ -85,12 +82,12 @@ impl ScanEngine {
                         return;
                     }
                 };
-                
+
                 if abort_task.load(Ordering::Relaxed) {
                     return;
                 }
 
-                let canary_req = mutator::build_canary_request(&request); 
+                let canary_req = mutator::build_canary_request(&request);
 
                 let reflects = {
                     let _net_permit = network_sem.acquire().await.ok();
@@ -99,22 +96,19 @@ impl ScanEngine {
                         Ok(resp) => {
                             let status = resp.status().as_u16();
                             throttle.record_response(status);
-                            
                             let bytes = resp.bytes().await.unwrap_or_default();
                             let body = String::from_utf8_lossy(&bytes);
                             body.contains(mutator::CANARY_TOKEN)
                         }
                         Err(_) => false,
                     }
-                };     
+                };
 
-                if !reflects {
-                    return;
-                }
+                let skip_xss = !reflects; // ← defined here, passed below
 
                 let fp_req = match create_request_from_url(&target_url) {
-                   Ok(r) => r,
-                   Err(_) => request.clone(), 
+                    Ok(r) => r,
+                    Err(_) => request.clone(),
                 };
 
                 let tech_profile = {
@@ -131,7 +125,7 @@ impl ScanEngine {
                         Err(_) => TechProfile::default(),
                     }
                 };
-                
+
                 let tech_profile = Arc::new(tech_profile);
 
                 scan_single_request(
@@ -144,6 +138,7 @@ impl ScanEngine {
                     network_sem,
                     abort_task,
                     tech_profile,
+                    skip_xss, // ← passed here
                 ).await;
             });
 
@@ -162,7 +157,7 @@ impl ScanEngine {
     pub async fn scan_request(&self, request: HttpRequest, result_tx: mpsc::Sender<ScanResult>) {
         let no_abort = Arc::new(AtomicBool::new(false));
         let network_semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
-        
+
         scan_single_request(
             Arc::new(request),
             Arc::clone(&self.client),
@@ -173,6 +168,7 @@ impl ScanEngine {
             network_semaphore,
             no_abort,
             Arc::new(crate::utils::fingerprint::TechProfile::default()),
+            false, // manual studio scan — run all payloads including XSS
         ).await;
     }
 }
@@ -207,6 +203,7 @@ async fn scan_single_request(
     network_semaphore: Arc<Semaphore>,
     abort: Arc<AtomicBool>,
     tech_profile: Arc<TechProfile>,
+    skip_xss: bool, // ← correctly named now
 ) {
     let injection_points = mutator::extract_injection_points(&request);
 
@@ -220,6 +217,15 @@ async fn scan_single_request(
     for point in &injection_points {
         let payloads = payload_loader.get_payloads_for_point_tech_aware(point, &tech_profile);
         for payload in payloads {
+            if skip_xss {
+                let p = payload.to_lowercase();
+                if p.contains("script") || p.contains("alert") || p.contains("onerror")
+                    || p.contains("onload") || p.contains("svg") || p.contains("img")
+                    || p.contains("iframe") || p.contains("javascript")
+                {
+                    continue;
+                }
+            }
             scan_tasks.push((point.clone(), payload));
         }
     }
@@ -284,16 +290,37 @@ async fn scan_single_request(
                                 request_headers: headers_to_vec(&mutated_request.headers),
                                 request_body: if mutated_request.body.is_empty() { None } else { Some(mutated_request.body.clone()) },
                             };
-
                             let _ = result_tx.send(result).await;
                         }
                     }
-                    Err(_) => {}
+
+                    Err(e) => {
+                        if e.is_timeout() {
+                            let p_lower = payload_clone.to_lowercase();
+                            if p_lower.contains("sleep")
+                                || p_lower.contains("waitfor")
+                                || p_lower.contains("pgsleep")
+                                || p_lower.contains("benchmark")
+                            {
+                                let vuln_label = format_vuln_type(&VulnerabilityType::BlindSqlInjection, &point);
+                                let result = ScanResult {
+                                    url: mutated_request.url.to_string(),
+                                    vuln_type: vuln_label,
+                                    payload: payload_clone,
+                                    timing_ms: duration_ms,
+                                    status_code: 0,
+                                    server: None,
+                                    method: mutated_request.method.to_string(),
+                                    request_headers: headers_to_vec(&mutated_request.headers),
+                                    request_body: if mutated_request.body.is_empty() { None } else { Some(mutated_request.body.clone()) },
+                                };
+                                let _ = result_tx.send(result).await;
+                            }
+                        }
+                    }
                 }
             }
         })
-        // We buffer high here to allow the engine to map out tasks, 
-        // but the actual execution is strictly bottlenecked by the network_semaphore
         .buffer_unordered(1000)
         .collect::<Vec<()>>()
         .await;
@@ -317,7 +344,7 @@ async fn basic_scan(
     network_semaphore: &Arc<Semaphore>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _permit = network_semaphore.acquire().await.ok();
-    
+
     let start = Instant::now();
     let response = client.send_request(request).await?;
     let duration_ms = start.elapsed().as_millis();
@@ -328,7 +355,7 @@ async fn basic_scan(
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-        
+
     let bytes = response.bytes().await?;
     let body = String::from_utf8_lossy(&bytes);
 
@@ -363,10 +390,8 @@ mod tests {
     fn create_test_request() -> HttpRequest {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-
         let url = Url::parse("https://example.com/api?id=123&name=test").unwrap();
         let body = r#"{"user":"john","active":true}"#.to_string();
-
         HttpRequest::new(Method::POST, url, headers, body)
     }
 
@@ -375,7 +400,6 @@ mod tests {
         let target_manager = TargetManager::new();
         let client = Arc::new(HttpClient::new(10, None, &vec![]).expect("test: failed to build HTTP client"));
         let engine = ScanEngine::new(target_manager, client, 10, 0, None);
-
         assert_eq!(engine.concurrency_limit, 10);
     }
 
@@ -385,4 +409,31 @@ mod tests {
         assert_eq!(request.method, Method::GET);
         assert!(request.url.query().unwrap().contains("id=123"));
     }
+    
+    #[test]
+fn test_detects_sqli_error() {
+    let detector = VulnerabilityDetector::new();
+    let body = "You have an error in your SQL syntax near 'OR 1=1'";
+    let result = detector.detect(body, "' OR 1=1--", Some("text/html"), 100);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), VulnerabilityType::SqlInjection);
+}
+
+#[test]
+fn test_detects_blind_sqli_on_timeout() {
+    let detector = VulnerabilityDetector::new();
+    // Simulate a 6 second response — above the 5000ms threshold
+    let result = detector.detect("", "' OR SLEEP(5)--", Some("text/html"), 6000);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap(), VulnerabilityType::BlindSqlInjection);
+}
+
+#[test]
+fn test_no_false_positive_on_clean_response() {
+    let detector = VulnerabilityDetector::new();
+    let body = "<html><body>Welcome to our site</body></html>";
+    let result = detector.detect(body, "' OR 1=1--", Some("text/html"), 100);
+    assert!(result.is_none());
+}
+
 }

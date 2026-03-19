@@ -18,7 +18,8 @@ impl HttpClient {
 
         let mut builder = ClientBuilder::new()
             .timeout(timeout)
-            .danger_accept_invalid_certs(true);
+            .danger_accept_invalid_certs(true)
+            .redirect(reqwest::redirect::Policy::none());
 
         if let Some(proxy) = proxy_url {
             if let Ok(p) = Proxy::all(proxy) {
