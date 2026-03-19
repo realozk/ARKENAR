@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Arkenar",
-  "version": "1.1.4",
+  "version": "1.1.2",
   "identifier": "com.real0zk.arkenar",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -57,7 +57,7 @@
         "https://github.com/RealOzk/ARKENAR/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDRTU0QzU3Qzk5QzZBMTIKUldRU2FwekpWMHpsSEZPU3JWNzZUSDZZWFprcUZ2dWliMjFJdk9ZNVprYWVFL2hGQWJ1eklFU2kK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5MjE4NzFGQzNFNDExMjcKUldRbkVlVERINGNoV2FHdzlNSWJGdHc0ZDFSZkVTSDhtT1ZvdytmbG80MVlmT2IxcHlXRDJPcy8K"
     }
   }
 }
