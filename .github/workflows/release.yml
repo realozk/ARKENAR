@@ -2,20 +2,112 @@ name: Release Arkenar GUI
 
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*' 
+    branches:
+      - main
+    paths-ignore:
+      - 'latest.json'
+      - '**.md'
+      - '.github/SECURITY.md'
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  # ─────────────────────────────────────────────
+  # 1. Auto-bump version & create a git tag
+  # ─────────────────────────────────────────────
+  bump-version:
+    name: Bump version & tag
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+      version: ${{ steps.bump.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # need full history to find latest tag
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute next patch version
+        id: bump
+        run: |
+          # Get the latest semver tag (e.g. v1.1.2); fall back to v0.0.0
+          LATEST=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' \
+                    | sort -V | tail -1)
+          LATEST=${LATEST:-v0.0.0}
+
+          # Split into parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+
+          # Bump patch
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="v${NEW_VERSION}"
+
+          echo "Latest tag : $LATEST"
+          echo "New tag    : $NEW_TAG"
+
+          echo "tag=$NEW_TAG"       >> "$GITHUB_OUTPUT"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in tauri.conf.json
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          # Use node (always available on ubuntu runners) for reliable JSON edit
+          node -e "
+            const fs = require('fs');
+            const p = 'gui/src-tauri/tauri.conf.json';
+            const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+            cfg.version = '$VERSION';
+            fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
+          "
+
+      - name: Update version in Cargo.toml files
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+
+          # 1. core/Cargo.toml — package version
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" core/Cargo.toml
+
+          # 2. cli/Cargo.toml — package version + arkenar-core path dep version
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" cli/Cargo.toml
+          sed -i "s/arkenar-core = { version = \"[^\"]*\"/arkenar-core = { version = \"$VERSION\"/" cli/Cargo.toml
+
+          # 3. gui/src-tauri/Cargo.toml — package version + arkenar-core path dep version
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" gui/src-tauri/Cargo.toml
+          sed -i "s/arkenar-core = { version = \"[^\"]*\"/arkenar-core = { version = \"$VERSION\"/" gui/src-tauri/Cargo.toml
+
+      - name: Commit version bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gui/src-tauri/tauri.conf.json \
+                  gui/src-tauri/Cargo.toml \
+                  core/Cargo.toml \
+                  cli/Cargo.toml \
+                  Cargo.lock || true
+          git diff --cached --quiet && echo "Nothing to commit" || \
+            git commit -m "chore: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git push origin main
+
+      - name: Create & push git tag
+        run: |
+          git tag ${{ steps.bump.outputs.tag }}
+          git push origin ${{ steps.bump.outputs.tag }}
+
+  # ─────────────────────────────────────────────
+  # 2. Build GUI (Tauri) for all platforms
+  # ─────────────────────────────────────────────
   build-tauri:
     name: Build GUI — ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    needs: bump-version
 
     strategy:
-      fail-fast: false 
+      fail-fast: false
       matrix:
         include:
           - platform: windows
@@ -26,8 +118,10 @@ jobs:
             os: macos-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout (at new tag)
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.tag }}
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -79,12 +173,12 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: gui
-          tagName: ${{ github.ref_name }}
-          releaseName: "Arkenar ${{ github.ref_name }}"
+          tagName: ${{ needs.bump-version.outputs.tag }}
+          releaseName: "Arkenar ${{ needs.bump-version.outputs.tag }}"
           releaseBody: |
-            ## Arkenar ${{ github.ref_name }}
+            ## Arkenar ${{ needs.bump-version.outputs.tag }}
 
-            ###  Downloads
+            ### Downloads
 
             #### GUI (Desktop App)
             | Platform | File |
@@ -101,12 +195,15 @@ jobs:
 
             See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
           releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          prerelease: false
 
+  # ─────────────────────────────────────────────
+  # 3. Update latest.json directly on main
+  # ─────────────────────────────────────────────
   update-latest-json:
     name: Update latest.json
     runs-on: ubuntu-22.04
-    needs: build-tauri
+    needs: [bump-version, build-tauri]
 
     steps:
       - name: Checkout main
@@ -118,10 +215,10 @@ jobs:
       - name: Build latest.json from release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.bump-version.outputs.tag }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
           REPO: ${{ github.repository }}
         run: |
-          VERSION="${TAG#v}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           fetch_sig() {
@@ -167,33 +264,22 @@ jobs:
           }
           EOF
 
-      - name: Commit and open PR for latest.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit latest.json directly to main
         run: |
-          BRANCH="chore/update-latest-json-${{ github.ref_name }}"
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add latest.json
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git checkout -B "$BRANCH"
-          git commit -m "chore: update latest.json for ${{ github.ref_name }}"
-          git push --force origin "$BRANCH"
-          existing_pr=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$existing_pr" ]; then
-            echo "PR #$existing_pr already exists, updated branch."
-          else
-            gh pr create \
-              --title "chore: update latest.json for ${{ github.ref_name }}" \
-              --body "Auto-generated PR to update \`latest.json\` for release **${{ github.ref_name }}**." \
-              --base main \
-              --head "$BRANCH"
-          fi
+          git diff --cached --quiet && echo "No changes to latest.json" && exit 0
+          git commit -m "chore: update latest.json for ${{ needs.bump-version.outputs.tag }} [skip ci]"
+          git push origin main
 
+  # ─────────────────────────────────────────────
+  # 4. Build CLI binaries
+  # ─────────────────────────────────────────────
   build-cli:
     name: Build CLI — ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    needs: build-tauri
+    needs: [bump-version, build-tauri]
 
     strategy:
       fail-fast: false
@@ -226,8 +312,10 @@ jobs:
             archive: tar
 
     steps:
-      - name: Checkout
+      - name: Checkout (at new tag)
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.tag }}
 
       - name: Install Rust stable + target
         uses: dtolnay/rust-toolchain@stable
@@ -266,6 +354,6 @@ jobs:
           tar -czf ${{ matrix.asset_name }} -C "$(dirname $BIN)" "$(basename $BIN)"
 
       - name: Upload CLI asset to GitHub Release
-        run: gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }} --clobber
+        run: gh release upload ${{ needs.bump-version.outputs.tag }} ${{ matrix.asset_name }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
