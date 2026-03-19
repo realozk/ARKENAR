@@ -104,7 +104,7 @@ impl ScanEngine {
                     }
                 };
 
-                let skip_xss = !reflects; // ← defined here, passed below
+                let skip_xss = !reflects; 
 
                 let fp_req = match create_request_from_url(&target_url) {
                     Ok(r) => r,
@@ -138,7 +138,7 @@ impl ScanEngine {
                     network_sem,
                     abort_task,
                     tech_profile,
-                    skip_xss, // ← passed here
+                    skip_xss, 
                 ).await;
             });
 
@@ -168,7 +168,7 @@ impl ScanEngine {
             network_semaphore,
             no_abort,
             Arc::new(crate::utils::fingerprint::TechProfile::default()),
-            false, // manual studio scan — run all payloads including XSS
+            false, 
         ).await;
     }
 }
@@ -409,7 +409,7 @@ mod tests {
         assert_eq!(request.method, Method::GET);
         assert!(request.url.query().unwrap().contains("id=123"));
     }
-    
+
     #[test]
 fn test_detects_sqli_error() {
     let detector = VulnerabilityDetector::new();
@@ -422,7 +422,7 @@ fn test_detects_sqli_error() {
 #[test]
 fn test_detects_blind_sqli_on_timeout() {
     let detector = VulnerabilityDetector::new();
-    // Simulate a 6 second response — above the 5000ms threshold
+    
     let result = detector.detect("", "' OR SLEEP(5)--", Some("text/html"), 6000);
     assert!(result.is_some());
     assert_eq!(result.unwrap(), VulnerabilityType::BlindSqlInjection);

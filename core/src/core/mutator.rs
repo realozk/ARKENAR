@@ -372,9 +372,9 @@ mod tests {
         let req = create_test_request_json();
         let points = extract_injection_points(&req);
         
-        // user-agent should be extracted (not blacklisted)
+        
         assert!(points.contains(&InjectionPoint::Header("user-agent".to_string())));
-        // content-type should NOT be extracted (blacklisted)
+       
         assert!(!points.contains(&InjectionPoint::Header("content-type".to_string())));
     }
     
@@ -484,10 +484,10 @@ fn test_url_param_payload_is_percent_encoded() {
     let point = InjectionPoint::UrlParam("id".to_string());
     let mutated = mutate_request(&req, &point, "' OR 1=1--");
     
-    // Must use %27 (percent encoding) not raw quote
+   
     let url_str = mutated.url.to_string();
     assert!(url_str.contains("%27") || url_str.contains("'"));
-    // Must NOT use + for spaces
+    
     assert!(!url_str.contains("OR+1"));
 }
 

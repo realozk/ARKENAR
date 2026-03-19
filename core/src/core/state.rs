@@ -42,8 +42,7 @@ impl ScanState {
     pub async fn save(&self, path: &str) -> anyhow::Result<()> {
         let tmp = format!("{}.tmp", path);
         
-        // Serialization is CPU-bound, which is fine for small/medium structs, 
-        // but the actual disk write MUST be async.
+       
         let json = serde_json::to_string_pretty(self)?;
         
         fs::write(&tmp, &json).await?;

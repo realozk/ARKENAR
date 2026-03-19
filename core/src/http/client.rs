@@ -38,7 +38,7 @@ impl HttpClient {
                 default_headers.insert(name, value);
             }
         }
-        // Randomized User-Agent pool for fingerprint evasion
+        
         let user_agents = vec![
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
              (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
