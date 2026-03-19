@@ -106,7 +106,6 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
             }
         }
         BodyType::FormUrlEncoded => {
-            // SAFE PARSING: Use form_urlencoded to safely extract form parameters
             let parsed = form_urlencoded::parse(req.body.as_bytes());
             for (key, _) in parsed {
                 if !key.is_empty() {
@@ -297,7 +296,6 @@ fn mutate_json_field(req: &mut HttpRequest, json_path: &str, payload: &str) {
 }
 
 fn mutate_form_param(req: &mut HttpRequest, form_key: &str, payload: &str) {
-    // SAFE PARSING: Use form_urlencoded to perfectly rebuild the body without breaking on special characters
     let parsed: Vec<(String, String)> = form_urlencoded::parse(req.body.as_bytes())
         .into_owned()
         .collect();

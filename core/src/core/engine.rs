@@ -48,10 +48,9 @@ impl ScanEngine {
     }
 
     pub async fn run(mut self, result_tx: mpsc::Sender<ScanResult>, abort: Arc<AtomicBool>) {
-        // STRICT GLOBAL NETWORK BOUND: Ensures we never exceed concurrency_limit active sockets
         let network_semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
-        // TARGET BOUND: Prevents memory bloat if the crawler queues 50,000 URLs
-        let target_semaphore = Arc::new(Semaphore::new(100)); 
+        // Hard cap: prevents memory bloat when the crawler queues tens-of-thousands of URLs.
+        let target_semaphore = Arc::new(Semaphore::new(100));
         
         let mut tasks = Vec::new();
 
@@ -101,7 +100,6 @@ impl ScanEngine {
                             let status = resp.status().as_u16();
                             throttle.record_response(status);
                             
-                            // SAFE PARSING: Handle malformed UTF-8 from targets gracefully
                             let bytes = resp.bytes().await.unwrap_or_default();
                             let body = String::from_utf8_lossy(&bytes);
                             body.contains(mutator::CANARY_TOKEN)
@@ -119,7 +117,6 @@ impl ScanEngine {
                    Err(_) => request.clone(), 
                 };
 
-                // Acquire global network permit for fingerprinting
                 let tech_profile = {
                     let _net_permit = network_sem.acquire().await.ok();
                     throttle.wait().await;
@@ -135,9 +132,8 @@ impl ScanEngine {
                     }
                 };
                 
-                let _ = &tech_profile; 
+                let tech_profile = Arc::new(tech_profile);
 
-                // Pass the request as an Arc to prevent massive memory clones during mutation
                 scan_single_request(
                     Arc::new(request),
                     client,
@@ -147,6 +143,7 @@ impl ScanEngine {
                     tx,
                     network_sem,
                     abort_task,
+                    tech_profile,
                 ).await;
             });
 
@@ -175,6 +172,7 @@ impl ScanEngine {
             result_tx,
             network_semaphore,
             no_abort,
+            Arc::new(crate::utils::fingerprint::TechProfile::default()),
         ).await;
     }
 }
@@ -208,6 +206,7 @@ async fn scan_single_request(
     result_tx: mpsc::Sender<ScanResult>,
     network_semaphore: Arc<Semaphore>,
     abort: Arc<AtomicBool>,
+    tech_profile: Arc<TechProfile>,
 ) {
     let injection_points = mutator::extract_injection_points(&request);
 
@@ -219,7 +218,7 @@ async fn scan_single_request(
     let mut scan_tasks: Vec<(InjectionPoint, String)> = Vec::new();
 
     for point in &injection_points {
-        let payloads = payload_loader.get_payloads_for_point(point);
+        let payloads = payload_loader.get_payloads_for_point_tech_aware(point, &tech_profile);
         for payload in payloads {
             scan_tasks.push((point.clone(), payload));
         }
@@ -241,7 +240,6 @@ async fn scan_single_request(
 
                 let mutated_request = mutator::mutate_request(&request, &point, &payload);
 
-                // Wait for a global network slot before doing ANY work
                 let _permit = match network_sem.acquire().await {
                     Ok(p) => p,
                     Err(_) => return,
@@ -263,7 +261,6 @@ async fn scan_single_request(
                             .and_then(|v| v.to_str().ok())
                             .map(|s| s.to_string());
 
-                        // SAFE PARSING
                         let bytes = response.bytes().await.unwrap_or_default();
                         let body = String::from_utf8_lossy(&bytes);
 

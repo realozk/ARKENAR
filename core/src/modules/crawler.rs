@@ -71,7 +71,7 @@ pub async fn run_katana_crawler(
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        std_cmd.creation_flags(0x0800_0000); 
+        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
 
     let mut child = Command::from(std_cmd).spawn()?;

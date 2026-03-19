@@ -1,6 +1,19 @@
-import { Copy, Braces, GitCompare, ArrowLeftToLine } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Copy, Braces, GitCompare, ArrowLeftToLine, Search, X } from "lucide-react";
 import { ResponseTab, StudioResponse as StudioResponseType, getStatusClass, RESPONSE_TABS } from "./useStudio";
 
+const highlightText = (text: string | null | undefined, highlight: string) => {
+  if (!text) return "";
+  if (!highlight.trim()) return text;
+  const parts = String(text).split(new RegExp(`(${highlight})`, 'gi'));
+  return parts.map((part, index) =>
+    part.toLowerCase() === highlight.toLowerCase() ? (
+      <span key={index} className="bg-orange-500 text-black font-bold rounded-[2px] px-0.5">
+        {part}
+      </span>
+    ) : (part)
+  );
+};
 
 export interface StudioResponseProps {
   state: {
@@ -23,11 +36,29 @@ export interface StudioResponseProps {
   handlers: {
     onBeautifyResponse: () => void;
     onMirrorToRequest: () => void;
-     onCompareWithHistory: (historyBody: string) => void;
+    onCompareWithHistory: (historyBody: string) => void;
   };
 }
 
 export function StudioResponse({ state, setters, handlers }: StudioResponseProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (e.key === 'Escape') {
+        setSearchTerm('');
+        searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <section className="flex-1 flex flex-col min-w-0 overflow-hidden rounded-xl border border-border-subtle bg-bg-panel p-4 animate-fade-slide-in">
       {/* Error Box */}
@@ -37,7 +68,7 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
         </div>
       )}
 
-     {/* Status Bar */}
+      {/* Status Bar */}
       <div className="mb-3 flex items-center justify-between rounded-lg border border-border-subtle bg-bg-card px-3 py-2 text-xs tracking-wider">
         <div className="flex items-center gap-3 text-text-secondary">
           <span className={state.response ? `${getStatusClass(state.response.status)} font-semibold uppercase tracking-wider` : "text-text-muted font-semibold uppercase tracking-wider"}>
@@ -51,25 +82,43 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
               TRUNCATED
             </span>
           )}
-        </div>
-                {/* Tabs */}
-        <div className="mb-0 flex items-center gap-2   px-0 pt-0">
-          {RESPONSE_TABS.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setters.setResponseTab(tab.id)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
-                state.responseTab === tab.id
-                  ? 'bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20'
-                  : 'bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+
+          {/* Tabs */}
+          <div className="ml-2 flex items-center gap-2">
+            {RESPONSE_TABS.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setters.setResponseTab(tab.id)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
+                  state.responseTab === tab.id
+                    ? 'bg-bg-card text-text-primary border-accent/40 ring-1 ring-accent/20'
+                    : 'bg-bg-card text-text-muted border-border-subtle hover:bg-bg-hover hover:text-text-primary'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* Search Bar */}
+        <div className="flex items-center bg-zinc-900 border border-zinc-700/50 rounded flex-shrink-0 px-2 py-1 w-64 focus-within:border-orange-500/50 transition-all ml-auto mr-4">
+          <Search className="w-3.5 h-3.5 text-zinc-500 mr-2" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search... (Ctrl+F)"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="bg-transparent border-none text-xs text-zinc-200 focus:outline-none w-full placeholder-zinc-600"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="ml-1 text-zinc-500 hover:text-orange-500 transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
 
         {state.isResponseJson && (
           <button
@@ -85,23 +134,22 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 min-h-0 rounded-lg border border-border-subtle bg-bg-card p-2 overflow-hidden">
+      <div className="flex-1 min-h-0 rounded-lg border border-border-subtle bg-bg-card p-2 overflow-hidden relative">
         {state.responseTab === "body" && (
           <div className="h-full overflow-auto rounded-lg border border-border-subtle bg-bg-input">
             {state.compareMode ? (
-            <div className="h-full overflow-auto p-2 font-mono text-13px leading-6">
-              {state.diffLines.length === 0 ? (
-                <div className="text-text-muted p-4 text-center">
-                  Send a second request to see the diff against this response.
-                </div>
-              ) : (
-               state.diffLines.map((line, idx) => (
-                  <div key={line.type + '-' + idx} className={`px-2 py-0.5 ${
-                    line.type === 'added' ? 'bg-status-success10 text-status-success' :
-                    line.type === 'removed' ? 'bg-status-critical10 text-status-critical' :
-                    'text-text-primary'
-                      }`}
-                    >
+              <div className="h-full overflow-auto p-2 font-mono text-[13px] leading-6">
+                {state.diffLines.length === 0 ? (
+                  <div className="text-text-muted p-4 text-center">
+                    Send a second request to see the diff against this response.
+                  </div>
+                ) : (
+                  state.diffLines.map((line, idx) => (
+                    <div key={line.type + '-' + idx} className={`px-2 py-0.5 ${
+                      line.type === 'added' ? 'bg-status-success/10 text-status-success' :
+                      line.type === 'removed' ? 'bg-status-critical/10 text-status-critical' :
+                      'text-text-primary'
+                    }`}>
                       {line.type === "added" ? "+ " : line.type === "removed" ? "- " : "  "}
                       {line.text}
                     </div>
@@ -115,7 +163,9 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
                     <div key={idx}>{idx + 1}</div>
                   ))}
                 </div>
-                <pre className="min-w-full whitespace-pre px-3 py-2 text-text-primary">{state.displayBody}</pre>
+                <pre className="min-w-full whitespace-pre px-3 py-2 text-text-primary">
+                  {highlightText(state.displayBody, searchTerm)}
+                </pre>
               </div>
             )}
           </div>
@@ -140,8 +190,18 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
           <div className="h-full overflow-auto space-y-2 p-1">
             {state.responseCookies.length ? (
               state.responseCookies.map(([, v], idx) => (
-                <div key={idx} className="rounded-lg border border-border-subtle bg-bg-input px-3 py-2 font-mono text-[13px] text-text-primary break-all">
-                  {v}
+                <div key={idx} className="group flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-input px-3 py-2">
+                  <div className="font-mono text-[13px] text-text-primary break-all">
+                    {v}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(v)}
+                    className="flex-shrink-0 rounded p-1.5 text-text-muted opacity-0 transition-all hover:bg-bg-hover hover:text-text-primary group-hover:opacity-100"
+                    title="Copy cookie"
+                  >
+                    <Copy size={14} />
+                  </button>
                 </div>
               ))
             ) : (
@@ -165,7 +225,6 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
           onClick={() => navigator.clipboard.writeText(state.response?.body ?? "")}
           className="inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-card px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all duration-200"
         >
-          
           <Copy size={13} />
           Copy Body
         </button>
@@ -180,23 +239,20 @@ export function StudioResponse({ state, setters, handlers }: StudioResponseProps
         <button
           type="button"
           onClick={() => {
-  const next = !state.compareMode;
-  setters.setCompareMode(next);
-  if (next && state.previousResponse && state.response) {
-    handlers.onCompareWithHistory(state.previousResponse.body);
-  }
-}}
+            const next = !state.compareMode;
+            setters.setCompareMode(next);
+            if (next && state.previousResponse && state.response) {
+              handlers.onCompareWithHistory(state.previousResponse.body);
+            }
+          }}
           className={`inline-flex items-center gap-1 rounded-lg border border-border-subtle px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
             state.compareMode ? "bg-accent/10 text-accent-text ring-1 ring-accent/20" : "bg-bg-card text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           }`}
-          
         >
           <GitCompare size={13} />
           Compare (Diff)
         </button>
-      
-        </div>
-
+      </div>
     </section>
   );
 }

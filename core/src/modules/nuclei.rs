@@ -1,6 +1,8 @@
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::fs as async_fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -9,6 +11,29 @@ use crate::utils;
 use crate::SinkRef;
 use std::fs;
 use crate::utils::installer::get_plugin_dir;
+
+/// Reads a Nuclei template file.
+///
+/// Validates the extension before any disk I/O — rejects non-`.yaml`/`.yml`
+/// files immediately so a large binary cannot stall the application.
+pub async fn parse_template(file_path: &Path) -> Result<String, String> {
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+
+    if ext != "yaml" && ext != "yml" {
+        return Err(format!(
+            "Invalid file type '{}'. Only .yaml or .yml templates are allowed.",
+            ext
+        ));
+    }
+
+    async_fs::read_to_string(file_path)
+        .await
+        .map_err(|e| format!("Failed to read template '{}': {}", file_path.display(), e))
+}
+
 
 #[derive(Deserialize, Debug)]
 struct NucleiInfo {

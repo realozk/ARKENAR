@@ -16,7 +16,6 @@ static HIDDEN_INPUT_SEL: OnceLock<Selector> = OnceLock::new();
 static FORM_SEL: OnceLock<Selector> = OnceLock::new();
 static PASS_SEL: OnceLock<Selector> = OnceLock::new();
 
-// ─── Input / Output types ────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct AutoLoginRequest {
@@ -34,7 +33,6 @@ pub struct AutoLoginResult {
     pub status_code: u16,
 }
 
-// ─── Validation ──────────────────────────────────────────────────────────────
 
 fn validate_request(req: &AutoLoginRequest) -> Result<(), String> {
     let parsed = url::Url::parse(&req.login_url)
@@ -62,7 +60,6 @@ fn validate_request(req: &AutoLoginRequest) -> Result<(), String> {
     Ok(())
 }
 
-// ─── HTML parsing ────────────────────────────────────────────────────────────
 
 const CSRF_HINTS: &[&str] = &[
     "csrf",
@@ -78,7 +75,6 @@ const CSRF_HINTS: &[&str] = &[
 /// look like CSRF tokens.  If `preferred` is given, only that exact name is
 /// returned (ignoring CSRF heuristics).
 fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, String)> {
-    // Parse once; unwrap is safe — this is a compile-time-checked literal.
    let selector = HIDDEN_INPUT_SEL.get_or_init(|| Selector::parse("input[type='hidden']").unwrap());
     let mut results = Vec::new();
 
@@ -94,10 +90,8 @@ fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, St
                 results.push((name, value));
                 return results; 
             }
-            continue; 
-        }
-
-       
+        continue;
+    }
         let name_lower = name.to_lowercase();
         if CSRF_HINTS.iter().any(|hint| name_lower.contains(hint)) {
             results.push((name, value));
@@ -125,7 +119,6 @@ fn resolve_form_action(doc: &Html, base_url: &url::Url) -> String {
     base_url.to_string()
 }
 
-// ─── Tauri command ───────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn studio_auto_login(req: AutoLoginRequest) -> Result<AutoLoginResult, String> {

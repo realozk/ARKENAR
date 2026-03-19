@@ -213,10 +213,10 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
         if (!currentUrl || !isWebhookValid) return;
         setIsTestingWebhook(true);
         try {
-            // حذفنا سطر الـ await import من هنا، واستخدمنا invoke مباشرة
             await invoke("test_webhook", { url: currentUrl });
+            alert(" Webhook connected successfully!");
         } catch (err) {
-            console.error("Webhook test failed:", err);
+            alert(`Webhook test failed: ${err}`);
         } finally {
             setTimeout(() => setIsTestingWebhook(false), 600);
         }

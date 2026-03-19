@@ -112,7 +112,6 @@ function App() {
     } catch { return []; }
   });
 
-  // Buffers for batching updates
   const logBuffer = useRef<LogEntry[]>([]);
   const findingBuffer = useRef<ScanFindingEvent[]>([]);
   const rpsCountRef = useRef(0); 
@@ -155,7 +154,6 @@ const removeToast = useCallback((id: string) => {
 }, []);
 
 
-  // Handle Tauri Listeners
   const unlistenRef = useRef<(() => void)[]>([]);
   
   useEffect(() => {
@@ -272,7 +270,6 @@ const removeToast = useCallback((id: string) => {
     };
   }, [addToast]);
 
-  // Flush buffers periodically (150ms)
   useEffect(() => {
     const FLUSH_MS = 150;
     const interval = setInterval(() => {
@@ -280,7 +277,6 @@ const removeToast = useCallback((id: string) => {
         const batch = [...logBuffer.current];
         logBuffer.current = [];
         setLogs((prev) => {
-          // Deduplicate: skip entries identical to the last seen entry
           let last = prev.length > 0 ? prev[prev.length - 1] : null;
           const deduped: LogEntry[] = [];
           for (const entry of batch) {
@@ -299,7 +295,6 @@ const removeToast = useCallback((id: string) => {
         findingBuffer.current = [];
         setFindings((prev) => [...prev, ...batch]);
       }
-      // Compute live RPS from event count in this flush window
       const count = rpsCountRef.current;
       rpsCountRef.current = 0;
       setRps(Math.round(count / (FLUSH_MS / 1000)));
@@ -315,7 +310,6 @@ const removeToast = useCallback((id: string) => {
  
 
 
-  // H1: Quick re-scan from history tab
  const handleQuickRescan = useCallback(async (target: string) => {
   setConfig(prev => ({ ...prev, target, listFile: "" }));
   setScanStatus("running");
@@ -325,7 +319,7 @@ const removeToast = useCallback((id: string) => {
   setActiveTab("terminal");
   setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
   try {
-    await invoke("start_scan", { config: { ...configRef.current, target, listFile: "" } });
+    await invoke("start_scan", { config: { ...configRef.current, target, listFile: "", webhookUrl: appSettingsRef.current.globalWebhookUrl || undefined } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
     addLog("error", `Scan failed: ${msg}`);
@@ -334,10 +328,8 @@ const removeToast = useCallback((id: string) => {
   }
 }, [addLog, addToast]);
 
-  // H1: Export findings (for CommandPalette)
   const handleStartScan = useCallback(async () => {
     if (!config.target && !config.listFile) return;
-    // Clear any pending finished→idle timer if user starts a new scan immediately
     if (finishedTimerRef.current) { clearTimeout(finishedTimerRef.current); finishedTimerRef.current = null; }
     setScanStatus("running");
     addToast("info", "Scan started");
@@ -390,7 +382,6 @@ const removeToast = useCallback((id: string) => {
     }
   }, [addLog, addToast]);
 
-  // Confirmation handles
   const handleClearHistory = useCallback(() => {
     setScanHistory([]);
     localStorage.removeItem(HISTORY_KEY);
@@ -405,13 +396,11 @@ const removeToast = useCallback((id: string) => {
       setFindings([]);
       playSound("clear", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnClear, appSettingsRef.current.soundVolume);
     } else if (activeTab === "history") {
-      handleClearHistory(); // plays sound internally
+      handleClearHistory();
     }
-    // studio: intentional no-op
   }, [activeTab, handleClearHistory]);
 
   const requestClear = useCallback(() => {
-    // Only show modal if there's actually something to clear
     if (activeTab === "terminal" && logs.length === 0) return;
     if (activeTab === "findings" && findings.length === 0) return;
     if (activeTab === "history" && scanHistory.length === 0) return;
@@ -420,7 +409,7 @@ const removeToast = useCallback((id: string) => {
     setShowClearConfirm(true);
   }, [activeTab, logs.length, findings.length, scanHistory.length]);
 
-  // --- Integrated Keyboard Shortcuts & Modern Actions ---
+  // --- Integrated Keyboard Shortcuts ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
        if (e.ctrlKey && e.key === "k") {
@@ -434,7 +423,6 @@ const removeToast = useCallback((id: string) => {
 
       const key = e.key.toLowerCase();
 
-      // Basic Tab Switching (T, F, H)
       if (!e.ctrlKey && !e.altKey && !e.metaKey) {
         if (key === 't') { setActiveTab("terminal"); return; }
         if (key === 'f') { setActiveTab("findings"); return; }
@@ -446,7 +434,6 @@ const removeToast = useCallback((id: string) => {
         }
       }
 
-      // Space Long Press (2s) for Start/Stop
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault(); // Prevent scrolling
 
@@ -460,7 +447,6 @@ const removeToast = useCallback((id: string) => {
           setIsHoldingSpace(true);
         }
 
-        // Stop hold: 1 second. Start hold: 2 seconds (prevents accidental launches).
         const holdDuration = isRunning ? 1000 : 2000;
         setHoldTimeRemaining(holdDuration / 1000);
 
@@ -484,7 +470,6 @@ const removeToast = useCallback((id: string) => {
         return;
       }
 
-      // Ctrl Combinations
       if (e.ctrlKey) {
         if (e.key === "k") { e.preventDefault(); setShowPalette(true); return; }
         if (e.key === "t") {
@@ -503,7 +488,6 @@ const removeToast = useCallback((id: string) => {
         if (e.key === ",") { e.preventDefault(); setShowSettings(true); }
       }
 
-      // Escape → Stop scan
       if (e.key === "Escape" && scanStatus === "running") { handleStopScan(); }
     };
 
@@ -547,7 +531,6 @@ const removeToast = useCallback((id: string) => {
   }, [appSettings]);
 
 
-  // Feature 13: Click history entry to load its target
   const handleLoadFromHistory = useCallback((target: string) => {
     if (target.startsWith("http")) {
       setConfig(prev => ({ ...prev, target, listFile: "" }));
@@ -557,7 +540,6 @@ const removeToast = useCallback((id: string) => {
     setActiveTab("terminal");
   }, []);
 
-  // Feature 18: Add targets to scan queue
   const handleAddToQueue = useCallback((targets: string[]) => {
     setScanQueue(prev => [...prev, ...targets]);
   }, []);
@@ -603,7 +585,7 @@ const removeToast = useCallback((id: string) => {
       <div className="relative z-0 flex flex-1 flex-col min-h-0">
     <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
         
-        {/* Left: App Controls + Branding (رجعنا الإعدادات هنا) */}
+        {/* Left: App Controls */}
         <div className="flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2">
             <button
@@ -618,7 +600,7 @@ const removeToast = useCallback((id: string) => {
             >
               <Info size={18} strokeWidth={2.5} />
             </button>
-            {/* 🌟 زر الإعدادات رجع لمكانه */}
+            {/* Settings button */}
             <button
               onClick={() => setShowSettings(true)}
               className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
@@ -633,7 +615,7 @@ const removeToast = useCallback((id: string) => {
           </h1>
         </div>
 
-        {/* Center: BIGGER, CLEARER Tactile Workspace Switcher for 2K Monitors */}
+        {/* Center: Workspace Switcher */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="relative flex items-center p-1.5 bg-black/20 rounded-xl border border-border-subtle/30 backdrop-blur-md shadow-inner">
             
@@ -674,9 +656,8 @@ const removeToast = useCallback((id: string) => {
           </div>
         </div>
 
-        {/* Right: Scan Logic & Window Controls */}
+        {/* Right: Window Controls */}
         <div className="flex items-center gap-4 shrink-0">
-          
           {/* Status & Queue */}
           <div className="flex items-center gap-4 border-r border-border-subtle/40 pr-4">
             {scanQueue.length > 0 && (
@@ -755,10 +736,9 @@ const removeToast = useCallback((id: string) => {
             </button>
           )}
 
-        {/* Window Controls (Automatic Mac vs Windows) */}
+        {/* Window Controls */}
           <div className="flex items-center h-full ml-2">
             {navigator.userAgent.toLowerCase().includes('mac') ? (
-              /* Mac OS "Traffic Light" Style */
               <div className="flex items-center gap-2 px-3 group">
                 <button onClick={() => getCurrentWindow().close()} className="w-[13px] h-[13px] rounded-full bg-[#ff5f56] border border-black/10 flex items-center justify-center hover:brightness-110">
                   <X size={8} className="opacity-0 group-hover:opacity-100 text-[#990000]" strokeWidth={4} />
@@ -771,7 +751,6 @@ const removeToast = useCallback((id: string) => {
                 </button>
               </div>
             ) : (
-              /* Windows Normal Native Size */
               <div className="flex items-center">
                 <button onClick={() => getCurrentWindow().minimize()} title="Minimize" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
                   <Minus size={18} strokeWidth={2} />

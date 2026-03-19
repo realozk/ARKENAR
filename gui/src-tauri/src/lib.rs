@@ -215,8 +215,6 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     validate_text_field("headers",  &config.headers)?;
     validate_text_field("payloads", &config.payloads)?;
     validate_text_field("output",   &config.output)?;
-    // Target is a URL: only block chars that cause header injection or null-byte
-    // issues. Parentheses and other URL-legal characters must be permitted.
     if config.target.chars().any(|c| matches!(c, '\n' | '\r' | '\0')) {
         return Err("Field 'target' contains forbidden characters.".to_string());
     }
@@ -236,7 +234,6 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
         if config.list_file.starts_with('/') || config.list_file.starts_with('~') || config.list_file.starts_with('\\') {
             return Err("Target list path must be relative (no leading /, ~, or backslash).".to_string());
         }
-        // Block Windows absolute paths (e.g. C:\path)
         if config.list_file.len() >= 2
             && config.list_file.chars().nth(1) == Some(':')
         {
@@ -494,7 +491,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                     }
                     vulnerable_urls.insert(r.url.clone());
                 }
-                // Safe = scanned URLs that had no findings.
                 total_safe += scanned_count.saturating_sub(vulnerable_urls.len());
             }
         }  // end target loop

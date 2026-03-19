@@ -104,7 +104,7 @@ export const translations = {
         developer: "Developer",
         uiEditor: "UI Editor",
         close: "Close",
-        aboutDesc: "A blazing fast, multi-threaded security scanner designed for the modern web.",
+        aboutDesc: "A high-performance offensive security framework combining zero noise automated scanning with an interactive exploit studio",
         scanActionDesc: "Hold 2s to Terminate | Hold 2s to Execute",
         spacebar: "Spacebar",
         t_terminal: "Show Terminal",

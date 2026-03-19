@@ -298,7 +298,6 @@ export function useStudio(props: {
   );
 }, [response]);
 
-  // studio-stats CustomEvent removed — no listener exists in the codebase.
 
   useEffect(() => {
     if (!initialRequest) return;
@@ -537,10 +536,10 @@ const onStartFuzz = async () => {
     setIsFuzzing(true);
     setFuzzResults([]);
     setFuzzProgress(0);
-    abortFuzzRef.current = false; // <-- Abort lock resets here
+    abortFuzzRef.current = false;
 
     for (let i = 0; i < payloads.length; i++) {
-      if (abortFuzzRef.current) break; // <-- Loop checks lock here
+      if (abortFuzzRef.current) break;
       
       const payload = payloads[i];
       const fuzzedUrl =
@@ -588,7 +587,7 @@ const onStartFuzz = async () => {
   };
 
   const onCancelFuzz = () => {
-    abortFuzzRef.current = true; // <-- Triggers the lock
+    abortFuzzRef.current = true;
     setIsFuzzing(false);
     setFuzzMode(false);
     setFuzzAnchor(null);
@@ -612,12 +611,10 @@ const onImportCurl = async () => {
     const tokens: string[] = [];
     let i = 0;
     while (i < text.length) {
-      // skip whitespace and backslash-newlines
       if (/\s/.test(text[i]) || (text[i] === '\\' && text[i + 1] === '\n')) {
         i++;
         continue;
       }
-      // single-quoted token — content is literal, no escapes
       if (text[i] === "'") {
         i++;
         let tok = '';
@@ -626,7 +623,6 @@ const onImportCurl = async () => {
         tokens.push(tok);
         continue;
       }
-      // double-quoted token — honour \" escape
       if (text[i] === '"') {
         i++;
         let tok = '';
@@ -638,13 +634,11 @@ const onImportCurl = async () => {
         tokens.push(tok);
         continue;
       }
-      // unquoted token
       let tok = '';
       while (i < text.length && !/\s/.test(text[i])) tok += text[i++];
       tokens.push(tok);
     }
 
-    // ── Step 2: Walk tokens and extract fields ────────────────────
     let parsedUrl = '';
     let parsedMethod = 'GET';
     const headerLines: string[] = [];
@@ -653,29 +647,24 @@ const onImportCurl = async () => {
     for (let j = 0; j < tokens.length; j++) {
       const t = tokens[j];
 
-      // URL — any unquoted token that starts with http
       if (t.startsWith('http://') || t.startsWith('https://')) {
         parsedUrl = t;
         continue;
       }
 
-      // Method: -X POST  or  --request POST
       if ((t === '-X' || t === '--request') && tokens[j + 1]) {
         parsedMethod = tokens[++j].toUpperCase();
         continue;
       }
 
-      // Headers: -H 'Key: Value'  or  --header 'Key: Value'
       if ((t === '-H' || t === '--header') && tokens[j + 1]) {
         const h = tokens[++j];
-        // skip pseudo-headers like :authority, :method
         if (!h.startsWith(':') && !h.toLowerCase().startsWith('content-length')) {
           headerLines.push(h);
         }
         continue;
       }
 
-      // Body: -d / --data / --data-raw / --data-binary
       if (
         (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary') &&
         tokens[j + 1]
@@ -690,14 +679,11 @@ const onImportCurl = async () => {
       return;
     }
 
-    // ── Step 3: Infer method from body ────────────────────────────
     if (parsedMethod === 'GET' && parsedBody) parsedMethod = 'POST';
 
-    // ── Step 4: Validate method ───────────────────────────────────
     const VALID = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'];
     const safeMethod = (VALID.includes(parsedMethod) ? parsedMethod : 'GET') as HttpMethod;
 
-    // ── Step 5: Fire setters ──────────────────────────────────────
     setUrl(parsedUrl);
     setMethod(safeMethod);
     setHeadersInput(headerLines.join('\n'));

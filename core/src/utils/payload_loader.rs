@@ -1,4 +1,5 @@
 use crate::core::mutator::InjectionPoint;
+use crate::utils::fingerprint::TechProfile;
 use std::fs;
 use std::io::BufRead;
 use std::path::Path;
@@ -164,6 +165,102 @@ impl PayloadLoader {
                 payloads.extend(self.sqli_payloads.iter().cloned());
             }
         }
+
+        payloads
+    }
+
+    /// Like `get_payloads_for_point`, but reorders payloads based on the detected
+    /// technology stack so the most likely-to-succeed probes fire first.
+    /// - **ASP.NET / IIS** → MSSQL time-based (`WAITFOR DELAY`) prioritised
+    /// - **PHP**           → MySQL time-based (`SLEEP`, `EXTRACTVALUE`) prioritised
+    /// - **Java**          → PostgreSQL time-based (`pg_sleep`) prioritised
+    /// - **WAF detected**  → raw `<script>` / `alert()` variants dropped (use encoded polyglots only)
+    /// - **Unknown stack** → falls back to the standard injection-point routing
+    pub fn get_payloads_for_point_tech_aware(
+        &self,
+        point: &InjectionPoint,
+        profile: &TechProfile,
+    ) -> Vec<String> {
+        let lang = profile.language.as_deref().unwrap_or("").to_lowercase();
+        let is_aspnet = lang.contains("asp.net");
+        let is_php    = lang.contains("php");
+        let is_java   = lang.contains("java");
+        let has_waf   = profile.waf.is_some();
+
+        if !is_aspnet && !is_php && !is_java && !has_waf {
+            return self.get_payloads_for_point(point);
+        }
+
+        let mut payloads: Vec<String> = Vec::new();
+
+        match point {
+            InjectionPoint::JsonField(_) => {
+                payloads.extend(POLYGLOT_JSON.iter().map(|s| s.to_string()));
+                payloads.extend(self.json_payloads.iter().cloned());
+                payloads.extend(self.generic_payloads.iter().cloned());
+            }
+
+            InjectionPoint::UrlParam(_) | InjectionPoint::FormParam(_) => {
+                payloads.extend(POLYGLOT_XSS.iter().map(|s| s.to_string()));
+
+                let sqli_hi: Vec<String>;
+                let sqli_lo: Vec<String>;
+                if is_aspnet {
+                    sqli_hi = POLYGLOT_SQLI.iter()
+                        .filter(|p| p.contains("WAITFOR") || p.contains("UNION SELECT"))
+                        .map(|s| s.to_string()).collect();
+                    sqli_lo = POLYGLOT_SQLI.iter()
+                        .filter(|p| !p.contains("WAITFOR") && !p.contains("UNION SELECT"))
+                        .map(|s| s.to_string()).collect();
+                } else if is_php {
+                    sqli_hi = POLYGLOT_SQLI.iter()
+                        .filter(|p| p.contains("SLEEP") || p.contains("EXTRACTVALUE"))
+                        .map(|s| s.to_string()).collect();
+                    sqli_lo = POLYGLOT_SQLI.iter()
+                        .filter(|p| !p.contains("SLEEP") && !p.contains("EXTRACTVALUE"))
+                        .map(|s| s.to_string()).collect();
+                } else if is_java {
+                    sqli_hi = POLYGLOT_SQLI.iter()
+                        .filter(|p| p.contains("pg_sleep"))
+                        .map(|s| s.to_string()).collect();
+                    sqli_lo = POLYGLOT_SQLI.iter()
+                        .filter(|p| !p.contains("pg_sleep"))
+                        .map(|s| s.to_string()).collect();
+                } else {
+                    sqli_hi = POLYGLOT_SQLI.iter().map(|s| s.to_string()).collect();
+                    sqli_lo = Vec::new();
+                }
+                payloads.extend(sqli_hi);
+                payloads.extend(sqli_lo);
+
+                payloads.extend(self.xss_payloads.iter().cloned());
+                payloads.extend(self.sqli_payloads.iter().cloned());
+            }
+
+            InjectionPoint::Header(_) => {
+                payloads.extend(self.generic_payloads.iter().cloned());
+                if is_aspnet {
+                    // Inject MSSQL header probes early
+                    let mssql: Vec<String> = POLYGLOT_SQLI.iter()
+                        .filter(|p| p.contains("WAITFOR"))
+                        .map(|s| s.to_string())
+                        .collect();
+                    payloads.extend(mssql);
+                }
+                payloads.extend(POLYGLOT_SQLI.iter().map(|s| s.to_string()));
+                payloads.extend(self.sqli_payloads.iter().cloned());
+            }
+        }
+
+        // WAF mode strip payloads containing unencoded script/alert patterns
+        if has_waf {
+            payloads.retain(|p| {
+                !p.contains("<script>") && !p.contains("alert()")
+            });
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        payloads.retain(|p| seen.insert(p.clone()));
 
         payloads
     }
