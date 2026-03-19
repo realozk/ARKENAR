@@ -81,7 +81,7 @@ function App() {
   const compareWithHistoryRef = useRef<((body: string) => void) | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<any | null>(null);    
-  const CURRENT_VERSION = "1.1.1"; 
+  const CURRENT_VERSION = "1.1.2"; 
   useEffect(() => {
     checkForAppUpdates().then((update) => {
       if (update) {
