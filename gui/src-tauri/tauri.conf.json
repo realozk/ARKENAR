@@ -54,8 +54,8 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://raw.githubusercontent.com/realozk/ARKENAR/main/latest.json"
-      ],
+  "https://github.com/RealOzk/ARKENAR/releases/latest/download/latest.json"
+],
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDRTU0QzU3Qzk5QzZBMTIKUldRU2FwekpWMHpsSEZPU3JWNzZUSDZZWFprcUZ2dWliMjFJdk9ZNVprYWVFL2hGQWJ1eklFU2kK"
     }
