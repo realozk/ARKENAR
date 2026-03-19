@@ -80,6 +80,12 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" gui/src-tauri/Cargo.toml
           sed -i "s/arkenar-core = { version = \"[^\"]*\"/arkenar-core = { version = \"$VERSION\"/" gui/src-tauri/Cargo.toml
 
+      - name: Install Rust stable (for cargo fetch)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Regenerate Cargo.lock
+        run: cargo fetch --manifest-path Cargo.toml
+
       - name: Commit version bump
         run: |
           git config user.name  "github-actions[bot]"
@@ -88,7 +94,7 @@ jobs:
                   gui/src-tauri/Cargo.toml \
                   core/Cargo.toml \
                   cli/Cargo.toml \
-                  Cargo.lock || true
+                  Cargo.lock
           git diff --cached --quiet && echo "Nothing to commit" || \
             git commit -m "chore: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
           git push origin main
@@ -227,7 +233,7 @@ jobs:
           }
 
           WIN_ASSET="Arkenar_${VERSION}_x64-setup.exe"
-          LINUX_ASSET="Arkenar_${VERSION}_amd64.AppImage"
+          LINUX_ASSET="arkenar_${VERSION}_amd64.AppImage"
           MAC_X64_ASSET="Arkenar_${VERSION}_x64.dmg"
           MAC_ARM_ASSET="Arkenar_${VERSION}_aarch64.dmg"
 
