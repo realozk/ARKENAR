@@ -3,7 +3,6 @@
 **Designed for pentesters and offensive security pros, Arkenar acts as a central orchestration layer. It combines Katana and Nuclei, while layering on its own custom mutation engine to catch complex logic flaws and injections that static templates might miss.**
 ​
 
-**i will update thr readme just give sometime <3 **
 
 ## • Core Capabilities
 
@@ -96,7 +95,7 @@ macOS & Linux
 
 ```bash
 # Basic single target scan
-arkenar [https://example.com](https://example.com)
+arkenar https://example.com
 
 # Advanced scan with a list and custom rate limit
 arkenar -l subdomains.txt -o output.json --rate-limit 150
@@ -106,7 +105,7 @@ Windows (PowerShell / CMD)
 
 ```bash 
 # Basic single target scan
-arkenar.exe [https://example.com](https://example.com)
+arkenar.exe https://example.com
 
 # Advanced scan with a list and output file
 arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
@@ -138,7 +137,6 @@ sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
 sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
 ```
 
-or for more advanced scan 
 
 
 
@@ -156,6 +154,13 @@ If `arkenar --update` fails with `Permission denied`, the binary is in a protect
 ```bash
 sudo arkenar --update
 ```
+##  Roadmap & Future Vision
+
+Arkenar is continuously evolving to become a comprehensive Enterprise-grade Offensive Security and Active Defense platform. Upcoming milestones include:
+* **Deep Hunter Engine**: Full bypass for login walls (Cookie/Token injection) and JS static analysis.
+* **Recon Workspace**: A visual environment for multi subdomain pentesting and live target scoping.
+* **Zero False-Positive Mode**: Auto-Exploit verification for critical vulnerabilities (SQLi, RCE).
+* **Plugin Ecosystem**: Extensible architecture supporting custom security scripts.
 
 ## Contributing
 Contributions are welcome Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
