@@ -18,7 +18,9 @@
     "@tauri-apps/plugin-updater": "^2.10.0",
     "lucide-react": "^0.575.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-virtuoso": "^4.18.4",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",

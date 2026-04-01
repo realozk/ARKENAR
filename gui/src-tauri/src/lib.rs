@@ -16,6 +16,9 @@ use arkenar_core::{
 pub mod studio;
 mod reporting;
 mod notifications;
+mod event_sink;
+
+use event_sink::{FindingEmitter, spawn_finding_emitter};
 
 
 #[derive(Clone, Serialize)]
@@ -64,14 +67,19 @@ pub struct StudioResponse {
 
 
 /// Sink implementation that emits Tauri events to the React frontend.
+///
+/// Findings are NOT emitted immediately. Instead they are pushed into a
+/// `FindingEmitter` which batches them and flushes every 250ms, keeping
+/// the IPC channel and React render thread free during heavy scans.
 struct TauriSink {
     app: AppHandle,
     webhook_url: Option<String>,
+    finding_emitter: FindingEmitter,
 }
 
 impl TauriSink {
-    fn new_ref(app: AppHandle, webhook_url: Option<String>) -> SinkRef {
-        Arc::new(Self { app, webhook_url })
+    fn new_ref(app: AppHandle, webhook_url: Option<String>, finding_emitter: FindingEmitter) -> SinkRef {
+        Arc::new(Self { app, webhook_url, finding_emitter })
     }
 }
 
@@ -84,7 +92,8 @@ impl ScanEventSink for TauriSink {
     }
 
     fn on_finding(&self, result: &ScanResult) {
-        let _ = self.app.emit("scan-finding", ScanFindingEvent {
+        // Push into the batch buffer — emitted to React every 250ms.
+        self.finding_emitter.push(ScanFindingEvent {
             url: result.url.clone(),
             vuln_type: result.vuln_type.clone(),
             payload: result.payload.clone(),
@@ -334,7 +343,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         *guard = Some(Arc::clone(&abort_flag));
     }
 
-    let sink = TauriSink::new_ref(app.clone(), config.webhook_url.clone());
+    // Spawn the batched finding emitter for this scan's lifetime.
+    // When all TauriSink clones are dropped at scan end, the emitter shuts down cleanly.
+    let finding_emitter = spawn_finding_emitter(app.clone());
+    let sink = TauriSink::new_ref(app.clone(), config.webhook_url.clone(), finding_emitter);
 
     let mut targets: Vec<String> = Vec::new();
 
@@ -732,7 +744,9 @@ pub fn run() {
             }
 
             let handle: AppHandle = app.handle().clone();
-            let setup_sink: Arc<dyn ScanEventSink> = TauriSink::new_ref(handle.clone(), None);
+            // Setup sink only logs — no findings during startup, so a no-op emitter is fine.
+            let setup_emitter = spawn_finding_emitter(handle.clone());
+            let setup_sink: Arc<dyn ScanEventSink> = TauriSink::new_ref(handle.clone(), None, setup_emitter);
             tauri::async_runtime::spawn(async move {
                 setup_sink.on_log("info", "Checking dependencies (Katana, Nuclei)...");
                 installer::check_and_install_tools().await;

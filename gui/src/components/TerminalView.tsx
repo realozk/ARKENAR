@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback, memo } from "react";
+import { Virtuoso } from "react-virtuoso";
 import {
   FlaskConical, Bug, Shield,
   AlertTriangle, ChevronDown, Copy, Check, Trash2,
@@ -666,16 +667,30 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
               onFilterChange={setSeverityFilter}
             />
           </div>
-          <div className="flex-1 overflow-y-auto scroll-smooth px-5 py-4 space-y-3">
+          <div className="flex-1 overflow-hidden">
             {processedFindings.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-text-ghost">
+              <div className="flex flex-col items-center justify-center h-full text-text-ghost pt-20">
                 <Shield size={36} strokeWidth={2} className="mb-3 opacity-30" />
                 <span className="text-sm font-medium">{searchQuery || severityFilter !== "all" ? "No matches found." : "No findings yet"}</span>
               </div>
             )}
-            {processedFindings.map(f => (
-              <FindingCard key={f.originalIndex} finding={f} index={f.originalIndex} onOpenDetail={() => setDetailFinding(f)} onSendToStudio={onSendToStudio ?? (() => {})} />
-            ))}
+            {processedFindings.length > 0 && (
+              <Virtuoso
+                style={{ height: "100%" }}
+                data={processedFindings}
+                itemContent={(_, f) => (
+                  <div className="px-5 py-1.5">
+                    <FindingCard
+                      key={f.originalIndex}
+                      finding={f}
+                      index={f.originalIndex}
+                      onOpenDetail={() => setDetailFinding(f)}
+                      onSendToStudio={onSendToStudio ?? (() => {})}
+                    />
+                  </div>
+                )}
+              />
+            )}
           </div>
         </div>
       )}

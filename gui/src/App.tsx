@@ -20,6 +20,7 @@ import { playSound } from "./utils/audio";
 import { checkForAppUpdates } from './lib/updateChecker';
 import { ChangelogModal } from './components/ChangelogModal';
 import { Terminal, Blocks, Radar } from "lucide-react";
+import { useScanStore } from './store';
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
 
@@ -41,6 +42,13 @@ function App() {
   const appSettingsRef = useRef(appSettings);
   useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
 
+  // ── Zustand: fast-updating scan state (rps, progress, stats) ─────────────
+  const { setRps, setScanProgress, setStats } = useScanStore.getState();
+  const scanProgress = useScanStore(s => s.scanProgress);
+  const stats = useScanStore(s => s.stats);
+  const rps = useScanStore(s => s.rps);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const [config, setConfig] = useState<ScanConfig>(() => {
     const s = loadSettings();
     return {
@@ -55,7 +63,6 @@ function App() {
   });
   const [scanStatus, setScanStatus] = useState<ScanStatus>("idle");
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [stats, setStats] = useState<ScanStatsEvent>({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [findings, setFindings] = useState<ScanFindingEvent[]>([]);
   const [activeTab, setActiveTab] = useState<"terminal" | "findings" | "history" | "studio">("terminal");
@@ -63,7 +70,6 @@ function App() {
   const [studioHistory, setStudioHistory] = useState<StudioHistoryItem[]>([]);
   const [selectedStudioHistoryId, setSelectedStudioHistoryId] = useState<string | null>(null);
   const activeTabRef = useRef<"terminal" | "findings" | "history" | "studio">("terminal");
-  const [scanProgress, setScanProgress] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
@@ -101,7 +107,7 @@ function App() {
   const [isHoldingStop, setIsHoldingStop] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [holdTimeRemaining, setHoldTimeRemaining] = useState(2.0);
-  const [rps, setRps] = useState(0);
+  // rps is read from Zustand store (useScanStore), not local state
   const spaceTimerRef = useRef<number | null>(null);
   const holdIntervalRef = useRef<number | null>(null);
   const finishedTimerRef = useRef<number | null>(null);
@@ -241,14 +247,20 @@ const removeToast = useCallback((id: string) => {
           finishedTimerRef.current = queueTimer;
         }
       }),
-      listen<ScanFindingEvent>("scan-finding", (event) => {
-        findingBuffer.current.push(event.payload);
-        rpsCountRef.current += 1;
+      // Batched findings listener — Rust flushes Vec<ScanFindingEvent> every 250ms
+      listen<ScanFindingEvent[]>("scan-findings-batch", (event) => {
+        const batch = event.payload;
+        for (const f of batch) {
+          findingBuffer.current.push(f);
+          rpsCountRef.current += 1;
+        }
         if (activeTabRef.current !== "studio") {
           setActiveTab("findings");
         }
-        setScanProgress((p) => Math.min(p + 1, 90));
-        playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
+        setScanProgress((p) => Math.min(p + batch.length, 90));
+        if (batch.length > 0) {
+          playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
+        }
       }),
     ]);
 
