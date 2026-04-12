@@ -5,7 +5,7 @@ use tauri::Manager;
 
 use reqwest::redirect::Policy;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
 use arkenar_core::{
@@ -13,6 +13,11 @@ use arkenar_core::{
     SinkRef, TargetManager, installer, read_lines,
     run_katana_crawler, run_nuclei_scan,
 };
+use arkenar_core::modules::subfinder::run_subfinder;
+use arkenar_core::modules::port_scanner::scan_ports;
+use arkenar_core::modules::dns_lookup::resolve_domain;
+use arkenar_core::modules::js_secrets::scan_js_secrets;
+
 pub mod studio;
 mod reporting;
 mod notifications;
@@ -20,6 +25,19 @@ mod event_sink;
 
 use event_sink::{FindingEmitter, spawn_finding_emitter};
 
+pub struct AppState {
+    pub recon_running: Arc<AtomicBool>,
+    pub recon_abort: Arc<AtomicBool>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            recon_running: Arc::new(AtomicBool::new(false)),
+            recon_abort: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
 
 #[derive(Clone, Serialize)]
 struct ScanLogEvent {
@@ -46,6 +64,14 @@ pub struct ScanFindingEvent {
     pub timing_ms: u128,
     pub server: Option<String>,
     pub curl_cmd: String,
+    #[serde(default)]
+    pub tech_stack: Vec<String>,
+    #[serde(default)]
+    pub waf_detected: Option<String>,
+    #[serde(default)]
+    pub verified: bool,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 #[derive(serde::Deserialize)]
 pub struct StudioRequest {
@@ -55,7 +81,6 @@ pub struct StudioRequest {
     pub body:    String,
 }
 
-/// Returned to React after a Studio send.
 #[derive(Clone, serde::Serialize)]
 pub struct StudioResponse {
     pub status:         u16,
@@ -65,6 +90,41 @@ pub struct StudioResponse {
     pub timing_ms:      u128,
 }
 
+#[derive(Clone, Serialize)]
+struct ReconSubdomainEvent {
+    host: String,
+}
+
+#[derive(Clone, Serialize)]
+struct ReconPortsEvent {
+    host: String,
+    ports: Vec<u16>,
+}
+
+#[derive(Clone, Serialize)]
+struct ReconDnsEvent {
+    host: String,
+    a: Vec<String>,
+    mx: Vec<String>,
+    txt: Vec<String>,
+    cname: Option<String>,
+    whois: String,
+}
+
+#[derive(Clone, Serialize)]
+struct ReconJsSecretEvent {
+    url: String,
+    secret_type: String,
+    matched_value: String,
+    line_number: usize,
+}
+
+#[derive(Clone, Serialize)]
+struct ReconCompleteEvent {
+    total_hosts: usize,
+    total_ports: usize,
+    total_secrets: usize,
+}
 
 /// Sink implementation that emits Tauri events to the React frontend.
 ///
@@ -101,6 +161,10 @@ impl ScanEventSink for TauriSink {
             timing_ms: result.timing_ms,
             server: result.server.clone(),
             curl_cmd: result.to_curl(),
+            tech_stack: result.tech_stack.clone(),
+            waf_detected: result.waf_detected.clone(),
+            verified: result.verified,
+            notes: result.notes.clone(),
         });
         self.on_log("error", &format!(
             "{} detected → {} (payload: {})",
@@ -128,9 +192,6 @@ impl ScanEventSink for TauriSink {
 
 static SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
 
-
-/// Per-scan abort flag held in an Arc so the scan task and stop_scan both
-/// operate on the same value. Replaced atomically at the start of each scan.
 static CURRENT_ABORT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
 static STUDIO_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -176,8 +237,6 @@ fn validate_studio_request(req: &StudioRequest) -> Result<(), String> {
     Ok(())
 }
 
-/// RAII guard that always resets SCAN_RUNNING when it is dropped, even if the
-/// scan task panics. Also clears the per-scan abort Arc so it can be GC'd.
 struct ScanGuard;
 impl Drop for ScanGuard {
     fn drop(&mut self) {
@@ -188,7 +247,6 @@ impl Drop for ScanGuard {
     }
 }
 
-/// Returns an error if `val` contains shell metacharacters or path-traversal.
 fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
     const FORBIDDEN: &[char] = &[';', '|', '&', '$', '>', '<', '`', '(', ')', '{', '}', '\n', '\r', '\0'];
     if val.chars().any(|c| FORBIDDEN.contains(&c)) {
@@ -200,7 +258,6 @@ fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validates the `tags` field to prevent flag injection (e.g. `-exec`, `--config`).
 fn validate_tags_field(tags: &str) -> Result<(), String> {
     if tags.is_empty() {
         return Ok(());
@@ -217,8 +274,6 @@ fn validate_tags_field(tags: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validates all user-supplied string fields in `ScanConfig` before any
-/// subprocess is spawned or network call is made.
 fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     validate_text_field("proxy",    &config.proxy)?;
     validate_text_field("headers",  &config.headers)?;
@@ -274,8 +329,6 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Blocks SSRF by requiring HTTPS and rejecting RFC-1918 / loopback hosts.
-/// Uses the `url` crate for proper parsing instead of manual string splitting.
 fn validate_webhook_url(raw: &str) -> Result<(), String> {
     let parsed = url::Url::parse(raw)
         .map_err(|_| "Webhook URL is not a valid URL.".to_string())?;
@@ -323,6 +376,132 @@ fn validate_webhook_url(raw: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn validate_recon_domain(domain: &str) -> Result<(), String> {
+    if domain.is_empty() {
+        return Err("Domain must not be empty.".to_string());
+    }
+    const RECON_FORBIDDEN: &[char] = &['/', ':', '@', ';', '&', '|', '$', '(', ')', '\\', '\0'];
+    if domain.chars().any(|c| RECON_FORBIDDEN.contains(&c)) {
+        return Err("Domain contains forbidden characters.".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn run_recon(
+    domain: String,
+    visited_urls: Vec<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    validate_recon_domain(&domain)?;
+
+    if state.recon_running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("Recon is already running.".to_string());
+    }
+
+    state.recon_abort.store(false, Ordering::SeqCst);
+
+    let recon_flag = Arc::clone(&state.recon_running);
+    let abort = Arc::clone(&state.recon_abort);
+    let app_clone = app.clone();
+
+    tokio::spawn(async move {
+        let sink: SinkRef = TauriSink::new_ref(app_clone.clone(), None);
+
+        // Always emit the root domain itself first so the UI shows something immediately
+        app_clone.emit("recon-subdomain", ReconSubdomainEvent { host: domain.clone() }).ok();
+
+        let subfinder_hosts = match run_subfinder(&domain, sink.clone(), Arc::clone(&abort)).await {
+            Ok(h) => h,
+            Err(e) => {
+                sink.on_log("error", &format!("[recon] subfinder error: {}", e));
+                vec![]
+            }
+        };
+
+        // Deduplicate: root domain + subfinder results, root domain first
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(domain.clone());
+        let mut hosts = vec![domain.clone()];
+        for h in subfinder_hosts {
+            if seen.insert(h.clone()) {
+                hosts.push(h);
+            }
+        }
+
+        let total_hosts = hosts.len();
+        let mut total_ports: usize = 0;
+        let mut total_secrets: usize = 0;
+
+        // Skip re-emitting the root domain subdomain event (already emitted above),
+        // but DO run port scan + DNS for ALL hosts including root
+        for (i, host) in hosts.iter().enumerate() {
+            if i > 0 {
+                app_clone.emit("recon-subdomain", ReconSubdomainEvent { host: host.clone() }).ok();
+            }
+
+            let (ports_result, dns_result) = tokio::join!(
+                scan_ports(host, Arc::clone(&abort), sink.clone()),
+                resolve_domain(host)
+            );
+
+            if let Ok(ports) = ports_result {
+                total_ports += ports.len();
+                app_clone.emit("recon-ports", ReconPortsEvent {
+                    host: host.clone(),
+                    ports,
+                }).ok();
+            }
+
+            if let Ok(dns) = dns_result {
+                app_clone.emit("recon-dns", ReconDnsEvent {
+                    host: host.clone(),
+                    a: dns.a_records,
+                    mx: dns.mx,
+                    txt: dns.txt,
+                    cname: dns.cname,
+                    whois: dns.whois_raw,
+                }).ok();
+            }
+        }
+
+        let secrets = match scan_js_secrets(visited_urls, Arc::clone(&abort), sink.clone()).await {
+            Ok(s) => s,
+            Err(_) => vec![],
+        };
+
+        total_secrets = secrets.len();
+        for s in secrets {
+            app_clone.emit("recon-js-secret", ReconJsSecretEvent {
+                url: s.url,
+                secret_type: s.secret_type,
+                matched_value: s.matched_value,
+                line_number: s.line_number,
+            }).ok();
+        }
+
+        app_clone.emit("recon-complete", ReconCompleteEvent {
+            total_hosts,
+            total_ports,
+            total_secrets,
+        }).ok();
+
+        recon_flag.store(false, Ordering::SeqCst);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_recon(state: State<'_, AppState>) {
+    state.recon_abort.store(true, Ordering::SeqCst);
+    state.recon_running.store(false, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -373,7 +552,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
     }
 
     tokio::spawn(async move {
-        let _guard = ScanGuard; // resets SCAN_RUNNING on ANY exit path (including panics)
+        let _guard = ScanGuard;
         let start_time = Instant::now();
         let total_targets = targets.len();
 
@@ -470,13 +649,14 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             };
 
             let (result_tx, result_rx) = mpsc::channel::<ScanResult>(200);
-            let scanned_count = target_manager.len();
-            let engine = ScanEngine::new(
+            let total_scanned = target_manager.total_seen();
+            let engine = ScanEngine::with_config(
                 target_manager,
                 Arc::clone(&http_client),
                 config.threads,
                 config.rate_limit,
                 if config.payloads.is_empty() { None } else { Some(&config.payloads) },
+                &config,
             );
 
             let sink_agg = sink.clone();
@@ -503,9 +683,9 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
                     }
                     vulnerable_urls.insert(r.url.clone());
                 }
-                total_safe += scanned_count.saturating_sub(vulnerable_urls.len());
+                total_safe += total_scanned.saturating_sub(vulnerable_urls.len());
             }
-        }  // end target loop
+        }
 
         let elapsed = format!("{:.1}s", start_time.elapsed().as_secs_f64());
         sink.on_log("phase", &format!("── Scan Complete ({})", elapsed));
@@ -528,7 +708,6 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             safe: total_safe,
             elapsed,
         });
-        // _guard drops here — ScanGuard resets SCAN_RUNNING and clears CURRENT_ABORT
     });
 
     Ok(())
@@ -563,7 +742,6 @@ async fn studio_send(req: StudioRequest) -> Result<StudioResponse, String> {
         other     => return Err(format!("Unsupported HTTP method: {}", other)),
     };
 
-    // ── Lazy-init Studio client (cookie store ON, redirects ON
     let client = match STUDIO_CLIENT.get() {
         Some(c) => c.clone(),
         None => {
@@ -695,10 +873,6 @@ async fn test_webhook(url: String) -> Result<(), String> {
     Ok(())
 }
 
-
-
-
-
 #[tauri::command]
 async fn export_report(
     findings: Vec<ScanFindingEvent>,
@@ -709,7 +883,6 @@ async fn export_report(
     if output_path.is_empty() {
         return Err("Output path must not be empty.".to_string());
     }
-    // Prevent path traversal and restrict to .html / .htm outputs.
     if output_path.contains("..") {
         return Err("Report path must not contain '..'.".to_string());
     }
@@ -722,6 +895,7 @@ async fn export_report(
         .map_err(|e| format!("Failed to write report: {}", e))?;
     Ok(output_path)
 }
+
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow) {
     let _ = window.show();
@@ -731,16 +905,26 @@ fn show_main_window(window: tauri::WebviewWindow) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(AppState::default())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![start_scan, stop_scan, check_tools, test_webhook, export_report, studio_send, studio::studio_auto_login, show_main_window])
+        .invoke_handler(tauri::generate_handler![
+            start_scan,
+            stop_scan,
+            run_recon,
+            stop_recon,
+            check_tools,
+            test_webhook,
+            export_report,
+            studio_send,
+            studio::studio_auto_login,
+            show_main_window,
+        ])
         .setup(|app| {
-            
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.maximize();
-                
             }
 
             let handle: AppHandle = app.handle().clone();

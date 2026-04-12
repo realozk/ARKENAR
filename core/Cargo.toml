@@ -27,3 +27,5 @@ zip = "0.6"
 flate2 = "1.1.9"
 tar = "0.4.44"
 percent-encoding = "2.3"
+dirs = "5"
+trust-dns-resolver = { version = "0.23", features = ["tokio-runtime"] }

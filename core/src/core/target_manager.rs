@@ -32,6 +32,10 @@ impl TargetManager {
         self.queue.len()
     }
 
+    pub fn total_seen(&self) -> usize {
+        self.seen.len()
+    }
+
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()

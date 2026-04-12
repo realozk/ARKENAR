@@ -359,11 +359,30 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* Discovery Section */}
+        <div>
+          <SectionLabel icon={Telescope}>Discovery</SectionLabel>
+          <ToggleRow label="JS Endpoint Analysis" desc="Crawls discovered .js files for hidden API endpoints" checked={config.enableJsAnalysis} onChange={(v) => onUpdate("enableJsAnalysis", v)} />
+          <ToggleRow label="Parameter Fuzzing" desc="Contextual payload selection per query parameter name" checked={config.enableParamFuzz} onChange={(v) => onUpdate("enableParamFuzz", v)} />
+          <div className="mt-3">
+            <p className="text-xs text-text-muted mb-1.5">Scope Regex</p>
+            <TextInput value={config.scopeRegex} onChange={(v) => onUpdate("scopeRegex", v)} placeholder="^https?://target\.com" mono />
+            <p className="mt-1.5 text-xs text-text-ghost">Only URLs matching this pattern will be scanned</p>
+          </div>
+        </div>
+
         {/* Integrations Section */}
         <div>
           <SectionLabel icon={Radar}>{t("integrations", language)}</SectionLabel>
           <ToggleRow label={t("katanaCrawler", language)} desc={t("katanaCrawlerDesc", language)} checked={config.enableCrawler} onChange={(v) => onUpdate("enableCrawler", v)} />
           <ToggleRow label={t("nucleiScanner", language)} desc={t("nucleiScannerDesc", language)} checked={config.enableNuclei} onChange={(v) => onUpdate("enableNuclei", v)} />
+          {config.enableNuclei && (
+            <div className="mt-2 pl-8">
+              <p className="text-xs text-text-muted mb-1.5">Nuclei Templates Directory</p>
+              <TextInput value={config.nucleiTemplatesDir} onChange={(v) => onUpdate("nucleiTemplatesDir", v)} placeholder="~/.arkenar/plugins/nuclei (empty = built-in)" mono />
+              <p className="mt-1 text-[10px] text-text-ghost">Custom .yaml templates appended to scan</p>
+            </div>
+          )}
         </div>
 
         {/* Options Section */}
@@ -391,6 +410,12 @@ useEffect(() => {
               <NumberInput value={config.rateLimit} onChange={(v: number) => onUpdate("rateLimit", v)} min={1} max={5000} />
             </div>
           </div>
+        </div>
+
+        {/* Engine Section */}
+        <div>
+          <SectionLabel icon={Zap}>Engine</SectionLabel>
+          <ToggleRow label="Smart Payload Selection" desc="Prioritizes payloads by parameter name" checked={config.enableSmartPayloads} onChange={(v) => onUpdate("enableSmartPayloads", v)} />
         </div>
 
         {/* Crawler Config */}

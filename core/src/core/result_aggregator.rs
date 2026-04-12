@@ -1,6 +1,6 @@
 use std::collections::HashSet;
-use std::io::Write;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use url::Url;
 
@@ -17,6 +17,14 @@ pub struct ScanResult {
     pub method: String,
     pub request_headers: Vec<(String, String)>,
     pub request_body: Option<String>,
+    #[serde(default)]
+    pub tech_stack: Vec<String>,
+    #[serde(default)]
+    pub waf_detected: Option<String>,
+    #[serde(default)]
+    pub verified: bool,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 impl ScanResult {
@@ -72,13 +80,12 @@ impl ResultAggregator {
         output_path: &str,
         sink: SinkRef,
     ) -> Vec<ScanResult> {
-        // Open the output file once; if it fails, log the error but continue
-        // collecting results in memory so no findings are silently discarded.
         let mut file = if !output_path.is_empty() {
-            match std::fs::OpenOptions::new()
+            match tokio::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(output_path)
+                .await
             {
                 Ok(f) => Some(f),
                 Err(e) => {
@@ -103,7 +110,7 @@ impl ResultAggregator {
 
             if let Some(ref mut f) = file {
                 if let Ok(line) = serde_json::to_string(&result) {
-                    let _ = writeln!(f, "{}", line);
+                    let _ = f.write_all(format!("{}\n", line).as_bytes()).await;
                 }
             }
 
@@ -145,5 +152,18 @@ impl ResultAggregator {
             sink.on_log("phase", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             sink.on_log("phase", "");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScanResult;
+
+    #[test]
+    fn test_legacy_scan_result_deserializes() {
+        let json = r#"{"url":"http://x.com","vuln_type":"SQLi","payload":"'","timing_ms":10,"status_code":200,"server":null,"method":"GET","request_headers":[],"request_body":null}"#;
+        let r: ScanResult = serde_json::from_str(json).unwrap();
+        assert!(r.tech_stack.is_empty());
+        assert_eq!(r.verified, false);
     }
 }

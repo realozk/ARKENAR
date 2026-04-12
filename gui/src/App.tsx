@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 import { ToastContainer, type Toast, type ToastType } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
-import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry } from "./types";
+import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry, ReconHost } from "./types";
 import { DEFAULT_CONFIG } from "./types";
 import { StatusDot, ConfirmationModal } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
@@ -21,12 +21,13 @@ import { checkForAppUpdates } from './lib/updateChecker';
 import { ChangelogModal } from './components/ChangelogModal';
 import { Terminal, Blocks, Radar } from "lucide-react";
 import { useScanStore } from './store';
+import ReconPanel from "./components/ReconPanel";
+
 const LOG_CAP = 2_000;
 const HISTORY_KEY = "arkenar-scan-history";
+const VALID_TABS = ["terminal", "findings", "history", "studio", "recon", "sitemap"] as const;
+type ActiveTab = "terminal" | "findings" | "history" | "studio" | "recon" | "sitemap";
 
-
-
-/** Validates scan history entries loaded from localStorage. */
 function validateHistory(data: unknown): ScanHistoryEntry[] {
   if (!Array.isArray(data)) return [];
   return data.filter((e): e is ScanHistoryEntry =>
@@ -65,21 +66,30 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [findings, setFindings] = useState<ScanFindingEvent[]>([]);
-  const [activeTab, setActiveTab] = useState<"terminal" | "findings" | "history" | "studio">("terminal");
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const saved = localStorage.getItem('arkenar-active-tab');
+    return (VALID_TABS as readonly string[]).includes(saved ?? '') ? (saved as ActiveTab) : "terminal";
+  });
+  const [visitedUrls, setVisitedUrls] = useState<string[]>([]);
   const [initialStudioRequest, setInitialStudioRequest] = useState<Partial<StudioRequest> | null>(null);
   const [studioHistory, setStudioHistory] = useState<StudioHistoryItem[]>([]);
   const [selectedStudioHistoryId, setSelectedStudioHistoryId] = useState<string | null>(null);
-  const activeTabRef = useRef<"terminal" | "findings" | "history" | "studio">("terminal");
+  const activeTabRef = useRef<ActiveTab>("terminal");
+
   const [showSettings, setShowSettings] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [reconHosts, setReconHosts] = useState<Map<string, ReconHost>>(new Map());
+  const [isReconRunning, setIsReconRunning] = useState(false);
+  const [isReconComplete, setIsReconComplete] = useState(false);
   const compareWithHistoryRef = useRef<((body: string) => void) | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
-  const [availableUpdate, setAvailableUpdate] = useState<any | null>(null);    
-  const CURRENT_VERSION = "1.1.0"; 
+  const [availableUpdate, setAvailableUpdate] = useState<unknown | null>(null);
+  const CURRENT_VERSION = "1.1.0";
+
   useEffect(() => {
     checkForAppUpdates().then((update) => {
       if (update) {
@@ -101,7 +111,6 @@ function App() {
     }
   };
 
-  
   const [scanQueue, setScanQueue] = useState<string[]>([]);
   const [isHoldingSpace, setIsHoldingSpace] = useState(false);
   const [isHoldingStop, setIsHoldingStop] = useState(false);
@@ -120,17 +129,23 @@ function App() {
 
   const logBuffer = useRef<LogEntry[]>([]);
   const findingBuffer = useRef<ScanFindingEvent[]>([]);
-  const rpsCountRef = useRef(0); 
+  const rpsCountRef = useRef(0);
   const configRef = useRef(config);
   configRef.current = config;
   const scanQueueRef = useRef(scanQueue);
   scanQueueRef.current = scanQueue;
+  const visitedUrlsRef = useRef(visitedUrls);
+  visitedUrlsRef.current = visitedUrls;
+
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
   useEffect(() => {
-    
+    localStorage.setItem('arkenar-active-tab', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
     document.documentElement.style.setProperty("--ui-scale", (appSettings.uiScale / 100).toString());
     document.documentElement.lang = appSettings.language;
     document.documentElement.dir = appSettings.language === "ar" ? "rtl" : "ltr";
@@ -151,25 +166,21 @@ function App() {
   }, []);
 
   const addToast = useCallback((type: ToastType, message: string) => {
-  const id = crypto.randomUUID();
-  setToasts(prev => [...prev.slice(-4), { id, type, message }]);
-}, []);
+    const id = crypto.randomUUID();
+    setToasts(prev => [...prev.slice(-4), { id, type, message }]);
+  }, []);
 
-const removeToast = useCallback((id: string) => {
-  setToasts(prev => prev.filter(t => t.id !== id));
-}, []);
-
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
 
   const unlistenRef = useRef<(() => void)[]>([]);
-  
-  useEffect(() => {
 
-    
-    
+  useEffect(() => {
     setTimeout(() => {
       invoke('show_main_window');
     }, 150);
-    
+
     unlistenRef.current.forEach(fn => fn());
     unlistenRef.current = [];
 
@@ -197,14 +208,12 @@ const removeToast = useCallback((id: string) => {
         setScanProgress(100);
         playSound("complete", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnComplete, appSettingsRef.current.soundVolume);
 
-        // Auto-reset to idle after 10 seconds
         if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
         finishedTimerRef.current = window.setTimeout(() => {
           setScanStatus("idle");
           finishedTimerRef.current = null;
         }, 10_000);
 
-        // Save to scan history
         const entry: ScanHistoryEntry = {
           id: crypto.randomUUID(),
           date: new Date().toISOString(),
@@ -223,7 +232,6 @@ const removeToast = useCallback((id: string) => {
           return next;
         });
 
-        // Process scan queue — if there are queued targets, start next
         const queue = scanQueueRef.current;
         if (queue.length > 0) {
           const [nextTarget, ...rest] = queue;
@@ -235,6 +243,7 @@ const removeToast = useCallback((id: string) => {
             setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
             setLogs([]);
             setFindings([]);
+            setVisitedUrls([]);
             setActiveTab("terminal");
             invoke("start_scan", { config: { ...configRef.current, target: nextTarget, listFile: "" } }).catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
@@ -261,6 +270,62 @@ const removeToast = useCallback((id: string) => {
         if (batch.length > 0) {
           playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
         }
+      }),
+      listen<{ url: string }>("scan-url-visited", (event) => {
+        setVisitedUrls(prev => Array.from(new Set([...prev, event.payload.url])));
+      }),
+      listen<{ host: string }>("recon-subdomain", (e) => {
+        setReconHosts(prev => {
+          const m = new Map(prev);
+          if (!m.has(e.payload.host)) {
+            m.set(e.payload.host, { host: e.payload.host, ports: [], dns: null, jsSecrets: [] });
+          }
+          return m;
+        });
+      }),
+      listen<{ host: string; ports: number[] }>("recon-ports", (e) => {
+        setReconHosts(prev => {
+          const m = new Map(prev);
+          const h = m.get(e.payload.host);
+          if (h) {
+            h.ports = [...new Set([...h.ports, ...e.payload.ports])].sort((a, b) => a - b);
+            m.set(e.payload.host, h);
+          }
+          return m;
+        });
+      }),
+      listen<{ host: string; a: string[]; mx: string[]; txt: string[]; cname: string | null; whois: string }>("recon-dns", (e) => {
+        setReconHosts(prev => {
+          const m = new Map(prev);
+          const h = m.get(e.payload.host);
+          if (h) {
+            h.dns = { a: e.payload.a, mx: e.payload.mx, txt: e.payload.txt, cname: e.payload.cname, whois: e.payload.whois };
+            m.set(e.payload.host, h);
+          }
+          return m;
+        });
+      }),
+      listen<{ url: string; secret_type: string; matched_value: string; line_number: number }>("recon-js-secret", (e) => {
+        setReconHosts(prev => {
+          let hostName = "";
+          try {
+            const urlObj = new URL(e.payload.url);
+            hostName = urlObj.hostname;
+          } catch {
+            hostName = e.payload.url.split('/')[0];
+          }
+          const m = new Map(prev);
+          const h = m.get(hostName);
+          if (h) {
+            h.jsSecrets.push({ url: e.payload.url, secret_type: e.payload.secret_type, matched_value: e.payload.matched_value, line_number: e.payload.line_number });
+            m.set(hostName, h);
+          }
+          return m;
+        });
+      }),
+      listen<{ total_hosts: number; total_ports: number; total_secrets: number }>("recon-complete", () => {
+        setIsReconRunning(false);
+        setIsReconComplete(true);
       }),
     ]);
 
@@ -319,26 +384,24 @@ const removeToast = useCallback((id: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }, []);
 
- 
-
-
- const handleQuickRescan = useCallback(async (target: string) => {
-  setConfig(prev => ({ ...prev, target, listFile: "" }));
-  setScanStatus("running");
-  setScanProgress(0);
-  setLogs([]);
-  setFindings([]);
-  setActiveTab("terminal");
-  setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
-  try {
-    await invoke("start_scan", { config: { ...configRef.current, target, listFile: "", webhookUrl: appSettingsRef.current.globalWebhookUrl || undefined } });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
-    addLog("error", `Scan failed: ${msg}`);
-    setScanStatus("error");
-    addToast("error", `Scan failed: ${msg}`);
-  }
-}, [addLog, addToast]);
+  const handleQuickRescan = useCallback(async (target: string) => {
+    setConfig(prev => ({ ...prev, target, listFile: "" }));
+    setScanStatus("running");
+    setScanProgress(0);
+    setLogs([]);
+    setFindings([]);
+    setVisitedUrls([]);
+    setActiveTab("terminal");
+    setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
+    try {
+      await invoke("start_scan", { config: { ...configRef.current, target, listFile: "", webhookUrl: appSettingsRef.current.globalWebhookUrl || undefined } });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
+      addLog("error", `Scan failed: ${msg}`);
+      setScanStatus("error");
+      addToast("error", `Scan failed: ${msg}`);
+    }
+  }, [addLog, addToast]);
 
   const handleStartScan = useCallback(async () => {
     if (!config.target && !config.listFile) return;
@@ -350,6 +413,7 @@ const removeToast = useCallback((id: string) => {
     setStats({ targets: 0, urls: 0, critical: 0, medium: 0, safe: 0, elapsed: "—" });
     setLogs([]);
     setFindings([]);
+    setVisitedUrls([]);
     setActiveTab("terminal");
     playSound("start", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnStart, appSettingsRef.current.soundVolume);
     try {
@@ -366,19 +430,19 @@ const removeToast = useCallback((id: string) => {
       addToast("error", `Scan failed: ${msg}`);
     }
   }, [config, addLog, addToast]);
-  const handleExportCSV = useCallback(() => {
-  if (scanHistory.length === 0) return;
-  const header = "Date,Target,Elapsed,Critical,Medium,Safe,URLs\n";
-  const rows = scanHistory.map(e =>
-    `"${e.date}","${e.target}","${e.elapsed}",${e.criticalCount},${e.mediumCount},${e.safeCount},${e.urlsScanned}`
-  ).join("\n");
-  const blob = new Blob([header + rows], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "arkenar-history.csv"; a.click();
-  URL.revokeObjectURL(url);
-}, [scanHistory]);
 
+  const handleExportCSV = useCallback(() => {
+    if (scanHistory.length === 0) return;
+    const header = "Date,Target,Elapsed,Critical,Medium,Safe,URLs\n";
+    const rows = scanHistory.map(e =>
+      `"${e.date}","${e.target}","${e.elapsed}",${e.criticalCount},${e.mediumCount},${e.safeCount},${e.urlsScanned}`
+    ).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "arkenar-history.csv"; a.click();
+    URL.revokeObjectURL(url);
+  }, [scanHistory]);
 
   const handleStopScan = useCallback(async () => {
     try {
@@ -386,11 +450,11 @@ const removeToast = useCallback((id: string) => {
       await invoke("stop_scan");
       addToast("warning", "Stopping scan...");
       addLog("warn", "Stop signal sent. Aborting scan...");
-      setScanQueue([]); // Clear queue on manual stop
+      setScanQueue([]);
     } catch (err: unknown) {
       const msg = typeof err === "string" ? err : (err as Error)?.message ?? "Unknown error";
       addLog("error", `Failed to stop: ${msg}`);
-      setScanStatus("running"); // Revert if failed
+      setScanStatus("running");
     }
   }, [addLog, addToast]);
 
@@ -417,19 +481,18 @@ const removeToast = useCallback((id: string) => {
     if (activeTab === "findings" && findings.length === 0) return;
     if (activeTab === "history" && scanHistory.length === 0) return;
     if (activeTab === "studio") return;
+    if (activeTab === "recon") return;
 
     setShowClearConfirm(true);
   }, [activeTab, logs.length, findings.length, scanHistory.length]);
 
-  // --- Integrated Keyboard Shortcuts ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-       if (e.ctrlKey && e.key === "k") {
-    e.preventDefault();
-    setShowPalette(p => !p);
-    return; 
-  }
-      // Don't trigger shortcuts when typing in inputs
+      if (e.ctrlKey && e.key === "k") {
+        e.preventDefault();
+        setShowPalette(p => !p);
+        return;
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (showPalette) return;
 
@@ -447,7 +510,7 @@ const removeToast = useCallback((id: string) => {
       }
 
       if (e.code === "Space" && !e.repeat) {
-        e.preventDefault(); // Prevent scrolling
+        e.preventDefault();
 
         if (scanStatus === "stopping") return;
 
@@ -524,11 +587,10 @@ const removeToast = useCallback((id: string) => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
-      // Clear hold timers so they don't fire after unmount / effect re-run
       if (spaceTimerRef.current) { clearTimeout(spaceTimerRef.current); spaceTimerRef.current = null; }
       if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
     };
-  }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings , showPalette]);
+  }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings, showPalette]);
 
   const handleResetConfig = useCallback(() => {
     setConfig({
@@ -542,7 +604,6 @@ const removeToast = useCallback((id: string) => {
     });
   }, [appSettings]);
 
-
   const handleLoadFromHistory = useCallback((target: string) => {
     if (target.startsWith("http")) {
       setConfig(prev => ({ ...prev, target, listFile: "" }));
@@ -550,6 +611,25 @@ const removeToast = useCallback((id: string) => {
       setConfig(prev => ({ ...prev, target: "", listFile: target }));
     }
     setActiveTab("terminal");
+  }, []);
+
+  const handleRunRecon = useCallback(async (domain: string) => {
+    setIsReconRunning(true);
+    setIsReconComplete(false);
+    setReconHosts(new Map());
+    try {
+      await invoke("run_recon", { domain, visitedUrls: visitedUrlsRef.current });
+    } catch {
+      setIsReconRunning(false);
+    }
+  }, []);
+
+  const handleStopRecon = useCallback(async () => {
+    try {
+      await invoke("stop_recon");
+    } catch {
+    }
+    setIsReconRunning(false);
   }, []);
 
   const handleAddToQueue = useCallback((targets: string[]) => {
@@ -576,331 +656,344 @@ const removeToast = useCallback((id: string) => {
   }, []);
 
   const handleSendToBasic = useCallback(
-  (studioUrl: string, studioHeaders: string) => {
-    setConfig(prev => ({
-      ...prev,
-      target:  studioUrl.trim(),
-      headers: studioHeaders.trim(),
-      // Clear the list-file so the pasted URL takes precedence
-      listFile: '',
-    }));
-    setActiveTab('terminal');
-    addToast('info', 'Data synchronized to Basic Scanner');
-  },
-  [addToast],
-);
+    (studioUrl: string, studioHeaders: string) => {
+      setConfig(prev => ({
+        ...prev,
+        target: studioUrl.trim(),
+        headers: studioHeaders.trim(),
+        listFile: '',
+      }));
+      setActiveTab('terminal');
+      addToast('info', 'Data synchronized to Basic Scanner');
+    },
+    [addToast],
+  );
 
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden rounded-xl">
-     
-
       <div className="relative z-0 flex flex-1 flex-col min-h-0">
-    <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
-        
-        {/* Left: App Controls */}
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSidebarCollapsed(p => !p)}
-              className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-            >
-              {sidebarCollapsed ? <PanelLeft size={18} strokeWidth={2.5} /> : <PanelLeftClose size={18} strokeWidth={2.5} />}
-            </button>
-            <button
-              onClick={() => setShowInfo(true)}
-              className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-            >
-              <Info size={18} strokeWidth={2.5} />
-            </button>
-            {/* Settings button */}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-            >
-              <Settings size={18} strokeWidth={2.5} />
-            </button>
-          </div>
+        <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
 
-          <div className="h-5 w-[1px] bg-border-subtle/50 mx-1" />
-          <h1 className="text-[13px] font-black uppercase tracking-[0.2em] text-accent drop-shadow-sm">
-            Arkenar
-          </h1>
-        </div>
-
-        {/* Center: Workspace Switcher */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="relative flex items-center p-1.5 bg-black/20 rounded-xl border border-border-subtle/30 backdrop-blur-md shadow-inner">
-            
-            <div 
-              className="absolute top-1.5 bottom-1.5 w-[130px] bg-bg-panel border border-border-subtle/50 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out"
-              style={{ transform: activeTab !== 'studio' ? 'translateX(0)' : 'translateX(130px)' }}
-            />
-
-            <button
-              onClick={() => { if (activeTab === 'studio') setActiveTab('terminal'); }}
-              className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
-                activeTab !== 'studio' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
-              }`}
-            >
-              <Terminal size={16} className={activeTab !== 'studio' ? 'text-accent' : 'opacity-50'} />
-              <span>Basic</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('studio')}
-              className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
-                activeTab === 'studio' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
-              }`}
-            >
-              <Blocks size={16} className={activeTab === 'studio' ? 'text-status-warning' : 'opacity-50'} />
-              <span>Studio</span>
-            </button>
-
-            <button
-              disabled
-              title="Coming in v1.2..."
-              className="relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest text-text-ghost/30 cursor-not-allowed"
-            >
-              <Radar size={16} />
-              <span>Recon</span>
-            </button>
-
-          </div>
-        </div>
-
-        {/* Right: Window Controls */}
-        <div className="flex items-center gap-4 shrink-0">
-          {/* Status & Queue */}
-          <div className="flex items-center gap-4 border-r border-border-subtle/40 pr-4">
-            {scanQueue.length > 0 && (
-              <span className="rounded-md bg-bg-panel border border-border-subtle px-2 py-1 text-[10px] font-black uppercase tracking-wider text-text-secondary">
-                {t("queue", appSettings.language)}: {scanQueue.length}
-              </span>
-            )}
+          <div className="flex items-center gap-4 shrink-0">
             <div className="flex items-center gap-2">
-              <StatusDot status={scanStatus} className="h-2 w-2" />
-              <span
-                key={scanStatus}
-                className="text-[11px] font-bold uppercase tracking-widest text-text-secondary animate-fade-slide-in"
+              <button
+                onClick={() => setSidebarCollapsed(p => !p)}
+                className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
               >
-                {t(scanStatus === "error" ? "scanError" : scanStatus, appSettings.language)}
-              </span>
+                {sidebarCollapsed ? <PanelLeft size={18} strokeWidth={2.5} /> : <PanelLeftClose size={18} strokeWidth={2.5} />}
+              </button>
+              <button
+                onClick={() => setShowInfo(true)}
+                className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
+              >
+                <Info size={18} strokeWidth={2.5} />
+              </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
+              >
+                <Settings size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            <div className="h-5 w-[1px] bg-border-subtle/50 mx-1" />
+            <h1 className="text-[13px] font-black uppercase tracking-[0.2em] text-accent drop-shadow-sm">
+              Arkenar
+            </h1>
+          </div>
+
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="relative flex items-center p-1.5 bg-black/20 rounded-xl border border-border-subtle/30 backdrop-blur-md shadow-inner">
+              <div
+                className="absolute top-1.5 bottom-1.5 w-[130px] bg-bg-panel border border-border-subtle/50 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out"
+                style={{ transform: activeTab === 'studio' ? 'translateX(130px)' : activeTab === 'recon' ? 'translateX(260px)' : 'translateX(0)' }}
+              />
+
+              <button
+                onClick={() => { if (activeTab === 'studio' || activeTab === 'recon') setActiveTab('terminal'); }}
+                className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
+                  activeTab !== 'studio' && activeTab !== 'recon' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
+                }`}
+              >
+                <Terminal size={16} className={activeTab !== 'studio' && activeTab !== 'recon' ? 'text-accent' : 'opacity-50'} />
+                <span>Basic</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('studio')}
+                className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
+                  activeTab === 'studio' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
+                }`}
+              >
+                <Blocks size={16} className={activeTab === 'studio' ? 'text-status-warning' : 'opacity-50'} />
+                <span>Studio</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('recon')}
+                className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
+                  activeTab === 'recon' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
+                }`}
+              >
+                <Radar size={16} className={activeTab === 'recon' ? 'text-accent' : 'opacity-50'} />
+                <span>Recon</span>
+              </button>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          {scanStatus === "running" || scanStatus === "stopping" ? (
-            <button
-              onClick={handleStopScan}
-              disabled={scanStatus === "stopping"}
-              className={`relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
-                scanStatus === "stopping"
-                  ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
-                  : `bg-status-critical text-white hover:brightness-110 shadow-[0_0_15px_rgba(244,63,94,0.3)] ${isHoldingStop ? "animate-pulse scale-105" : ""}`
-              }`}
-            >
-              {scanStatus === "stopping" ? (
-                <div className="flex items-center gap-2 ">
-                  <svg width="10" height="12" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
-                    <rect x="0" y="0" width="4" height="14" rx="1" />
-                    <rect x="8" y="0" width="4" height="14" rx="1" />
-                  </svg>
-                  {t("stopping", appSettings.language)}
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="flex items-center gap-4 border-r border-border-subtle/40 pr-4">
+              {scanQueue.length > 0 && (
+                <span className="rounded-md bg-bg-panel border border-border-subtle px-2 py-1 text-[10px] font-black uppercase tracking-wider text-text-secondary">
+                  {t("queue", appSettings.language)}: {scanQueue.length}
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <StatusDot status={scanStatus} className="h-2 w-2" />
+                <span
+                  key={scanStatus}
+                  className="text-[11px] font-bold uppercase tracking-widest text-text-secondary animate-fade-slide-in"
+                >
+                  {t(scanStatus === "error" ? "scanError" : scanStatus, appSettings.language)}
+                </span>
+              </div>
+            </div>
+
+            {scanStatus === "running" || scanStatus === "stopping" ? (
+              <button
+                onClick={handleStopScan}
+                disabled={scanStatus === "stopping"}
+                className={`relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
+                  scanStatus === "stopping"
+                    ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
+                    : `bg-status-critical text-white hover:brightness-110 shadow-[0_0_15px_rgba(244,63,94,0.3)] ${isHoldingStop ? "animate-pulse scale-105" : ""}`
+                }`}
+              >
+                {scanStatus === "stopping" ? (
+                  <div className="flex items-center gap-2 ">
+                    <svg width="10" height="12" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
+                      <rect x="0" y="0" width="4" height="14" rx="1" />
+                      <rect x="8" y="0" width="4" height="14" rx="1" />
+                    </svg>
+                    {t("stopping", appSettings.language)}
+                  </div>
+                ) : (
+                  <>
+                    {isHoldingStop && (
+                      <div
+                        className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
+                        style={{ width: `${((1 - holdTimeRemaining) / 1) * 100}%` }}
+                      />
+                    )}
+                    <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
+                    {t("stopScan", appSettings.language)}
+                    {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleStartScan}
+                disabled={!config.target && !config.listFile}
+                className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
+                  config.target || config.listFile
+                    ? `text-white ${isHoldingSpace ? "scale-105" : "hover:brightness-110"}`
+                    : "bg-bg-panel text-text-ghost cursor-not-allowed border border-border-subtle/50"
+                }`}
+                style={config.target || config.listFile ? {
+                  backgroundColor: "#10b981",
+                  boxShadow: isHoldingSpace
+                    ? "0 0 20px rgba(16,185,129,0.4)"
+                    : "0 0 12px rgba(16,185,129,0.2)",
+                } : undefined}
+              >
+                {isHoldingSpace && (
+                  <div
+                    className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
+                    style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
+                  />
+                )}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
+                {isHoldingSpace ? `${t("ready", appSettings.language)} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan", appSettings.language)}
+              </button>
+            )}
+
+            <div className="flex items-center h-full ml-2">
+              {navigator.userAgent.toLowerCase().includes('mac') ? (
+                <div className="flex items-center gap-2 px-3 group">
+                  <button onClick={() => getCurrentWindow().close()} className="w-[13px] h-[13px] rounded-full bg-[#ff5f56] border border-black/10 flex items-center justify-center hover:brightness-110">
+                    <X size={8} className="opacity-0 group-hover:opacity-100 text-[#990000]" strokeWidth={4} />
+                  </button>
+                  <button onClick={() => getCurrentWindow().minimize()} className="w-[13px] h-[13px] rounded-full bg-[#ffbd2e] border border-black/10 flex items-center justify-center hover:brightness-110">
+                    <Minus size={8} className="opacity-0 group-hover:opacity-100 text-[#995700]" strokeWidth={4} />
+                  </button>
+                  <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-[13px] h-[13px] rounded-full bg-[#27c93f] border border-black/10 flex items-center justify-center hover:brightness-110">
+                    <Square size={6} className="opacity-0 group-hover:opacity-100 text-[#006500]" strokeWidth={4} />
+                  </button>
                 </div>
               ) : (
-                <>
-                  {isHoldingStop && (
-                    <div
-                      className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
-                      style={{ width: `${((1 - holdTimeRemaining) / 1) * 100}%` }}
-                    />
-                  )}
-                  <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                  {t("stopScan", appSettings.language)}
-                  {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
-                </>
+                <div className="flex items-center">
+                  <button onClick={() => getCurrentWindow().minimize()} title="Minimize" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
+                    <Minus size={18} strokeWidth={2} />
+                  </button>
+                  <button onClick={() => getCurrentWindow().toggleMaximize()} title="Maximize / Restore" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
+                    <Square size={14} strokeWidth={2} />
+                  </button>
+                  <button onClick={() => getCurrentWindow().close()} title="Close" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:bg-[#e81123] hover:text-white transition-colors">
+                    <X size={18} strokeWidth={2} />
+                  </button>
+                </div>
               )}
+            </div>
+          </div>
+        </header>
+
+        {errorMsg && (
+          <div className="animate-fade-slide-in flex items-center justify-between bg-status-critical/8 border-b border-status-critical/15 px-6 py-2.5">
+            <span className="text-sm text-status-critical">{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="p-1 text-status-critical/50 hover:text-status-critical transition-all duration-300 hover:scale-110 active:scale-90">
+              <X size={15} />
             </button>
-          ) : (
-            <button
-              onClick={handleStartScan}
-              disabled={!config.target && !config.listFile}
-              className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
-                config.target || config.listFile
-                  ? `text-white ${isHoldingSpace ? "scale-105" : "hover:brightness-110"}`
-                  : "bg-bg-panel text-text-ghost cursor-not-allowed border border-border-subtle/50"
-              }`}
-              style={config.target || config.listFile ? {
-                backgroundColor: "#10b981",
-                boxShadow: isHoldingSpace
-                  ? "0 0 20px rgba(16,185,129,0.4)"
-                  : "0 0 12px rgba(16,185,129,0.2)",
-              } : undefined}
+          </div>
+        )}
+
+        <div className="flex flex-1 overflow-hidden">
+          <div
+            className="relative shrink-0 h-full transition-all duration-300 ease-in-out"
+            style={{
+              width: activeTab === 'recon' ? 0 : (sidebarCollapsed ? 0 : 320),
+              overflow: "hidden",
+              display: activeTab === 'recon' ? 'none' : undefined,
+            }}
+          >
+            <div className="h-full w-[320px]">
+              <Sidebar
+                config={config}
+                onUpdate={update}
+                onReset={handleResetConfig}
+                scanQueue={scanQueue}
+                onAddToQueue={handleAddToQueue}
+                onRemoveFromQueue={handleRemoveFromQueue}
+                language={appSettings.language}
+                isStudioMode={activeTab === "studio"}
+                studioHistory={studioHistory}
+                selectedStudioHistoryId={selectedStudioHistoryId}
+                onSelectStudioHistoryItem={(id) => { setSelectedStudioHistoryId(id); setActiveTab("studio"); }}
+                onNewStudioRequest={() => { setSelectedStudioHistoryId(null); setActiveTab("studio"); }}
+                onCompareWithHistory={(body) => { compareWithHistoryRef.current?.(body); setActiveTab("studio"); }}
+              />
+            </div>
+          </div>
+
+          <main className="flex flex-1 flex-col overflow-hidden min-w-0 bg-transparent">
+            <div
+              className="flex flex-col flex-1 overflow-hidden min-h-0"
+              style={{ display: activeTab === 'recon' ? 'none' : 'flex' }}
             >
-              {isHoldingSpace && (
-                <div
-                  className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
-                  style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
-                />
-              )}
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
-              {isHoldingSpace ? `${t("ready", appSettings.language)} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan", appSettings.language)}
-            </button>
-          )}
+              <TopStats
+                stats={stats}
+                scanStatus={scanStatus}
+                scanProgress={scanProgress}
+                rps={rps}
+                language={appSettings.language}
+                activeTab={activeTab}
+              />
+              <TerminalView
+                logs={logs}
+                findings={findings}
+                visitedUrls={visitedUrls}
+                activeTab={activeTab as "terminal" | "findings" | "history" | "studio" | "sitemap"}
+                onTabChange={(t) => setActiveTab(t)}
+                onRequestClear={requestClear}
+                scanHistory={scanHistory}
+                onLoadFromHistory={handleLoadFromHistory}
+                scanProgress={scanProgress}
+                scanStatus={scanStatus}
+                onQuickRescan={handleQuickRescan}
+                onSendToStudio={handleSendToStudio}
+                initialStudioRequest={initialStudioRequest}
+                onInitialRequestConsumed={() => setInitialStudioRequest(null)}
+                studioHistory={studioHistory}
+                setStudioHistory={setStudioHistory}
+                selectedStudioHistoryId={selectedStudioHistoryId}
+                setSelectedStudioHistoryId={setSelectedStudioHistoryId}
+                onSendToBasic={handleSendToBasic}
+                onCompareWithHistoryRef={compareWithHistoryRef}
+              />
+            </div>
 
-        {/* Window Controls */}
-          <div className="flex items-center h-full ml-2">
-            {navigator.userAgent.toLowerCase().includes('mac') ? (
-              <div className="flex items-center gap-2 px-3 group">
-                <button onClick={() => getCurrentWindow().close()} className="w-[13px] h-[13px] rounded-full bg-[#ff5f56] border border-black/10 flex items-center justify-center hover:brightness-110">
-                  <X size={8} className="opacity-0 group-hover:opacity-100 text-[#990000]" strokeWidth={4} />
-                </button>
-                <button onClick={() => getCurrentWindow().minimize()} className="w-[13px] h-[13px] rounded-full bg-[#ffbd2e] border border-black/10 flex items-center justify-center hover:brightness-110">
-                  <Minus size={8} className="opacity-0 group-hover:opacity-100 text-[#995700]" strokeWidth={4} />
-                </button>
-                <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-[13px] h-[13px] rounded-full bg-[#27c93f] border border-black/10 flex items-center justify-center hover:brightness-110">
-                  <Square size={6} className="opacity-0 group-hover:opacity-100 text-[#006500]" strokeWidth={4} />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center">
-                <button onClick={() => getCurrentWindow().minimize()} title="Minimize" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
-                  <Minus size={18} strokeWidth={2} />
-                </button>
-                <button onClick={() => getCurrentWindow().toggleMaximize()} title="Maximize / Restore" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
-                  <Square size={14} strokeWidth={2} />
-                </button>
-                <button onClick={() => getCurrentWindow().close()} title="Close" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:bg-[#e81123] hover:text-white transition-colors">
-                  <X size={18} strokeWidth={2} />
-                </button>
-              </div>
-            )}
-          </div>
+            <div
+              className="flex flex-1 min-h-0 overflow-hidden"
+              style={{ display: activeTab === 'recon' ? 'flex' : 'none' }}
+            >
+              <ReconPanel
+                hosts={reconHosts}
+                isRunning={isReconRunning}
+                isComplete={isReconComplete}
+                onRun={handleRunRecon}
+                onStop={handleStopRecon}
+                onAddToQueue={handleAddToQueue}
+                onSendToStudio={(host) => {
+                  setConfig(prev => ({ ...prev, target: host }));
+                  setActiveTab('terminal');
+                }}
+                language={appSettings.language}
+              />
+            </div>
+          </main>
         </div>
-      </header>
 
-      {errorMsg && (
-        <div className="animate-fade-slide-in flex items-center justify-between bg-status-critical/8 border-b border-status-critical/15 px-6 py-2.5">
-          <span className="text-sm text-status-critical">{errorMsg}</span>
-          <button onClick={() => setErrorMsg(null)} className="p-1 text-status-critical/50 hover:text-status-critical transition-all duration-300 hover:scale-110 active:scale-90">
-            <X size={15} />
-          </button>
-        </div>
-      )}
+        {showSettings && (
+          <SettingsModal
+            settings={appSettings}
+            onSave={setAppSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
 
-      <div className="flex flex-1 overflow-hidden">
-        <div
-          className="relative shrink-0 h-full transition-all duration-300 ease-in-out"
-          style={{ width: sidebarCollapsed ? 0 : 320, overflow: "hidden" }}
-        >
-          <div className="h-full w-[320px]">
-            <Sidebar
-              config={config}
-              onUpdate={update}
-              onReset={handleResetConfig}
-              scanQueue={scanQueue}
-              onAddToQueue={handleAddToQueue}
-              onRemoveFromQueue={handleRemoveFromQueue}
-              language={appSettings.language}
-              isStudioMode={activeTab === "studio"}
-              studioHistory={studioHistory}
-              selectedStudioHistoryId={selectedStudioHistoryId}
-              onSelectStudioHistoryItem={(id) => { setSelectedStudioHistoryId(id); setActiveTab("studio"); }}
-              onNewStudioRequest={() => { setSelectedStudioHistoryId(null); setActiveTab("studio"); }}
-               onCompareWithHistory={(body) => {compareWithHistoryRef.current?.(body); setActiveTab("studio");}}
-
-            />
-          </div>
-        </div>
-      
-        <main className="flex flex-1 flex-col overflow-hidden min-w-0 bg-transparent">
-         
-          <TopStats
-            stats={stats}
-            scanStatus={scanStatus}
-            scanProgress={scanProgress}
-            rps={rps}
+        {showInfo && (
+          <InfoModal
+            onClose={() => setShowInfo(false)}
             language={appSettings.language}
-            activeTab={activeTab}
           />
-          <TerminalView
-            logs={logs}
-            findings={findings}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            onRequestClear={requestClear}
-            scanHistory={scanHistory}
-            onLoadFromHistory={handleLoadFromHistory}
-            scanProgress={scanProgress}
+        )}
+        <ConfirmationModal
+          isOpen={showClearConfirm}
+          onClose={() => setShowClearConfirm(false)}
+          onConfirm={handleClear}
+          title={
+            activeTab === "terminal" ? t("clearTerminalTitle", appSettings.language) :
+              activeTab === "findings" ? t("clearFindingsTitle", appSettings.language) : t("clearHistoryTitle", appSettings.language)
+          }
+          message={
+            activeTab === "terminal" ? t("clearTerminalMsg", appSettings.language) :
+              activeTab === "findings" ? t("clearFindingsMsg", appSettings.language) : t("clearHistoryMsg", appSettings.language)
+          }
+          confirmText={t("yesUnderstand", appSettings.language)}
+          cancelText={t("noDoNotClear", appSettings.language)}
+        />
+        <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+        {showPalette && (
+          <CommandPalette
+            onClose={() => setShowPalette(false)}
             scanStatus={scanStatus}
-            onQuickRescan={handleQuickRescan}
-            onSendToStudio={handleSendToStudio}
-            initialStudioRequest={initialStudioRequest}
-            onInitialRequestConsumed={() => setInitialStudioRequest(null)}
-            studioHistory={studioHistory}
-            setStudioHistory={setStudioHistory}
-            selectedStudioHistoryId={selectedStudioHistoryId}
-            setSelectedStudioHistoryId={setSelectedStudioHistoryId}
-            onSendToBasic={handleSendToBasic}
-            onCompareWithHistoryRef={compareWithHistoryRef}
+            hasTarget={!!(config.target || config.listFile)}
+            hasFindings={findings.length > 0}
+            onStartScan={handleStartScan}
+            onStopScan={handleStopScan}
+            onTabChange={(t) => setActiveTab(t)}
+            onOpenSettings={() => setShowSettings(true)}
+            onRequestClear={requestClear}
+            onToggleSidebar={() => setSidebarCollapsed(p => !p)}
+            onExportFindings={handleExportCSV}
           />
-        </main>
+        )}
       </div>
-
-      {showSettings && (
-        <SettingsModal
-          settings={appSettings}
-          onSave={setAppSettings}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-
-     {showInfo && (
-        <InfoModal 
-          onClose={() => setShowInfo(false)} 
-          language={appSettings.language} 
-          
-        />
-      )}
-      <ConfirmationModal
-        isOpen={showClearConfirm}
-        onClose={() => setShowClearConfirm(false)}
-        onConfirm={handleClear}
-        title={
-          activeTab === "terminal" ? t("clearTerminalTitle", appSettings.language) :
-            activeTab === "findings" ? t("clearFindingsTitle", appSettings.language) : t("clearHistoryTitle", appSettings.language)
-        }
-        message={
-          activeTab === "terminal" ? t("clearTerminalMsg", appSettings.language) :
-            activeTab === "findings" ? t("clearFindingsMsg", appSettings.language) : t("clearHistoryMsg", appSettings.language)
-        }
-        confirmText={t("yesUnderstand", appSettings.language)}
-        cancelText={t("noDoNotClear", appSettings.language)}
-        
-      />
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-
-      {/* H1: Command Palette */}
-      {showPalette && (
-        <CommandPalette
-          onClose={() => setShowPalette(false)}
-          scanStatus={scanStatus}
-          hasTarget={!!(config.target || config.listFile)}
-          hasFindings={findings.length > 0}
-          onStartScan={handleStartScan}
-          onStopScan={handleStopScan}
-          onTabChange={setActiveTab}
-          onOpenSettings={() => setShowSettings(true)}
-          onRequestClear={requestClear}
-          onToggleSidebar={() => setSidebarCollapsed(p => !p)}
-          onExportFindings={handleExportCSV}
-        />
-      )}
-      </div>
-      <ChangelogModal 
-        isOpen={showChangelog} 
-        onClose={handleCloseChangelog} 
-        availableUpdate={availableUpdate} 
+      <ChangelogModal
+        isOpen={showChangelog}
+        onClose={handleCloseChangelog}
+        availableUpdate={availableUpdate}
       />
     </div>
   );

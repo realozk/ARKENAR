@@ -1,7 +1,10 @@
 use rand::prelude::IndexedRandom;
 use reqwest::{Client, ClientBuilder, Response, Proxy};
+use reqwest::redirect::Policy;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::time::Duration;
+
+pub const MAX_RESPONSE_BODY: usize = 4 * 1024 * 1024;
 
 use super::{BodyType, HttpRequest};
 
@@ -18,6 +21,7 @@ impl HttpClient {
 
         let mut builder = ClientBuilder::new()
             .timeout(timeout)
+            .redirect(Policy::limited(5))
             .danger_accept_invalid_certs(true);
 
         if let Some(proxy) = proxy_url {

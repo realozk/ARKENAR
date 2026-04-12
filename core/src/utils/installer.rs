@@ -8,7 +8,6 @@ use std::process::Stdio;
 use flate2::read::GzDecoder;
 use tar::Archive;
 
-/// Returns the correct ARKENAR release asset name for the current OS/arch.
 fn get_arkenar_asset_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "arkenar-windows-amd64.zip"
@@ -23,31 +22,17 @@ fn get_arkenar_asset_name() -> &'static str {
     }
 }
 
-/// Returns the expected binary name inside the archive.
 fn get_arkenar_binary_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "arkenar.exe"
-    } else {
-        "arkenar"
-    }
+    if cfg!(target_os = "windows") { "arkenar.exe" } else { "arkenar" }
 }
 
-/// Returns the platform-specific binary filename for a tool (e.g. `katana` → `katana.exe` on Windows).
 fn get_tool_binary_name(tool: &str) -> String {
-    if cfg!(target_os = "windows") {
-        format!("{}.exe", tool)
-    } else {
-        tool.to_string()
-    }
+    if cfg!(target_os = "windows") { format!("{}.exe", tool) } else { tool.to_string() }
 }
 
-// Tool version pins — update these when new releases are available.
-// Check: https://github.com/projectdiscovery/katana/releases
-//        https://github.com/projectdiscovery/nuclei/releases
 const KATANA_VERSION: &str = "1.1.0";
 const NUCLEI_VERSION: &str = "3.3.5";
 
-/// Returns the download URL for a given tool on the current platform.
 fn get_tool_download_url(tool: &str) -> String {
     match tool {
         "katana" => {
@@ -76,7 +61,7 @@ fn get_tool_download_url(tool: &str) -> String {
         }
         _ => {
             eprintln!("[!] Installer: unknown tool '{}' requested", tool);
-            return String::new();
+            String::new()
         }
     }
 }
@@ -89,13 +74,31 @@ fn get_arkenar_home() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".arkenar"))
 }
 
-/// Returns the path to the user's custom Nuclei template folder.
 pub fn get_plugin_dir() -> Option<PathBuf> {
     Some(get_arkenar_home()?.join("plugins").join("nuclei"))
 }
 
-/// Verifies required tools are installed, downloading them if missing.
+/// Returns the default nuclei templates directory path.
+pub fn default_nuclei_templates_dir() -> String {
+    dirs::home_dir()
+        .map(|h| h.join(".arkenar").join("plugins").join("nuclei").to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// Ensures ~/.arkenar/plugins/{nuclei,payloads,scripts} directories exist.
+pub async fn ensure_plugin_dirs() -> anyhow::Result<()> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?;
+    let base = home.join(".arkenar").join("plugins");
+    for sub in &["nuclei", "payloads", "scripts"] {
+        tokio::fs::create_dir_all(base.join(sub)).await?;
+    }
+    Ok(())
+}
+
 pub async fn check_and_install_tools() {
+    ensure_plugin_dirs().await.ok();
+
     print!("{}\r\n", "[*] Checking dependencies...".bright_cyan());
     let tools_dir = Path::new("./tools");
 
@@ -105,20 +108,16 @@ pub async fn check_and_install_tools() {
             return;
         }
     }
-  if let Some(plugin_dir) = get_plugin_dir() {
+
+    if let Some(plugin_dir) = get_plugin_dir() {
         if !plugin_dir.exists() {
             match fs::create_dir_all(&plugin_dir) {
-                Ok(_) => print!(
-                    "{}",
-                    format!(" Created plugin dir: {}\n", plugin_dir.display()).green()
-                ),
-                Err(e) => eprint!(
-                    "{}",
-                    format!("! Could not create plugin dir: {}\n", e).yellow()
-                ),
+                Ok(_) => print!("{}", format!(" Created plugin dir: {}\n", plugin_dir.display()).green()),
+                Err(e) => eprint!("{}", format!("! Could not create plugin dir: {}\n", e).yellow()),
             }
         }
     }
+
     let katana_bin = get_tool_binary_name("katana");
     let nuclei_bin = get_tool_binary_name("nuclei");
 
@@ -139,196 +138,110 @@ pub async fn check_and_install_tools() {
     print!("{}\r\n", "[+] All dependencies ready.".green().bold());
 }
 
-/// Runs a full update cycle: Nuclei binary, templates, Katana, and ARKENAR self update.
 pub async fn run_full_update() {
     print!("{}\r\n", "         ARKENAR Full Update".bright_cyan().bold());
-
     update_nuclei().await;
     update_nuclei_templates().await;
     update_katana().await;
     self_update().await;
-
     print!("\r\n{}\r\n", "[+] All updates completed successfully!".green().bold());
 }
 
-
 async fn update_nuclei() {
     print!("\r\n{}\r\n", "[*] Updating Nuclei...".bright_cyan());
-
     let nuclei_bin = get_tool_binary_name("nuclei");
     let nuclei_path = Path::new("./tools").join(&nuclei_bin);
     if !nuclei_path.exists() {
         print!("{}\r\n", "[!] Nuclei not found, skipping update.".yellow());
         return;
     }
-
     let mut std_cmd = std::process::Command::new(&nuclei_path);
-    std_cmd.arg("-update")
-           .stdout(Stdio::inherit())
-           .stderr(Stdio::inherit());
-
+    std_cmd.arg("-update").stdout(Stdio::inherit()).stderr(Stdio::inherit());
     #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-
-    match Command::from(std_cmd)
-        .status()
-        .await
-    {
-        Ok(status) if status.success() => {
-            print!("{}\r\n", "[+] Nuclei updated.".green());
-        }
-        Ok(status) => {
-            print!("{}\r\n", format!("[!] Nuclei update exited with: {}", status).yellow());
-        }
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Failed to run Nuclei update: {}", e).red());
-        }
+    { use std::os::windows::process::CommandExt; std_cmd.creation_flags(0x0800_0000); }
+    match Command::from(std_cmd).status().await {
+        Ok(s) if s.success() => print!("{}\r\n", "[+] Nuclei updated.".green()),
+        Ok(s) => print!("{}\r\n", format!("[!] Nuclei update exited with: {}", s).yellow()),
+        Err(e) => print!("{}\r\n", format!("[!] Failed to run Nuclei update: {}", e).red()),
     }
 }
 
 async fn update_nuclei_templates() {
     print!("\r\n{}\r\n", "[*] Updating Nuclei Templates...".bright_cyan());
-
     let nuclei_bin = get_tool_binary_name("nuclei");
     let nuclei_path = Path::new("./tools").join(&nuclei_bin);
     if !nuclei_path.exists() {
         print!("{}\r\n", "[!] Nuclei not found, skipping template update.".yellow());
         return;
     }
-
     let mut std_cmd = std::process::Command::new(&nuclei_path);
-    std_cmd.arg("-ut")
-           .stdout(Stdio::inherit())
-           .stderr(Stdio::inherit());
-
+    std_cmd.arg("-ut").stdout(Stdio::inherit()).stderr(Stdio::inherit());
     #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-
-    match Command::from(std_cmd)
-        .status()
-        .await
-    {
-        Ok(status) if status.success() => {
-            print!("{}\r\n", "[+] Nuclei templates updated.".green());
-        }
-        Ok(status) => {
-            print!("{}\r\n", format!("[!] Template update exited with: {}", status).yellow());
-        }
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Failed to update templates: {}", e).red());
-        }
+    { use std::os::windows::process::CommandExt; std_cmd.creation_flags(0x0800_0000); }
+    match Command::from(std_cmd).status().await {
+        Ok(s) if s.success() => print!("{}\r\n", "[+] Nuclei templates updated.".green()),
+        Ok(s) => print!("{}\r\n", format!("[!] Template update exited with: {}", s).yellow()),
+        Err(e) => print!("{}\r\n", format!("[!] Failed to update templates: {}", e).red()),
     }
 }
 
 async fn update_katana() {
     print!("\r\n{}\r\n", "[*] Updating Katana...".bright_cyan());
-
     let katana_bin = get_tool_binary_name("katana");
     let katana_path = Path::new("./tools").join(&katana_bin);
     if !katana_path.exists() {
         print!("{}\r\n", "[!] Katana not found, skipping update.".yellow());
         return;
     }
-
     let mut std_cmd = std::process::Command::new(&katana_path);
-    std_cmd.arg("-update")
-           .stdout(Stdio::inherit())
-           .stderr(Stdio::inherit());
-
+    std_cmd.arg("-update").stdout(Stdio::inherit()).stderr(Stdio::inherit());
     #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        std_cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-
-    match Command::from(std_cmd)
-        .status()
-        .await
-    {
-        Ok(status) if status.success() => {
-            print!("{}\r\n", "[+] Katana updated.".green());
-        }
-        Ok(status) => {
-            print!("{}\r\n", format!("[!] Katana update exited with: {}", status).yellow());
-        }
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Failed to update Katana: {}", e).red());
-        }
+    { use std::os::windows::process::CommandExt; std_cmd.creation_flags(0x0800_0000); }
+    match Command::from(std_cmd).status().await {
+        Ok(s) if s.success() => print!("{}\r\n", "[+] Katana updated.".green()),
+        Ok(s) => print!("{}\r\n", format!("[!] Katana update exited with: {}", s).yellow()),
+        Err(e) => print!("{}\r\n", format!("[!] Failed to update Katana: {}", e).red()),
     }
 }
 
-
 async fn self_update() {
     print!("\r\n{}\r\n", "[*] Checking for ARKENAR self-update...".bright_cyan());
-
     let asset_name = get_arkenar_asset_name();
     let binary_name = get_arkenar_binary_name();
-    let download_url = format!(
-        "https://github.com/RealOzk/ARKENAR/releases/latest/download/{}",
-        asset_name
-    );
-
+    let download_url = format!("https://github.com/RealOzk/ARKENAR/releases/latest/download/{}", asset_name);
     let current_exe = match std::env::current_exe() {
         Ok(p) => p,
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Cannot determine current exe path: {}", e).red());
-            return;
-        }
+        Err(e) => { print!("{}\r\n", format!("[!] Cannot determine current exe path: {}", e).red()); return; }
     };
-
     print!("{}\r\n", format!("[*] Downloading {} ...", download_url).dimmed());
-
     let response = match reqwest::get(&download_url).await {
         Ok(r) => r,
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Download failed: {}", e).red());
-            return;
-        }
+        Err(e) => { print!("{}\r\n", format!("[!] Download failed: {}", e).red()); return; }
     };
-
     if !response.status().is_success() {
         print!("{}\r\n", format!("[!] Server returned status: {}", response.status()).red());
         return;
     }
-
     let bytes = match response.bytes().await {
         Ok(b) => b,
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Failed to read response: {}", e).red());
-            return;
-        }
+        Err(e) => { print!("{}\r\n", format!("[!] Failed to read response: {}", e).red()); return; }
     };
-
     print!("{}\r\n", "[*] Extracting binary from archive...".blue());
-
     let extracted = if asset_name.ends_with(".tar.gz") {
         extract_binary_from_tar_gz(&bytes, binary_name)
     } else {
         extract_binary_from_zip(&bytes, binary_name)
     };
-
     let binary_bytes = match extracted {
         Ok(b) => b,
-        Err(e) => {
-            print!("{}\r\n", format!("[!] Failed to extract binary: {}", e).red());
-            return;
-        }
+        Err(e) => { print!("{}\r\n", format!("[!] Failed to extract binary: {}", e).red()); return; }
     };
-
     let tmp_path = current_exe.with_extension("tmp");
     let backup_path = current_exe.with_extension("bak");
-
     if let Err(e) = fs::write(&tmp_path, &binary_bytes) {
         print!("{}\r\n", format!("[!] Failed to write temp binary: {}", e).red());
         return;
     }
-
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -339,131 +252,87 @@ async fn self_update() {
             return;
         }
     }
-
-    if backup_path.exists() {
-        let _ = fs::remove_file(&backup_path);
-    }
-
+    if backup_path.exists() { let _ = fs::remove_file(&backup_path); }
     if let Err(e) = fs::rename(&current_exe, &backup_path) {
         if e.kind() == io::ErrorKind::PermissionDenied {
-            print!("{}\r\n",
-                "[!] Permission denied. Try re-running with: sudo arkenar --update"
-                    .red().bold()
-            );
+            print!("{}\r\n", "[!] Permission denied. Try re-running with: sudo arkenar --update".red().bold());
         } else {
             print!("{}\r\n", format!("[!] Failed to rename current binary: {}", e).red());
         }
         let _ = fs::remove_file(&tmp_path);
         return;
     }
-
     if let Err(e) = fs::rename(&tmp_path, &current_exe) {
         if e.kind() == io::ErrorKind::PermissionDenied {
-            print!("{}\r\n",
-                "[!] Permission denied. Try re-running with: sudo arkenar --update"
-                    .red().bold()
-            );
+            print!("{}\r\n", "[!] Permission denied. Try re-running with: sudo arkenar --update".red().bold());
         } else {
             print!("{}\r\n", format!("[!] Failed to install new binary: {}", e).red());
         }
         let _ = fs::rename(&backup_path, &current_exe);
         return;
     }
-
     let _ = fs::remove_file(&backup_path);
-
     print!("{}\r\n", "[+] ARKENAR binary updated successfully!".green().bold());
 }
 
-/// Extracts a named binary from a `.tar.gz` archive in memory.
 fn extract_binary_from_tar_gz(data: &[u8], binary_name: &str) -> io::Result<Vec<u8>> {
     let decoder = GzDecoder::new(Cursor::new(data));
     let mut archive = Archive::new(decoder);
-
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.to_path_buf();
         let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-
         if file_name == binary_name {
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
             return Ok(buf);
         }
     }
-
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("binary '{}' not found in archive", binary_name),
-    ))
+    Err(io::Error::new(io::ErrorKind::NotFound, format!("binary '{}' not found in archive", binary_name)))
 }
 
-/// Extracts a named binary from a `.zip` archive in memory.
 fn extract_binary_from_zip(data: &[u8], binary_name: &str) -> io::Result<Vec<u8>> {
     let cursor = Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
         let name = PathBuf::from(file.name().to_string());
         let file_name = name.file_name().unwrap_or_default().to_string_lossy();
-
         if file_name == binary_name {
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
             return Ok(buf);
         }
     }
-
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("binary '{}' not found in archive", binary_name),
-    ))
+    Err(io::Error::new(io::ErrorKind::NotFound, format!("binary '{}' not found in archive", binary_name)))
 }
 
-/// Downloads a zip archive and extracts tool binaries into the target directory.
 async fn download_and_extract(url: &str, target_dir: &Path) {
     let response = match reqwest::get(url).await {
         Ok(r) => r,
-        Err(e) => {
-            eprint!("{}\r\n", format!("[!] Download failed for {}: {}", url, e).red());
-            return;
-        }
+        Err(e) => { eprint!("{}\r\n", format!("[!] Download failed for {}: {}", url, e).red()); return; }
     };
-
     let bytes = match response.bytes().await {
         Ok(b) => b,
-        Err(e) => {
-            eprint!("{}\r\n", format!("[!] Failed to read download response: {}", e).red());
-            return;
-        }
+        Err(e) => { eprint!("{}\r\n", format!("[!] Failed to read download response: {}", e).red()); return; }
     };
-
     print!("{}\r\n", "[*] Extracting...".blue());
-
     let cursor = Cursor::new(bytes);
     let mut archive = match zip::ZipArchive::new(cursor) {
         Ok(a) => a,
-        Err(e) => {
-            eprint!("{}\r\n", format!("[!] Failed to open zip archive: {}", e).red());
-            return;
-        }
+        Err(e) => { eprint!("{}\r\n", format!("[!] Failed to open zip archive: {}", e).red()); return; }
     };
-
     for i in 0..archive.len() {
         let mut file = match archive.by_index(i) {
             Ok(f) => f,
             Err(_) => continue,
         };
-
         let outpath = match file.enclosed_name() {
             Some(path) => target_dir.join(path),
             None => continue,
         };
-
         let name = file.name().to_string();
         let dominated_by_exe = name.ends_with(".exe");
         let is_tool_binary = if cfg!(target_os = "windows") {
@@ -472,7 +341,6 @@ async fn download_and_extract(url: &str, target_dir: &Path) {
             let p = std::path::Path::new(&name);
             p.extension().is_none() && !name.ends_with('/')
         };
-
         if is_tool_binary {
             match fs::File::create(&outpath) {
                 Ok(mut outfile) => {
@@ -480,8 +348,6 @@ async fn download_and_extract(url: &str, target_dir: &Path) {
                         eprint!("{}\r\n", format!("[!] Failed to write binary: {}", e).red());
                         return;
                     }
-
-                    // On Unix, make extracted binary executable.
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
@@ -489,13 +355,9 @@ async fn download_and_extract(url: &str, target_dir: &Path) {
                         let _ = fs::set_permissions(&outpath, perms);
                     }
                 }
-                Err(e) => {
-                    eprint!("{}\r\n", format!("[!] Failed to create output file: {}", e).red());
-                    return;
-                }
+                Err(e) => { eprint!("{}\r\n", format!("[!] Failed to create output file: {}", e).red()); return; }
             }
         }
     }
-
     print!("{}\r\n", "[+] Installed successfully.".green());
 }

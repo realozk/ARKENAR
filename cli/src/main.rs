@@ -3,7 +3,7 @@ use colored::*;
 use std::io::Write;
 use std::process;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool};
+use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 
 use arkenar_core::{
@@ -91,7 +91,7 @@ pub struct Args {
     #[arg(long, help = "Resume a previously interrupted scan")]
     pub resume: bool,
 
-    // ── Auth (v1.3) ────────────
+    // ── Auth (v1.3) ────────────────────────────────────────────────────────
     #[arg(long, help = "Bearer token (Authorization: Bearer …)")]
     pub auth_token: Option<String>,
 
@@ -103,17 +103,44 @@ pub struct Args {
         help = "Authentication type: none, bearer, cookie, custom")]
     pub auth_type: String,
 
-    // ── OAST (Market-Killer) ───
+    // ── OAST (Market-Killer) ───────────────────────────────────────────────
     #[arg(long, help = "Interactsh OAST server URL (e.g. https://oast.pro)")]
     pub oast_server: Option<String>,
 
-    // ── Discovery (v1.3) ──────
+    // ── Discovery (v1.3) ──────────────────────────────────────────────────
     #[arg(long, default_value_t = false, help = "Enable JavaScript static analysis")]
     pub enable_js_analysis: bool,
 
-    // ── Evasion (Market-Killer) 
+    // ── Evasion (Market-Killer) ───────────────────────────────────────────
     #[arg(long, default_value_t = false, help = "Enable WAF evasion mutations on 403 responses")]
     pub enable_waf_evasion: bool,
+
+    // ── Fingerprint / Smart Payloads / Scope / Nuclei ─────────────────────
+    #[arg(long, default_value_t = false, help = "Disable tech-stack fingerprinting")]
+    pub no_fingerprint: bool,
+
+    #[arg(long, default_value_t = String::new(), help = "Regex to restrict scan scope (e.g. ^https://example\\.com)")]
+    pub scope_regex: String,
+
+    #[arg(long, default_value_t = 5u32, help = "Number of 403 responses before WAF evasion kicks in")]
+    pub waf_evasion_threshold: u32,
+
+    #[arg(long, default_value_t = false, help = "Disable context-aware (smart) payload selection")]
+    pub no_smart_payloads: bool,
+
+    #[arg(long, default_value_t = String::new(), help = "Path to custom Nuclei templates directory")]
+    pub nuclei_templates: String,
+}
+
+fn validate_cli_field(name: &str, val: &str) -> Result<(), String> {
+    const FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
+    if val.chars().any(|c| FORBIDDEN.contains(&c)) {
+        return Err(format!("Field '{}' contains forbidden characters.", name));
+    }
+    if val.contains("..") {
+        return Err(format!("Field '{}' contains path-traversal sequence.", name));
+    }
+    Ok(())
 }
 
 #[tokio::main]
@@ -156,6 +183,18 @@ async fn main() {
         process::exit(0);
     }
 
+    for (name, val) in &[
+        ("scope_regex", args.scope_regex.as_str()),
+        ("nuclei_templates", args.nuclei_templates.as_str()),
+    ] {
+        if !val.is_empty() {
+            if let Err(e) = validate_cli_field(name, val) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
     let config = ScanConfig {
         target: args.target.clone().unwrap_or_default(),
         list_file: args.list.clone().unwrap_or_default(),
@@ -177,6 +216,11 @@ async fn main() {
         crawler_timeout: args.crawler_timeout,
         crawler_max_urls: args.crawler_max_urls,
         resume: args.resume,
+        enable_fingerprint: !args.no_fingerprint,
+        scope_regex: args.scope_regex.clone(),
+        waf_evasion_threshold: args.waf_evasion_threshold,
+        enable_smart_payloads: !args.no_smart_payloads,
+        nuclei_templates_dir: args.nuclei_templates.clone(),
         // Auth
         auth_token: args.auth_token.clone(),
         auth_cookies: args.auth_cookies.clone(),
@@ -235,7 +279,6 @@ async fn main() {
     }
 }
 
-/// Prints the ARKENAR ASCII banner.
 fn print_banner() {
     let banner = r#"
              :::     :::::::::  :::    ::: :::::::::: ::::    :::     :::     :::::::::
@@ -252,12 +295,6 @@ fn print_banner() {
     std::io::stdout().flush().ok();
 }
 
-/// Orchestrates the full scanning pipeline for a single target.
-///
-/// Phases:
-///   1. Katana crawling — discovers URLs from the target.
-///   2. Nuclei scanning — runs template-based vulnerability detection.
-///   3. ARKENAR Engine — custom scan engine with mutation and result aggregation.
 async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
     if config.dry_run {
         sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", target));
@@ -318,7 +355,6 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
     ResultAggregator::report_summary(&results, sink);
 }
 
-/// Prints the scan configuration summary for a target.
 fn print_scan_config(target: &str, config: &ScanConfig) {
     let mode_label = if config.mode == "advanced" { "Advanced (comprehensive)" } else { "Simple (fast)" };
     let verbose_label = if config.verbose { "ON" } else { "OFF" };
@@ -342,6 +378,21 @@ fn print_scan_config(target: &str, config: &ScanConfig) {
     }
     if !config.tags.is_empty() {
         print!("{}\r\n", format!("[+] Tags:       {}", config.tags).yellow());
+    }
+    if !config.scope_regex.is_empty() {
+        print!("{}\r\n", format!("[+] Scope Regex: {}", config.scope_regex).yellow());
+    }
+    if !config.nuclei_templates_dir.is_empty() {
+        print!("{}\r\n", format!("[+] Nuclei Templates: {}", config.nuclei_templates_dir).yellow());
+    }
+    if config.enable_waf_evasion {
+        print!("{}\r\n", format!("[+] WAF Evasion: ON (threshold: {})", config.waf_evasion_threshold).yellow());
+    }
+    if !config.enable_fingerprint {
+        print!("{}\r\n", "[+] Fingerprint: DISABLED".dimmed());
+    }
+    if !config.enable_smart_payloads {
+        print!("{}\r\n", "[+] Smart Payloads: DISABLED".dimmed());
     }
     print!("{}\r\n", "──────".dimmed());
     std::io::stdout().flush().ok();

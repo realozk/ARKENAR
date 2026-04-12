@@ -5,7 +5,6 @@
 /// corruption if the process is killed mid-flush.
 
 use tokio::fs;
-use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::ScanConfig;

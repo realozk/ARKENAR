@@ -4,7 +4,7 @@ import {
   FlaskConical, Bug, Shield,
   AlertTriangle, ChevronDown, Copy, Check, Trash2,
   Search, ArrowUpDown, Clock, Download, ExternalLink, AlertOctagon, X,
-  Clipboard, ArrowDownToLine, ArrowUpToLine, RotateCcw, Terminal as TerminalIcon, Zap
+  Clipboard, ArrowDownToLine, ArrowUpToLine, RotateCcw, Terminal as TerminalIcon, Zap, Network, Globe
 } from "lucide-react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -222,7 +222,10 @@ function FindingCardInner({ finding, index, onOpenDetail, onSendToStudio }: {
       <div className="flex items-center gap-3 px-5 py-4">
         <span className="font-mono text-xs text-text-ghost select-none w-6 shrink-0">#{index + 1}</span>
         <AlertTriangle size={17} className={isCritical ? "text-status-critical" : "text-status-warning"} strokeWidth={2.5} />
-        <span className="text-sm font-semibold text-text-primary truncate flex-1 text-start">{finding.vuln_type}</span>
+        <span className="text-sm font-semibold text-text-primary truncate flex-1 text-start flex items-center gap-2">
+          {finding.verified && <span className="rounded-md bg-status-success/15 border border-status-success/20 px-1.5 py-0.5 text-[10px] font-bold text-status-success uppercase">✓ Verified</span>}
+          {finding.vuln_type}
+        </span>
         <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase ${severityClass}`}>
           {isCritical ? "Critical" : "Medium"}
         </span>
@@ -277,6 +280,23 @@ function FindingCardInner({ finding, index, onOpenDetail, onSendToStudio }: {
                 <p className="text-text-secondary font-mono mt-0.5 text-left" dir="ltr">{finding.server}</p>
               </div>
             )}
+            <div className="text-start col-span-2">
+              <span className="text-text-muted">Stack</span>
+              <div className="flex flex-wrap gap-1 mt-1 text-left" dir="ltr">
+                {finding.tech_stack?.length > 0 || finding.waf_detected ? (
+                  <>
+                    {finding.tech_stack?.map(tech => (
+                      <span key={tech} className="rounded-md bg-accent/15 border border-accent/20 px-1.5 py-0.5 text-[10px] font-bold text-accent-text">{tech}</span>
+                    ))}
+                    {finding.waf_detected && (
+                      <span className="rounded-md bg-status-warning/15 border border-status-warning/20 px-1.5 py-0.5 text-[10px] font-bold text-status-warning">WAF: {finding.waf_detected}</span>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-text-secondary font-mono text-[13px]">—</p>
+                )}
+              </div>
+            </div>
           </div>
           <div className="text-start">
             <div className="flex items-center gap-2 mb-1.5">
@@ -367,13 +387,75 @@ function LogLine({ log, absIdx, showTimestamps }: { log: LogEntry; absIdx: numbe
   );
 }
 
+/* ─── Site Map Tree ──────────────────────────────────────────────── */
+const SiteMapTree = memo(function SiteMapTree({ urls, query }: { urls: string[], query: string }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleCopy = (e: React.MouseEvent, text: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopied(text);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  const grouped = useMemo(() => {
+    const q = query.toLowerCase();
+    const g: Record<string, Set<string>> = {};
+    for (const u of urls) {
+      if (q && !u.toLowerCase().includes(q)) continue;
+      try {
+        const parsed = new URL(u);
+        const host = parsed.origin;
+        if (!g[host]) g[host] = new Set();
+        g[host].add((parsed.pathname + parsed.search) || "/");
+      } catch {
+        if (!g["unparsed"]) g["unparsed"] = new Set();
+        g["unparsed"].add(u);
+      }
+    }
+    return g;
+  }, [urls, query]);
+
+  const hosts = Object.keys(grouped).sort();
+
+  return (
+    <div className="space-y-4 pb-4">
+      {hosts.map(host => (
+        <div key={host} className="finding-card rounded-xl border border-border-subtle bg-bg-card px-5 py-4 animate-fade-slide-in">
+          <div className="flex items-center gap-2 mb-2 border-border-subtle/50 pb-2">
+            <Globe size={16} className="text-accent" />
+            <span className="text-sm font-bold text-text-primary underline decoration-border-subtle hover:decoration-accent decoration-2 underline-offset-4" dir="ltr">{host}</span>
+            <span className="ml-auto rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent-text">{grouped[host].size} items</span>
+          </div>
+          <div className="pl-6 space-y-1 mt-3 border-l-2 border-border-subtle/30 ml-2">
+            {Array.from(grouped[host]).sort().map(path => (
+               <div key={path} className="group relative flex items-start gap-2 py-1 pr-10">
+                 <div className="w-2 h-2 rounded-full bg-border-subtle/50 shrink-0 mt-[6px]" />
+                 <span className="text-[13px] font-mono text-text-secondary break-all truncate text-left w-full group-hover:text-text-primary transition-colors cursor-default" dir="ltr" title={path}>{path}</span>
+                 <button
+                   onClick={(e) => handleCopy(e, host === "unparsed" ? path : host + (path === "/" ? "" : path))}
+                   className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-text-ghost hover:text-accent-text hover:bg-accent-dim transition-all duration-150"
+                   title="Copy URL"
+                 >
+                   {copied === (host === "unparsed" ? path : host + (path === "/" ? "" : path)) ? <Check size={12} strokeWidth={2.5} className="text-status-success" /> : <Copy size={12} strokeWidth={2.5} />}
+                 </button>
+               </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
 /* ─── TerminalView ───────────────────────────────────────────────── */
 
 interface TerminalViewProps {
   logs: LogEntry[];
   findings: ScanFindingEvent[];
-  activeTab: "terminal" | "findings" | "history" | "studio";
-  onTabChange: (tab: "terminal" | "findings" | "history" | "studio") => void;
+  visitedUrls?: string[];
+  activeTab: "terminal" | "findings" | "sitemap" | "history" | "studio";
+  onTabChange: (tab: "terminal" | "findings" | "sitemap" | "history" | "studio") => void;
   onRequestClear: () => void;
   scanHistory: ScanHistoryEntry[];
   onLoadFromHistory?: (target: string) => void;
@@ -391,7 +473,7 @@ interface TerminalViewProps {
   onCompareWithHistoryRef?: React.MutableRefObject<((body: string) => void) | null>;
 }
 
-export function TerminalView({ logs, findings, activeTab, onTabChange,
+export function TerminalView({ logs, findings, visitedUrls = [], activeTab, onTabChange,
   onRequestClear, scanHistory, onLoadFromHistory,
   scanProgress = 0, scanStatus = "idle", onQuickRescan,
   onSendToStudio, initialStudioRequest, onInitialRequestConsumed,
@@ -401,12 +483,14 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
   const termSearchRef = useRef<HTMLInputElement>(null);
   const findingsSearchRef = useRef<HTMLInputElement>(null);
   const historySearchRef = useRef<HTMLInputElement>(null);
+  const sitemapSearchRef = useRef<HTMLInputElement>(null);
   const prevFindingsLenRef = useRef(findings.length);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState<"all" | "critical" | "medium">("all");
   const [sortBy, setSortBy] = useState<"newest" | "severity" | "url">("newest");
   const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [sitemapSearchQuery, setSitemapSearchQuery] = useState("");
   const [historySortBy, setHistorySortBy] = useState<"newest" | "oldest" | "targets" | "findings">("newest");
   const [termSearchQuery, setTermSearchQuery] = useState("");
   const [isLogCopied, setIsLogCopied] = useState(false);
@@ -506,7 +590,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
   }, [scanHistory]);
 
   // F4: tab change wrapper that resets badge
-  const handleTabChange = useCallback((tab: "terminal" | "findings" | "history") => {
+  const handleTabChange = useCallback((tab: "terminal" | "findings" | "history" | "sitemap" | "studio") => {
     if (tab === "findings") setNewFindingsBadge(0);
     onTabChange(tab);
   }, [onTabChange]);
@@ -526,6 +610,7 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
         if (activeTab === "terminal") termSearchRef.current?.focus();
         else if (activeTab === "findings") findingsSearchRef.current?.focus();
         else if (activeTab === "history") historySearchRef.current?.focus();
+        else if (activeTab === "sitemap") sitemapSearchRef.current?.focus();
       }
     };
     window.addEventListener("keydown", handler);
@@ -554,6 +639,10 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
                 {newFindingsBadge > 0 && activeTab !== "findings" && (
                   <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-[9px] font-black text-bg-root px-1 animate-pulse shadow-[0_0_6px_var(--color-accent)]">{newFindingsBadge}</span>
                 )}
+              </button>
+              <button onClick={() => handleTabChange("sitemap")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "sitemap" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
+                <Network size={15} strokeWidth={2.5} className={activeTab === "sitemap" ? "text-accent-text" : ""} />Site Map
+                {visitedUrls && visitedUrls.length > 0 && <span className="ml-1 rounded-full bg-accent/20 text-accent-text px-2 py-0.5 text-[10px] font-black">{visitedUrls.length}</span>}
               </button>
               <button onClick={() => handleTabChange("history")} className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-[12px] font-bold uppercase tracking-wider transition-all duration-300 active:scale-95 border backdrop-blur-sm ${activeTab === "history" ? "bg-bg-card text-text-primary border-accent/40 shadow-[0_4px_12px_rgba(0,0,0,0.25)] ring-1 ring-accent/20" : "bg-bg-card/30 text-text-ghost border-border-subtle/40 hover:bg-bg-card/50 hover:border-border-subtle/80 hover:text-text-secondary"}`}>
                 <Clock size={15} strokeWidth={2.5} className={activeTab === "history" ? "text-accent-text" : ""} />History
@@ -690,6 +779,29 @@ export function TerminalView({ logs, findings, activeTab, onTabChange,
                   </div>
                 )}
               />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Site Map Tab */}
+      {activeTab === "sitemap" && (
+        <div className="flex flex-1 flex-col overflow-hidden animate-fade-in">
+          <div className="flex items-center justify-between border-b border-border-subtle bg-bg-panel/30 px-5 py-3 gap-4">
+            <div className="relative flex-1 group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-ghost group-focus-within:text-accent-text transition-colors duration-200" size={14} />
+              <input ref={sitemapSearchRef} type="text" placeholder="Search URLs (Ctrl+F)..." value={sitemapSearchQuery} onChange={e => setSitemapSearchQuery(e.target.value)} className="w-full rounded-lg border border-border-subtle bg-bg-input py-1.5 pl-9 pr-4 text-[13px] text-text-primary placeholder-text-ghost focus:border-accent/40 focus:outline-none focus:ring-1 focus:ring-accent/40 transition-all duration-300 shadow-sm" />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto scroll-smooth px-5 py-4 space-y-3">
+            {(!visitedUrls || visitedUrls.length === 0) ? (
+              <div className="flex flex-col items-center justify-center h-full text-text-muted py-20">
+                <Network size={36} strokeWidth={1.5} className="mb-3 opacity-30" />
+                <span className="text-sm font-medium">No site map constructed yet.</span>
+                <span className="text-xs text-text-ghost mt-1">Found URLs will appear here during scan.</span>
+              </div>
+            ) : (
+              <SiteMapTree urls={visitedUrls} query={sitemapSearchQuery} />
             )}
           </div>
         </div>

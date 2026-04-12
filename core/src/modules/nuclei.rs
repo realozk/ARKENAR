@@ -11,29 +11,34 @@ use crate::utils;
 use crate::SinkRef;
 use std::fs;
 use crate::utils::installer::get_plugin_dir;
+use crate::ScanConfig;
 
-/// Reads a Nuclei template file.
-///
-/// Validates the extension before any disk I/O — rejects non-`.yaml`/`.yml`
-/// files immediately so a large binary cannot stall the application.
+fn validate_path_field(name: &str, val: &str) -> anyhow::Result<()> {
+    const FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
+    if val.chars().any(|c| FORBIDDEN.contains(&c)) {
+        anyhow::bail!("{} contains forbidden characters.", name);
+    }
+    if val.contains("..") {
+        anyhow::bail!("{} contains path-traversal sequence.", name);
+    }
+    Ok(())
+}
+
 pub async fn parse_template(file_path: &Path) -> Result<String, String> {
     let ext = file_path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
-
     if ext != "yaml" && ext != "yml" {
         return Err(format!(
             "Invalid file type '{}'. Only .yaml or .yml templates are allowed.",
             ext
         ));
     }
-
     async_fs::read_to_string(file_path)
         .await
         .map_err(|e| format!("Failed to read template '{}': {}", file_path.display(), e))
 }
-
 
 #[derive(Deserialize, Debug)]
 struct NucleiInfo {
@@ -59,6 +64,41 @@ pub async fn run_nuclei_scan(
     sink: &SinkRef,
     abort: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    run_nuclei_scan_inner(target, mode, verbose, custom_tags, max_secs, sink, abort, "").await
+}
+
+pub async fn run_nuclei_scan_with_config(
+    target: &str,
+    config: &ScanConfig,
+    sink: &SinkRef,
+    abort: Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    if !config.nuclei_templates_dir.is_empty() {
+        validate_path_field("nuclei_templates_dir", &config.nuclei_templates_dir)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
+    run_nuclei_scan_inner(
+        target,
+        &config.mode,
+        config.verbose,
+        config.tags_ref(),
+        config.crawler_timeout,
+        sink,
+        abort,
+        &config.nuclei_templates_dir,
+    ).await
+}
+
+async fn run_nuclei_scan_inner(
+    target: &str,
+    mode: &str,
+    verbose: bool,
+    custom_tags: Option<&str>,
+    max_secs: u64,
+    sink: &SinkRef,
+    abort: Arc<AtomicBool>,
+    extra_templates_dir: &str,
+) -> anyhow::Result<()> {
     let binary = match utils::get_binary_path("nuclei") {
         Some(path) => path,
         None => {
@@ -68,12 +108,10 @@ pub async fn run_nuclei_scan(
     };
 
     let is_simple = mode != "advanced";
-
     let timeout_str = if is_simple { "5" } else { "10" };
-    let concurrency  = if is_simple { "25" } else { "50" };
+    let concurrency = if is_simple { "25" } else { "50" };
 
     sink.on_log("phase", &format!("[*] Launching Nuclei on: {}", target));
-
     if verbose {
         sink.on_log("info", &format!("[DEBUG] concurrency: {}", concurrency));
     }
@@ -84,12 +122,13 @@ pub async fn run_nuclei_scan(
         "-timeout", timeout_str,
         "-rate-limit", "50",
         "-c", concurrency,
-        "-duc", 
-        "-ni",   
-        "-ns",   
+        "-duc",
+        "-ni",
+        "-ns",
     ];
 
     let plugin_dir_string: String;
+    let extra_dir_string: String;
 
     if let Some(tags) = custom_tags {
         if verbose {
@@ -105,7 +144,11 @@ pub async fn run_nuclei_scan(
         }
     }
 
-    if let Some(dir) = get_plugin_dir() {
+    if !extra_templates_dir.is_empty() {
+        extra_dir_string = extra_templates_dir.to_string();
+        args.extend_from_slice(&["-t", &extra_dir_string]);
+        sink.on_log("info", &format!("[+] Using custom templates dir: {}", extra_dir_string));
+    } else if let Some(dir) = get_plugin_dir() {
         let has_templates = fs::read_dir(&dir)
             .map(|mut entries| {
                 entries.any(|e| {
@@ -115,7 +158,6 @@ pub async fn run_nuclei_scan(
                 })
             })
             .unwrap_or(false);
-
         if has_templates {
             plugin_dir_string = dir.to_string_lossy().into_owned();
             args.extend_from_slice(&["-t", &plugin_dir_string]);
@@ -131,7 +173,7 @@ pub async fn run_nuclei_scan(
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        std_cmd.creation_flags(0x0800_0000); 
+        std_cmd.creation_flags(0x0800_0000);
     }
 
     let mut child = match Command::from(std_cmd).spawn() {
@@ -147,34 +189,24 @@ pub async fn run_nuclei_scan(
     let mut lines = reader.lines();
     let mut count: u32 = 0;
 
-   
     let effective_max = if max_secs == 0 { 120 } else { max_secs };
     let scan_result = timeout(Duration::from_secs(effective_max), async {
         let mut n: u32 = 0;
         while let Ok(Some(raw_line)) = lines.next_line().await {
-            if abort.load(Ordering::Relaxed) {
-                break;
-            }
-
+            if abort.load(Ordering::Relaxed) { break; }
             let line = raw_line.trim();
             if line.is_empty() { continue; }
-
             let parsed: NucleiOutput = match serde_json::from_str(line) {
                 Ok(v) => v,
                 Err(_) => continue,
             };
-
             let name = parsed.info.as_ref().and_then(|i| i.name.as_deref());
             let severity_str = parsed.info.as_ref().and_then(|i| i.severity.as_deref()).unwrap_or("unknown");
             let matched_at = parsed.matched_at.as_deref().unwrap_or("N/A");
             let template_id = parsed.template_id.as_deref().unwrap_or("");
-
             if let Some(vuln_name) = name {
                 n += 1;
-                sink.on_log("success", &format!(
-                    "[+] NUCLEI: {} [{}] @ {}",
-                    vuln_name, severity_str.to_uppercase(), matched_at
-                ));
+                sink.on_log("success", &format!("[+] NUCLEI: {} [{}] @ {}", vuln_name, severity_str.to_uppercase(), matched_at));
                 if verbose && !template_id.is_empty() {
                     sink.on_log("info", &format!("    [DEBUG] Template: {}", template_id));
                 }
@@ -186,9 +218,7 @@ pub async fn run_nuclei_scan(
     match scan_result {
         Ok(n) => {
             count = n;
-            if abort.load(Ordering::Relaxed) {
-                child.kill().await.ok();
-            }
+            if abort.load(Ordering::Relaxed) { child.kill().await.ok(); }
         }
         Err(_) => {
             sink.on_log("warn", &format!("[!] Nuclei hit the {}s phase limit — stopping it. Partial results saved.", effective_max));

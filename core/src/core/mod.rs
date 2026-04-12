@@ -14,6 +14,11 @@ pub enum VulnerabilityType {
     BlindSqlInjection,
     Xss,
     SensitiveExposure,
+    OpenRedirect,
+    Ssrf,
+    PathTraversal,
+    CommandInjection,
+    Rce,
     Safe,
 }
 
@@ -24,6 +29,11 @@ impl std::fmt::Display for VulnerabilityType {
             VulnerabilityType::BlindSqlInjection => write!(f, "Blind SQLi"),
             VulnerabilityType::Xss => write!(f, "XSS"),
             VulnerabilityType::SensitiveExposure => write!(f, "Sensitive Exposure"),
+            VulnerabilityType::OpenRedirect => write!(f, "Open Redirect"),
+            VulnerabilityType::Ssrf => write!(f, "SSRF"),
+            VulnerabilityType::PathTraversal => write!(f, "Path Traversal"),
+            VulnerabilityType::CommandInjection => write!(f, "Command Injection"),
+            VulnerabilityType::Rce => write!(f, "RCE"),
             VulnerabilityType::Safe => write!(f, "Safe"),
         }
     }

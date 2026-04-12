@@ -2,6 +2,8 @@ pub mod core;
 pub mod http;
 pub mod modules;
 pub mod utils;
+#[path = "deep-hunter/brain.rs"]
+pub mod deep_hunter;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -16,18 +18,6 @@ pub use crate::utils::installer;
 pub use crate::utils::read_lines;
 pub use crate::core::state::ScanState;
 
-/// Shared scan configuration used by both CLI and GUI.
-///
-/// Fields are grouped into logical tiers:
-/// - Core (original v1.x fields)
-/// - Auth (v1.3 — Deep Authentication & State Management)
-/// - Discovery (v1.3 — JS Static Analysis & Dynamic Parameter Fuzzing)
-/// - OAST (Market-Killer — Interactsh / Out-of-Band callbacks)
-/// - Evasion (Market-Killer — Dynamic WAF Evasion Engine)
-///
-/// All new fields carry `#[serde(default)]` via the outer attribute.
-/// Fields not sent by the GUI or CLI fall back to their `Default` value
-/// without any breaking change to existing callers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ScanConfig {
@@ -54,30 +44,27 @@ pub struct ScanConfig {
     pub webhook_url: Option<String>,
     pub html_report: bool,
     pub resume: bool,
+    pub enable_fingerprint: bool,
+    pub scope_regex: String,
+    pub nuclei_templates_dir: String,
+    pub enable_smart_payloads: bool,
 
     // ── Auth (v1.3) ───────────────────────────────────────────────────────
-    /// How to authenticate: "none" | "bearer" | "cookie" | "custom"
     pub auth_type: String,
-    /// Bearer token value (used when auth_type = "bearer").
     pub auth_token: Option<String>,
-    /// Raw Cookie header string (used when auth_type = "cookie").
     pub auth_cookies: Option<String>,
 
     // ── Discovery (v1.3) ──────────────────────────────────────────────────
-    /// Enable JavaScript static analysis to extract hidden endpoints.
     pub enable_js_analysis: bool,
-    /// Enable dynamic parameter fuzzing on discovered endpoints.
     pub enable_param_fuzz: bool,
 
     // ── OAST (Market-Killer) ──────────────────────────────────────────────
-    /// Interactsh-compatible OAST server URL (e.g. "https://oast.pro").
     pub oast_server: Option<String>,
-    /// API token for authenticated Interactsh servers.
     pub oast_token: Option<String>,
 
     // ── Evasion (Market-Killer) ───────────────────────────────────────────
-    /// Activate WAF evasion mutation layer on consecutive 403 responses.
     pub enable_waf_evasion: bool,
+    pub waf_evasion_threshold: u32,
 }
 
 impl Default for ScanConfig {
@@ -106,6 +93,10 @@ impl Default for ScanConfig {
             webhook_url: None,
             html_report: false,
             resume: false,
+            enable_fingerprint: true,
+            scope_regex: String::new(),
+            nuclei_templates_dir: String::new(),
+            enable_smart_payloads: true,
             // Auth
             auth_type: "none".to_string(),
             auth_token: None,
@@ -118,6 +109,7 @@ impl Default for ScanConfig {
             oast_token: None,
             // Evasion
             enable_waf_evasion: false,
+            waf_evasion_threshold: 5,
         }
     }
 }
@@ -147,12 +139,6 @@ impl ScanConfig {
         if self.tags.is_empty() { None } else { Some(&self.tags) }
     }
 
-    /// Returns the appropriate auth header(s) based on `auth_type`.
-    ///
-    /// - `"bearer"` → `[("Authorization", "Bearer <token>")]`
-    /// - `"cookie"` → `[("Cookie", "<cookie-string>")]`
-    /// - `"custom"` → delegates to `parsed_headers()` (from the `headers` field)
-    /// - `"none"` / anything else → empty vec
     pub fn auth_headers(&self) -> Vec<(String, String)> {
         match self.auth_type.as_str() {
             "bearer" => {
@@ -187,8 +173,6 @@ pub fn parse_custom_headers(raw: &[String]) -> Vec<(String, String)> {
     }).collect()
 }
 
-/// Output abstraction for the scan pipeline.
-/// CLI implements this with colored terminal output, GUI with Tauri events.
 pub trait ScanEventSink: Send + Sync {
     fn on_log(&self, level: &str, message: &str);
     fn on_finding(&self, result: &ScanResult);
@@ -197,7 +181,6 @@ pub trait ScanEventSink: Send + Sync {
 
 pub type SinkRef = Arc<dyn ScanEventSink>;
 
-/// Terminal output sink for CLI usage.
 pub struct ConsoleSink;
 
 impl ConsoleSink {
@@ -228,10 +211,20 @@ impl ScanEventSink for ConsoleSink {
             print!("{}\r\n", text);
             std::io::stdout().flush().ok();
         };
+        let vuln_lower = result.vuln_type.to_lowercase();
+        let colored_vuln = if vuln_lower.contains("sql") || vuln_lower.contains("rce") || vuln_lower.contains("command") {
+            result.vuln_type.red().bold().to_string()
+        } else if vuln_lower.contains("xss") || vuln_lower.contains("ssrf") || vuln_lower.contains("path traversal") {
+            result.vuln_type.yellow().to_string()
+        } else if vuln_lower.contains("open redirect") || vuln_lower.contains("sensitive") {
+            result.vuln_type.bright_yellow().to_string()
+        } else {
+            result.vuln_type.cyan().to_string()
+        };
         out(&format!(
             "\n{} {} detected!",
             "[+]".green().bold(),
-            result.vuln_type.red().bold()
+            colored_vuln
         ));
         out(&format!("    Target:  {}", result.url.white()));
         out(&format!("    Payload: {}", result.payload.bright_yellow()));

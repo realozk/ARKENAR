@@ -1,6 +1,7 @@
 pub mod client;
 
 pub use client::HttpClient;
+pub use client::MAX_RESPONSE_BODY;
 
 use reqwest::header::{HeaderMap, CONTENT_TYPE};
 use reqwest::Method;

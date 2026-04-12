@@ -20,6 +20,13 @@ export interface ScanConfig {
   crawlerTimeout: number;
   webhookUrl?: string;
   htmlReport: boolean;
+  enableFingerprint: boolean;
+  scopeRegex: string;
+  wafEvasionThreshold: number;
+  enableSmartPayloads: boolean;
+  nucleiTemplatesDir: string;
+  enableJsAnalysis: boolean;
+  enableParamFuzz: boolean;
 }
 
 export type LogLevel = "info" | "success" | "error" | "warn" | "phase";
@@ -54,6 +61,10 @@ export interface ScanFindingEvent {
   timing_ms: number;
   server: string | null;
   curl_cmd: string;
+  tech_stack: string[];
+  waf_detected: string | null;
+  verified: boolean;
+  notes: string | null;
 }
 
 export interface ScanHistoryEntry {
@@ -91,7 +102,37 @@ export const DEFAULT_CONFIG: ScanConfig = {
   crawlerTimeout: 60,
   webhookUrl: "",
   htmlReport: false,
+  enableFingerprint: true,
+  scopeRegex: "",
+  wafEvasionThreshold: 5,
+  enableSmartPayloads: true,
+  nucleiTemplatesDir: "",
+  enableJsAnalysis: false,
+  enableParamFuzz: false,
 };
+
+export interface ReconDns {
+  a: string[];
+  mx: string[];
+  txt: string[];
+  cname: string | null;
+  whois: string;
+}
+
+export interface ReconJsSecret {
+  url: string;
+  secret_type: string;
+  matched_value: string;
+  line_number: number;
+}
+
+export interface ReconHost {
+  host: string;
+  ports: number[];
+  dns: ReconDns | null;
+  jsSecrets: ReconJsSecret[];
+}
+
 export interface EnvVar {
   id: string;
   key: string;    
@@ -114,4 +155,17 @@ export interface FuzzConfig {
   concurrency: number;      
 }
 
+export interface AliveResult {
+  url: string;
+  status_code: number;
+  title: string;
+  tech_stack: string[];
+  content_length: number;
+}
 
+export interface ReconNote {
+  id: string;
+  target: string;
+  note: string;
+  timestamp: string;
+}

@@ -14,11 +14,11 @@ pub fn generate_html_report(
 ) -> String {
     let critical: Vec<_> = results.iter().filter(|r| {
         let v = r.vuln_type.to_lowercase();
-        v.contains("sqli") || v.contains("sql")
+        v.contains("sqli") || v.contains("sql") || v.contains("rce") || v.contains("command")
     }).collect();
     let medium: Vec<_> = results.iter().filter(|r| {
         let v = r.vuln_type.to_lowercase();
-        !v.contains("sqli") && !v.contains("sql") && v != "safe"
+        !v.contains("sqli") && !v.contains("sql") && !v.contains("rce") && !v.contains("command") && v != "safe"
     }).collect();
 
     let total = results.len();
@@ -27,14 +27,37 @@ pub fn generate_html_report(
 
     let mut rows = String::new();
     for (i, r) in results.iter().enumerate() {
-        let severity = if r.vuln_type.to_lowercase().contains("sql") { "Critical" } else { "Medium" };
-        let sev_class = if severity == "Critical" { "sev-critical" } else { "sev-medium" };
+        let severity = match r.vuln_type.as_str() {
+            s if s.contains("SQL") || s.contains("RCE") || s.contains("Command") => "Critical",
+            s if s.contains("XSS") || s.contains("SSRF") || s.contains("Path Traversal") || s.contains("Blind") => "High",
+            s if s.contains("Open Redirect") || s.contains("Sensitive") => "Medium",
+            _ => "Info",
+        };
+        let sev_class = match severity {
+            "Critical" => "sev-critical",
+            "High" => "sev-high",
+            "Medium" => "sev-medium",
+            _ => "sev-info",
+        };
+
+        let mut stack_html = String::new();
+        for tech in &r.tech_stack {
+            stack_html.push_str(&format!("<span style=\"color:#00d5be; margin-right:4px;\">{}</span>", html_escape(tech)));
+        }
+        if let Some(waf) = &r.waf_detected {
+            stack_html.push_str(&format!("<span style=\"color:#eab308;\">WAF:{}</span>", html_escape(waf)));
+        }
+        if stack_html.is_empty() {
+            stack_html = "\u{2014}".to_string();
+        }
+
         rows.push_str(&format!(
             r#"<tr>
                 <td>{}</td>
                 <td><span class="{}">{}</span></td>
                 <td>{}</td>
                 <td class="mono">{}</td>
+                <td>{}</td>
                 <td>{}</td>
                 <td>{}ms</td>
                 <td class="mono curl-cell">{}</td>
@@ -44,6 +67,7 @@ pub fn generate_html_report(
             html_escape(&r.vuln_type),
             html_escape(&r.url),
             r.status_code,
+            stack_html,
             r.timing_ms,
             html_escape(&r.curl_cmd),
         ));
@@ -76,7 +100,9 @@ tbody tr:hover {{ background: rgba(255,255,255,0.03); }}
 .mono {{ font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }}
 .curl-cell {{ max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94949e; }}
 .sev-critical {{ background: rgba(244,63,94,0.1); color: #f43f5e; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }}
+.sev-high {{ background: rgba(249,115,22,0.1); color: #f97316; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }}
 .sev-medium {{ background: rgba(234,179,8,0.1); color: #eab308; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }}
+.sev-info {{ color: #6b7280; background: rgba(107,114,128,0.1); padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }}
 .panel {{ background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; margin-bottom: 2rem; }}
 .panel-header {{ padding: 1rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 600; font-size: 0.85rem; }}
 .filter-bar {{ padding: 0.75rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.04); }}
@@ -125,7 +151,7 @@ function filterTable() {{
         table_or_empty = if total == 0 {
             r#"<div class="empty">No findings to display.</div>"#.to_string()
         } else {
-            format!(r#"<table><thead><tr><th>#</th><th>Severity</th><th>Type</th><th>URL</th><th>Status</th><th>Timing</th><th>Reproduce</th></tr></thead><tbody>{}</tbody></table>"#, rows)
+            format!(r#"<table><thead><tr><th>#</th><th>Severity</th><th>Type</th><th>URL</th><th>Status</th><th>Stack</th><th>Timing</th><th>Reproduce</th></tr></thead><tbody>{}</tbody></table>"#, rows)
         },
     )
 }
