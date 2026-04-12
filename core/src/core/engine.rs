@@ -18,7 +18,7 @@ use crate::deep_hunter::JsAnalyzer;
 use crate::http::{HttpClient, HttpRequest, MAX_RESPONSE_BODY};
 use crate::utils::detector::VulnerabilityDetector;
 use crate::utils::payload_loader::PayloadLoader;
-use crate::utils::fingerprint::{fingerprint_response, TechFingerprinter, FingerprintResult, TechProfile};
+use crate::utils::fingerprint::{TechFingerprinter, FingerprintResult};
 use crate::ScanConfig;
 
 pub struct ScanEngine {
@@ -207,14 +207,15 @@ impl ScanEngine {
                     throttle.wait().await;
                     match client.send_request(&fp_req).await {
                         Ok(resp) => {
-                            throttle.record_response(resp.status().as_u16());
+                            let status_code = resp.status().as_u16();
+                            throttle.record_response(status_code);
                             let headers = resp.headers().clone();
                             match read_body_capped(resp).await {
-                                Ok(body) => fingerprint_response(&headers, &body),
-                                Err(_) => TechProfile::default(),
+                                Ok(body) => fingerprinter.analyze(status_code, &headers, &body),
+                                Err(_) => FingerprintResult::default(),
                             }
                         }
-                        Err(_) => TechProfile::default(),
+                        Err(_) => FingerprintResult::default(),
                     }
                 };
 
@@ -270,7 +271,7 @@ impl ScanEngine {
             result_tx,
             network_semaphore,
             no_abort,
-            Arc::new(TechProfile::default()),
+            Arc::new(FingerprintResult::default()),
             fingerprinter,
             self.enable_fingerprint,
             self.enable_smart_payloads,
@@ -315,7 +316,7 @@ async fn scan_single_request(
     result_tx: mpsc::Sender<ScanResult>,
     network_semaphore: Arc<Semaphore>,
     abort: Arc<AtomicBool>,
-    tech_profile: Arc<TechProfile>,
+    tech_profile: Arc<FingerprintResult>,
     fingerprinter: Arc<TechFingerprinter>,
     enable_fingerprint: bool,
     enable_smart_payloads: bool,

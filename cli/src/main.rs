@@ -5,6 +5,8 @@ use std::process;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
+mod validation;
+use validation::{validate_text_field, validate_tags_field, validate_webhook_url};
 
 use arkenar_core::{
     ConsoleSink, ScanConfig, ScanEngine, ResultAggregator, ScanResult, ScanState, TargetManager,
@@ -111,6 +113,9 @@ pub struct Args {
     #[arg(long, default_value_t = false, help = "Enable JavaScript static analysis")]
     pub enable_js_analysis: bool,
 
+    #[arg(long, help = "Webhook URL to send notifications to (block SSRF if private)")]
+    pub webhook_url: Option<String>,
+
     // ── Evasion (Market-Killer) ───────────────────────────────────────────
     #[arg(long, default_value_t = false, help = "Enable WAF evasion mutations on 403 responses")]
     pub enable_waf_evasion: bool,
@@ -132,16 +137,7 @@ pub struct Args {
     pub nuclei_templates: String,
 }
 
-fn validate_cli_field(name: &str, val: &str) -> Result<(), String> {
-    const FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
-    if val.chars().any(|c| FORBIDDEN.contains(&c)) {
-        return Err(format!("Field '{}' contains forbidden characters.", name));
-    }
-    if val.contains("..") {
-        return Err(format!("Field '{}' contains path-traversal sequence.", name));
-    }
-    Ok(())
-}
+
 
 #[tokio::main]
 async fn main() {
@@ -183,14 +179,42 @@ async fn main() {
         process::exit(0);
     }
 
-    for (name, val) in &[
-        ("scope_regex", args.scope_regex.as_str()),
-        ("nuclei_templates", args.nuclei_templates.as_str()),
+    // Validate free-text fields for shell metacharacters and path traversal
+    for (name, val) in [
+        ("target",          args.target.as_deref().unwrap_or("")),
+        ("proxy",           args.proxy.as_deref().unwrap_or("")),
+        ("scope-regex",     args.scope_regex.as_str()),
+        ("nuclei-templates",args.nuclei_templates.as_str()),
+        ("headers",         &args.headers.join(";")),
+        ("auth-token",      args.auth_token.as_deref().unwrap_or("")),
+        ("auth-cookies",    args.auth_cookies.as_deref().unwrap_or("")),
+        ("payloads",        args.payloads.as_deref().unwrap_or("")),
+        ("output",          args.output.as_str()),
     ] {
         if !val.is_empty() {
-            if let Err(e) = validate_cli_field(name, val) {
-                eprintln!("Error: {}", e);
-                process::exit(1);
+            if let Err(e) = validate_text_field(name, val) {
+                eprintln!("[!] {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Validate tags (block flag injection)
+    if let Some(ref tags) = args.tags {
+        if !tags.is_empty() {
+            if let Err(e) = validate_tags_field("tags", tags) {
+                eprintln!("[!] {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Validate webhook URL (block SSRF)
+    if let Some(ref webhook) = args.webhook_url {
+        if !webhook.is_empty() {
+            if let Err(e) = validate_webhook_url(webhook) {
+                eprintln!("[!] {}", e);
+                std::process::exit(1);
             }
         }
     }
@@ -204,7 +228,7 @@ async fn main() {
         rate_limit: args.rate_limit,
         output: args.output.clone(),
         proxy: args.proxy.clone().unwrap_or_default(),
-        headers: args.headers.join(";"),
+        headers: args.headers.join("\n"),
         tags: args.tags.clone().unwrap_or_default(),
         payloads: args.payloads.clone().unwrap_or_default(),
         verbose: args.verbose,

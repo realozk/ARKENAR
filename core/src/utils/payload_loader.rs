@@ -1,5 +1,5 @@
 use crate::core::mutator::InjectionPoint;
-use crate::utils::fingerprint::TechProfile;
+use crate::utils::fingerprint::FingerprintResult;
 use std::fs;
 use std::io::BufRead;
 use std::path::Path;
@@ -216,13 +216,13 @@ impl PayloadLoader {
     pub fn get_payloads_for_point_tech_aware(
         &self,
         point: &InjectionPoint,
-        profile: &TechProfile,
+        profile: &FingerprintResult,
     ) -> Vec<String> {
-        let lang = profile.language.as_deref().unwrap_or("").to_lowercase();
-        let is_aspnet = lang.contains("asp.net");
-        let is_php    = lang.contains("php");
-        let is_java   = lang.contains("java");
-        let has_waf   = profile.waf.is_some();
+        let tech_stack = profile.tech_stack.join(" ").to_lowercase();
+        let is_aspnet = tech_stack.contains("asp.net");
+        let is_php    = tech_stack.contains("php");
+        let is_java   = tech_stack.contains("java");
+        let has_waf   = profile.waf_detected.is_some();
 
         if !is_aspnet && !is_php && !is_java && !has_waf {
             return self.get_payloads_for_point(point);

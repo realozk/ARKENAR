@@ -43,7 +43,7 @@ export default function ReconTopBar({
       flexShrink: 0,
     }}>
       <span style={{ color: "#ff6b35", fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-        🔴 ARKENAR RECON
+         ARKENAR RECON
       </span>
       <span style={{ color: "#2a2a2a", margin: "0 4px" }}>·</span>
       <span

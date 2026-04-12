@@ -215,8 +215,10 @@ core/src/
     │                       contextually per InjectionPoint type.
     │                       ⚠️  DELETE THIS → Engine has no payloads to inject.
     │
-    └── mod.rs            # Exports read_lines() helper used by CLI/GUI to
-                            load target lists from files.
+    ├── mod.rs            # Exports read_lines() helper used by CLI/GUI to
+    │                       load target lists from files.
+    │
+    └── deep-hunter/brain.rs  # `JsAnalyzer` — extracts JS URLs and API endpoints via regex. Used in Phase 3 when `config.enable_js_analysis = true` and in the Recon panel's JS secrets module.
 ```
 
 ---
@@ -225,11 +227,12 @@ core/src/
 
 ```
 cli/src/
-└── main.rs               # THE ENTIRE CLI. ~309 lines.
-                            Parses Args with clap, builds ScanConfig, creates
-                            ConsoleSink, calls run_scan_sequence() (3 phases).
-                            Also handles --update and --resume.
-                            ⚠️  DELETE THIS → arkenar binary doesn't exist.
+├── main.rs               # THE ENTIRE CLI. ~309 lines.
+│                           Parses Args with clap, builds ScanConfig, creates
+│                           ConsoleSink, calls run_scan_sequence() (3 phases).
+│                           Also handles --update and --resume.
+│                           ⚠️  DELETE THIS → arkenar binary doesn't exist.
+└── validation.rs         # CLI security boundary: `validate_text_field`, `validate_tags_field`, `validate_webhook_url`. Mirrors GUI's `validate_scan_config`. CLI accepts untrusted input without any guards.
 ```
 
 ---
@@ -436,15 +439,20 @@ What the engine produces for every confirmed finding. Gets deduplicated, written
 
 ### `VulnerabilityType` (`core/src/core/mod.rs`)
 
-The canonical enum that `VulnerabilityDetector` returns. It is the only place where new vulnerability _classes_ should be added.
+The canonical enum returned by VulnerabilityDetector. Contains 10 variants (9 active + Safe). This is the ONLY place where new vulnerability classes should be added.
 
-```
-SqlInjection       → "SQLi"
-BlindSqlInjection  → "Blind SQLi"
-Xss                → "XSS"
-SensitiveExposure  → "Sensitive Exposure"
-Safe               → (filtered out, never reported)
-```
+| Variant | Display | Notes |
+|---|---|---|
+| `SqlInjection` | `SQLi` | Error-based / response-diff detection |
+| `BlindSqlInjection` | `Blind SQLi` | Time-based detection |
+| `Xss` | `XSS` | Reflected XSS |
+| `SensitiveExposure` | `Sensitive Exposure` | Leaked secrets, stack traces |
+| `OpenRedirect` | `Open Redirect` | Location header manipulation |
+| `Ssrf` | `SSRF` | Out-of-band or error-based |
+| `PathTraversal` | `Path Traversal` | `../` file read patterns |
+| `CommandInjection` | `Command Injection` | OS command execution evidence |
+| `Rce` | `RCE` | Remote code execution evidence |
+| `Safe` | `Safe` | Filtered out — never reported to sink |
 
 ---
 
@@ -463,6 +471,7 @@ Understanding where untrusted input enters the system is critical for maintenanc
 | **HTML report output path** | GUI `generate_report` | Sanitized, canonicalized, must stay inside downloads directory |
 | **Payload files** | CLI `--payloads` / GUI `payloads` field | Read from disk by `PayloadLoader`; no shell execution |
 | **HTTP response bodies** | Engine `scan_single_request` | Only passed to `VulnerabilityDetector` for pattern matching; never executed |
+| Scope regex | CLI / GUI | Passed to `regex` crate — must be validated before compile to avoid ReDoS |
 
 ---
 

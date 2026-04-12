@@ -120,7 +120,7 @@ impl ScanConfig {
             Vec::new()
         } else {
             self.headers
-                .split(';')
+                .lines()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect()
@@ -169,6 +169,19 @@ pub fn parse_custom_headers(raw: &[String]) -> Vec<(String, String)> {
         let key = parts.next()?.trim().to_string();
         let val = parts.next().unwrap_or("").trim().to_string();
         if key.is_empty() { return None; }
+
+        // Strict validation on key
+        const KEY_FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0', '=', ','];
+        if key.chars().any(|c| KEY_FORBIDDEN.contains(&c)) {
+            return None;
+        }
+
+        // Loose validation on value (allow =, ;, , space)
+        const VAL_FORBIDDEN: &[char] = &['&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
+        if val.chars().any(|c| VAL_FORBIDDEN.contains(&c)) {
+            return None; 
+        }
+
         Some((key, val))
     }).collect()
 }

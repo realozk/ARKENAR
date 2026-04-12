@@ -274,9 +274,31 @@ fn validate_tags_field(tags: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_custom_headers(headers: &str) -> Result<(), String> {
+    for line in headers.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        if let Some((key, val)) = line.split_once(':') {
+            let key = key.trim();
+            let val = val.trim();
+            const KEY_FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0', '=', ','];
+            if key.chars().any(|c| KEY_FORBIDDEN.contains(&c)) {
+                return Err(format!("Header key '{}' contains forbidden characters.", key));
+            }
+            const VAL_FORBIDDEN: &[char] = &['&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
+            if val.chars().any(|c| VAL_FORBIDDEN.contains(&c)) {
+                return Err("Header value contains forbidden characters.".to_string());
+            }
+        } else {
+            return Err(format!("Header '{}' is missing a colon (:).", line));
+        }
+    }
+    Ok(())
+}
+
 fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     validate_text_field("proxy",    &config.proxy)?;
-    validate_text_field("headers",  &config.headers)?;
+    validate_custom_headers(&config.headers)?;
     validate_text_field("payloads", &config.payloads)?;
     validate_text_field("output",   &config.output)?;
     if config.target.chars().any(|c| matches!(c, '\n' | '\r' | '\0')) {
@@ -438,7 +460,6 @@ async fn run_recon(
 
         let total_hosts = hosts.len();
         let mut total_ports: usize = 0;
-        let mut total_secrets: usize = 0;
 
         // Skip re-emitting the root domain subdomain event (already emitted above),
         // but DO run port scan + DNS for ALL hosts including root
@@ -477,7 +498,7 @@ async fn run_recon(
             Err(_) => vec![],
         };
 
-        total_secrets = secrets.len();
+        let total_secrets = secrets.len();
         for s in secrets {
             app_clone.emit("recon-js-secret", ReconJsSecretEvent {
                 url: s.url,
