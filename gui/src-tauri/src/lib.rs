@@ -412,7 +412,8 @@ async fn run_recon(
     let app_clone = app.clone();
 
     tokio::spawn(async move {
-        let sink: SinkRef = TauriSink::new_ref(app_clone.clone(), None);
+        let finding_emitter = spawn_finding_emitter(app_clone.clone());
+        let sink: SinkRef = TauriSink::new_ref(app_clone.clone(), None, finding_emitter);
 
         // Always emit the root domain itself first so the UI shows something immediately
         app_clone.emit("recon-subdomain", ReconSubdomainEvent { host: domain.clone() }).ok();

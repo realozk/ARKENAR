@@ -39,23 +39,23 @@ const DEFAULT_STATS: ScanStatsEvent = {
   elapsed: '—',
 };
 
-export const useScanStore = create<ScanStore>((set) => ({
+export const useScanStore = create<ScanStore>((set: (partial: Partial<ScanStore> | ((s: ScanStore) => Partial<ScanStore>)) => void) => ({
   // Initial values
   rps: 0,
   scanProgress: 0,
   stats: DEFAULT_STATS,
 
   // Actions
-  setRps: (rps) => set({ rps }),
+  setRps: (rps: number) => set({ rps }),
 
-  setScanProgress: (progress) =>
-    set((state) =>
+  setScanProgress: (progress: number | ((prev: number) => number)) =>
+    set((state: ScanStore) =>
       typeof progress === 'function'
         ? { scanProgress: progress(state.scanProgress) }
         : { scanProgress: progress }
     ),
 
-  setStats: (stats) => set({ stats }),
+  setStats: (stats: ScanStatsEvent) => set({ stats }),
 
   resetScanState: () =>
     set({ rps: 0, scanProgress: 0, stats: DEFAULT_STATS }),

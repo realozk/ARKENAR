@@ -45,9 +45,9 @@ function App() {
 
   // ── Zustand: fast-updating scan state (rps, progress, stats) ─────────────
   const { setRps, setScanProgress, setStats } = useScanStore.getState();
-  const scanProgress = useScanStore(s => s.scanProgress);
-  const stats = useScanStore(s => s.stats);
-  const rps = useScanStore(s => s.rps);
+  const scanProgress = useScanStore((s: { scanProgress: number }) => s.scanProgress);
+  const stats = useScanStore((s: { stats: import('./types').ScanStatsEvent }) => s.stats);
+  const rps = useScanStore((s: { rps: number }) => s.rps);
   // ─────────────────────────────────────────────────────────────────────────
 
   const [config, setConfig] = useState<ScanConfig>(() => {
@@ -266,7 +266,7 @@ function App() {
         if (activeTabRef.current !== "studio") {
           setActiveTab("findings");
         }
-        setScanProgress((p) => Math.min(p + batch.length, 90));
+        setScanProgress((p: number) => Math.min(p + batch.length, 90));
         if (batch.length > 0) {
           playSound("finding", appSettingsRef.current.soundEnabled && appSettingsRef.current.soundOnFinding, appSettingsRef.current.soundVolume);
         }
@@ -604,6 +604,17 @@ function App() {
     });
   }, [appSettings]);
 
+  useEffect(() => {
+    if (window.innerWidth < 1400) {
+      setSidebarCollapsed(true);
+    }
+    const handleResize = () => {
+      if (window.innerWidth < 1400) setSidebarCollapsed(true);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const handleLoadFromHistory = useCallback((target: string) => {
     if (target.startsWith("http")) {
       setConfig(prev => ({ ...prev, target, listFile: "" }));
@@ -672,7 +683,7 @@ function App() {
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden rounded-xl">
       <div className="relative z-0 flex flex-1 flex-col min-h-0">
-        <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10">
+        <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10" style={{ paddingLeft: 'max(24px, env(titlebar-area-x, 80px))' }}>
 
           <div className="flex items-center gap-4 shrink-0">
             <div className="flex items-center gap-2">

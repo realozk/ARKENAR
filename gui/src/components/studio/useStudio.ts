@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { EnvVar } from "../../types";
-import type { FuzzResult, FuzzConfig } from '../../types';
-
+import type { FuzzResult, FuzzConfig } from "../../types";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
@@ -21,7 +20,7 @@ export type StudioResponse = {
   timing_ms: number;
 };
 
-export type RequestTab = "headers" | "body" | "params";
+export type RequestTab = "headers" | "body" | "params" | "env";
 export type ResponseTab = "body" | "headers" | "cookies" | "diff";
 export type PocTab = "curl" | "python" | "raw";
 export type QueryParam = { id: string; key: string; value: string; enabled: boolean };
@@ -32,6 +31,7 @@ export const REQUEST_TABS: { id: RequestTab; label: string }[] = [
   { id: "headers", label: "Headers" },
   { id: "body", label: "Body" },
   { id: "params", label: "Params" },
+  { id: "env", label: "Env Vars" },
 ];
 
 export const RESPONSE_TABS: { id: ResponseTab; label: string }[] = [
@@ -59,10 +59,30 @@ export interface AutoLoginResult {
   status_code: number;
 }
 
+export type PipelineStage = "draft" | "dispatch" | "await" | "render";
+
 export function getStatusClass(status: number): string {
   if (status >= 200 && status < 300) return "text-status-success";
   if (status >= 300 && status < 400) return "text-status-warning";
   return "text-status-critical";
+}
+
+export function getStatusColor(status: number): string {
+  if (status >= 200 && status < 300) return "#4caf50";
+  if (status >= 300 && status < 400) return "#2196f3";
+  if (status >= 400 && status < 500) return "#ff9800";
+  return "#f44336";
+}
+
+export function getMethodColor(method: HttpMethod): string {
+  switch (method) {
+    case "GET": return "#4caf50";
+    case "POST": return "#ff6b35";
+    case "PUT": return "#ff9800";
+    case "PATCH": return "#2196f3";
+    case "DELETE": return "#f44336";
+    default: return "#aaaaaa";
+  }
 }
 
 export function buildHistoryLabel(request: StudioRequest): string {
@@ -93,9 +113,7 @@ export function parseHeaderLines(headersInput: string): Array<[string, string]> 
 export function safeBase64Encode(input: string): string {
   const bytes = new TextEncoder().encode(input);
   let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary);
 }
 
@@ -106,9 +124,7 @@ export function safeBase64Decode(input: string): string {
 }
 
 export function toHex(input: string): string {
-  return Array.from(input)
-    .map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0"))
-    .join("");
+  return Array.from(input).map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join("");
 }
 
 export function buildCurlSnippet(request: StudioRequest): string {
@@ -128,9 +144,7 @@ export function buildPythonSnippet(request: StudioRequest): string {
   const headersMap = headers.length
     ? `headers = {\n${headers.map(([k, v]) => `    ${JSON.stringify(k)}: ${JSON.stringify(v)},`).join("\n")}\n}`
     : "headers = {}";
-
   const hasBody = request.body.trim() && request.method !== "GET" && request.method !== "HEAD";
-
   return [
     "import requests",
     "",
@@ -173,24 +187,13 @@ export function diffBodies(previousBody: string, currentBody: string): Array<{ t
   const curr = currentBody.split("\n");
   const max = Math.max(prev.length, curr.length);
   const lines: Array<{ type: "same" | "added" | "removed"; text: string }> = [];
-
   for (let idx = 0; idx < max; idx += 1) {
     const p = prev[idx];
     const c = curr[idx];
-
-    if (p === c && c !== undefined) {
-      lines.push({ type: "same", text: c });
-      continue;
-    }
-
-    if (p !== undefined) {
-      lines.push({ type: "removed", text: p });
-    }
-    if (c !== undefined) {
-      lines.push({ type: "added", text: c });
-    }
+    if (p === c && c !== undefined) { lines.push({ type: "same", text: c }); continue; }
+    if (p !== undefined) lines.push({ type: "removed", text: p });
+    if (c !== undefined) lines.push({ type: "added", text: c });
   }
-
   return lines;
 }
 
@@ -214,6 +217,7 @@ export function useStudio(props: {
   const [showMethodMenu, setShowMethodMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineStage>("draft");
 
   const [response, setResponse] = useState<StudioResponse | null>(null);
   const [previousResponse, setPreviousResponse] = useState<StudioResponse | null>(null);
@@ -233,12 +237,11 @@ export function useStudio(props: {
   const [fuzzProgress, setFuzzProgress] = useState(0);
 
   const [showSmartLogin, setShowSmartLogin] = useState(false);
-  
-  const [envVars, setEnvVars] = useState<EnvVar[]>(() => {
-  try { return JSON.parse(localStorage.getItem('arkenar-env-vars') ?? '[]'); }
-  catch { return []; }
-});
 
+  const [envVars, setEnvVars] = useState<EnvVar[]>(() => {
+    try { return JSON.parse(localStorage.getItem("arkenar-env-vars") ?? "[]"); }
+    catch { return []; }
+  });
 
   const headersRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -248,11 +251,11 @@ export function useStudio(props: {
 
   const injectCookieHeader = (currentHeaders: string, cookieValue: string): string => {
     const cleaned = currentHeaders
-      .split('\n')
-      .filter(line => !line.trim().toLowerCase().startsWith('cookie:'))
+      .split("\n")
+      .filter(line => !line.trim().toLowerCase().startsWith("cookie:"))
       .filter(Boolean);
     cleaned.push(`Cookie: ${cookieValue}`);
-    return cleaned.join('\n');
+    return cleaned.join("\n");
   };
 
   const responseCookies = useMemo(
@@ -267,19 +270,14 @@ export function useStudio(props: {
     return lines.length === 0 ? [""] : lines;
   }, [displayBody]);
 
-  const [diffLines, setDiffLines] = useState<
-  { type: 'same' | 'added' | 'removed'; text: string }[]
->([]);
+  const [diffLines, setDiffLines] = useState<{ type: "same" | "added" | "removed"; text: string }[]>([]);
 
-  const finalRequest = useMemo<StudioRequest>(() => {
-    return {
-      url,
-      method,
-      headers: headersInput,
-      body: isBodyDisabled ? "" : body,
-    };
-  }, [url, method, headersInput, body, isBodyDisabled]);
-  
+  const finalRequest = useMemo<StudioRequest>(() => ({
+    url,
+    method,
+    headers: headersInput,
+    body: isBodyDisabled ? "" : body,
+  }), [url, method, headersInput, body, isBodyDisabled]);
 
   const curlSnippet = useMemo(() => buildCurlSnippet(finalRequest), [finalRequest]);
   const pythonSnippet = useMemo(() => buildPythonSnippet(finalRequest), [finalRequest]);
@@ -292,21 +290,18 @@ export function useStudio(props: {
   }, [pocTab, curlSnippet, pythonSnippet, rawSnippet]);
 
   const isResponseJson = useMemo(() => {
-  if (!response) return false;
-  return response.headers.some(([k, v]) =>
-    k.toLowerCase() === 'content-type' && v.toLowerCase().includes('application/json')
-  );
-}, [response]);
-
+    if (!response) return false;
+    return response.headers.some(([k, v]) =>
+      k.toLowerCase() === "content-type" && v.toLowerCase().includes("application/json")
+    );
+  }, [response]);
 
   useEffect(() => {
     if (!initialRequest) return;
-
     if (initialRequest.method) setMethod(initialRequest.method);
     if (typeof initialRequest.url === "string") setUrl(initialRequest.url);
     if (typeof initialRequest.headers === "string") setHeadersInput(initialRequest.headers);
     if (typeof initialRequest.body === "string") setBody(initialRequest.body);
-
     onInitialRequestConsumed?.();
   }, [initialRequest, onInitialRequestConsumed]);
 
@@ -323,18 +318,12 @@ export function useStudio(props: {
   };
 
   useEffect(() => {
-    if (suppressUrlEffect.current) {
-      suppressUrlEffect.current = false;
-      return;
-    }
+    if (suppressUrlEffect.current) { suppressUrlEffect.current = false; return; }
     try {
       const parsed = new URL(url);
       setQueryParams(
         Array.from(parsed.searchParams.entries()).map(([k, v]) => ({
-          id: crypto.randomUUID(),
-          key: k,
-          value: v,
-          enabled: true,
+          id: crypto.randomUUID(), key: k, value: v, enabled: true,
         }))
       );
     } catch {
@@ -346,26 +335,16 @@ export function useStudio(props: {
     const targetRef = requestTab === "headers" ? headersRef : bodyRef;
     const textarea = targetRef.current;
     if (!textarea) return;
-
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     if (start === end) return;
-
     const currentValue = textarea.value;
     const selected = currentValue.slice(start, end);
-
     let transformed = selected;
-    try {
-      transformed = mutator(selected);
-    } catch {
-      return;
-    }
-
+    try { transformed = mutator(selected); } catch { return; }
     const next = `${currentValue.slice(0, start)}${transformed}${currentValue.slice(end)}`;
-
     if (requestTab === "headers") setHeadersInput(next);
     else if (requestTab === "body") setBody(next);
-
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.selectionStart = start;
@@ -373,7 +352,7 @@ export function useStudio(props: {
     });
   };
 
- useEffect(() => {
+  useEffect(() => {
     if (selectedHistoryId) {
       const item = history.find(i => i.id === selectedHistoryId);
       if (item) {
@@ -384,11 +363,30 @@ export function useStudio(props: {
         setResponse(item.response || null);
         setError(item.error || null);
         setCompareMode(false);
+        setPipeline(item.response ? "render" : "draft");
       }
     }
   }, [selectedHistoryId, history]);
 
-  // Use envVars state (already loaded) instead of re-reading localStorage on every send.
+  useEffect(() => {
+    const reqSize = url ? new Blob([url]).size : 0;
+    const resSize = response?.body ? new Blob([response.body]).size : 0;
+    const fmtBytes = (n: number) => n > 1024 ? `${(n / 1024).toFixed(1)}KB` : `${n}B`;
+    
+    const stageMap: Record<PipelineStage, number> = { "draft": 0, "dispatch": 1, "await": 2, "render": 3 };
+    const statusStr = response ? String(response.status) : error ? "Error" : isLoading ? pipeline.toUpperCase() : "Idle";
+      
+    window.dispatchEvent(new CustomEvent("studio-stats", {
+      detail: {
+        status: statusStr,
+        time: response ? `${response.timing_ms}ms` : "—",
+        reqSize: fmtBytes(reqSize),
+        resSize: fmtBytes(resSize),
+        phase: stageMap[pipeline],
+      }
+    }));
+  }, [url, response, error, isLoading, pipeline]);
+
   const envVarsRef = useRef(envVars);
   envVarsRef.current = envVars;
 
@@ -396,69 +394,60 @@ export function useStudio(props: {
     try {
       return envVarsRef.current.reduce((acc, v) => {
         if (!v.key.trim()) return acc;
-        const escaped = v.key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return acc.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, 'g'), v.value);
+        const escaped = v.key.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return acc.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, "g"), v.value);
       }, text);
-    } catch {
-      return text;
-    }
+    } catch { return text; }
   };
 
-const computeDiff = (a: string, b: string) => {
-  const aLines = a.split('\n');
-  const bLines = b.split('\n');
-  const result: { type: 'same' | 'removed' | 'added'; text: string }[] = [];
-
-  const maxLen = Math.max(aLines.length, bLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    const aLine = aLines[i];
-    const bLine = bLines[i];
-
-    if (aLine === bLine) {
-      result.push({ type: 'same', text: aLine ?? '' });
-    } else {
-      if (aLine !== undefined) result.push({ type: 'removed', text: aLine });
-      if (bLine !== undefined) result.push({ type: 'added', text: bLine });
+  const computeDiff = (a: string, b: string) => {
+    const aLines = a.split("\n");
+    const bLines = b.split("\n");
+    const result: { type: "same" | "removed" | "added"; text: string }[] = [];
+    const maxLen = Math.max(aLines.length, bLines.length);
+    for (let i = 0; i < maxLen; i++) {
+      const aLine = aLines[i];
+      const bLine = bLines[i];
+      if (aLine === bLine) { result.push({ type: "same", text: aLine ?? "" }); }
+      else {
+        if (aLine !== undefined) result.push({ type: "removed", text: aLine });
+        if (bLine !== undefined) result.push({ type: "added", text: bLine });
+      }
     }
-  }
-  return result;
-};
-
-
+    return result;
+  };
 
   const onSend = async () => {
     if (isLoading) return;
-
     setIsLoading(true);
     setError(null);
     setShowMethodMenu(false);
     setPreviousResponse(response);
+    setPipeline("dispatch");
 
     try {
       const req: StudioRequest = {
-        url:     injectEnvVars(finalRequest.url.trim()),
-        method:  finalRequest.method,
+        url: injectEnvVars(finalRequest.url.trim()),
+        method: finalRequest.method,
         headers: injectEnvVars(finalRequest.headers),
-        body:    injectEnvVars(finalRequest.body),
+        body: injectEnvVars(finalRequest.body),
       };
 
-      const res = await invoke<StudioResponse>('studio_send', { req });
+      setPipeline("await");
+      const res = await invoke<StudioResponse>("studio_send", { req });
+      setPipeline("render");
 
       const isJsonContentType = res.headers.some(([k, v]) =>
-      k.toLowerCase() === 'content-type' && v.toLowerCase().includes('application/json')
-    );
-    
+        k.toLowerCase() === "content-type" && v.toLowerCase().includes("application/json")
+      );
 
       let finalRes = res;
       if (isJsonContentType) {
         try {
           const pretty = JSON.stringify(JSON.parse(res.body), null, 2);
           finalRes = { ...res, body: pretty };
-        } catch {
-        }
+        } catch { }
       }
-
-      
 
       const item: StudioHistoryItem = {
         id: crypto.randomUUID(),
@@ -473,14 +462,14 @@ const computeDiff = (a: string, b: string) => {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
       setResponse(null);
+      setPipeline("draft");
 
       const failedReq: StudioRequest = {
-        url:     injectEnvVars(finalRequest.url.trim()),
-        method:  finalRequest.method,
+        url: injectEnvVars(finalRequest.url.trim()),
+        method: finalRequest.method,
         headers: injectEnvVars(finalRequest.headers),
-        body:    injectEnvVars(finalRequest.body),
+        body: injectEnvVars(finalRequest.body),
       };
-
 
       const item: StudioHistoryItem = {
         id: crypto.randomUUID(),
@@ -498,7 +487,6 @@ const computeDiff = (a: string, b: string) => {
 
   const onBeautifyResponse = () => {
     if (!response?.body) return;
-
     try {
       const parsed = JSON.parse(response.body);
       const pretty = JSON.stringify(parsed, null, 2);
@@ -509,30 +497,23 @@ const computeDiff = (a: string, b: string) => {
   };
 
   const onMirrorToRequest = () => {
-  if (!response?.body) return;
-  setBody(response.body);
-  setRequestTab('body');
+    if (!response?.body) return;
+    setBody(response.body);
+    setRequestTab("body");
+  };
 
- 
+  const onCompareWithHistory = (historyBody: string) => {
+    if (!response?.body) return;
+    const diff = computeDiff(historyBody, response.body);
+    setDiffLines(diff);
+    setCompareMode(true);
+    setResponseTab("body");
+  };
 
-};
-
- const onCompareWithHistory = (historyBody: string) => {
-  if (!response?.body) return;
-  const diff = computeDiff(historyBody, response.body);
-  setDiffLines(diff);
-  setCompareMode(true);
-  setResponseTab('body');
-};
-
-const onStartFuzz = async () => {
+  const onStartFuzz = async () => {
     if (!fuzzAnchor || !fuzzPayloads.trim) return;
-    const payloads = fuzzPayloads
-      .split("\n")
-      .map(p => p.trim())
-      .filter(Boolean);
+    const payloads = fuzzPayloads.split("\n").map(p => p.trim()).filter(Boolean);
     if (payloads.length === 0) return;
-
     setIsFuzzing(true);
     setFuzzResults([]);
     setFuzzProgress(0);
@@ -540,46 +521,17 @@ const onStartFuzz = async () => {
 
     for (let i = 0; i < payloads.length; i++) {
       if (abortFuzzRef.current) break;
-      
       const payload = payloads[i];
-      const fuzzedUrl =
-        fuzzAnchor.field === "url"
-          ? finalRequest.url.replace(fuzzAnchor.anchor, payload)
-          : finalRequest.url;
-      const fuzzedBody =
-        fuzzAnchor.field === "body"
-          ? finalRequest.body.replace(fuzzAnchor.anchor, payload)
-          : finalRequest.body;
-
+      const fuzzedUrl = fuzzAnchor.field === "url" ? finalRequest.url.replace(fuzzAnchor.anchor, payload) : finalRequest.url;
+      const fuzzedBody = fuzzAnchor.field === "body" ? finalRequest.body.replace(fuzzAnchor.anchor, payload) : finalRequest.body;
       const start = Date.now();
       try {
         const res = await invoke<{ status: number; body: string }>("studio_send", {
-          req: {
-            url: fuzzedUrl,
-            method: finalRequest.method,
-            headers: finalRequest.headers,
-            body: fuzzedBody,
-          },
+          req: { url: fuzzedUrl, method: finalRequest.method, headers: finalRequest.headers, body: fuzzedBody },
         });
-        setFuzzResults(prev => [...prev, {
-          id: crypto.randomUUID(),
-          payload,
-          status: res.status,
-          responseTime: Date.now() - start,
-          responseLength: res.body.length,
-          responseBody: res.body,
-          error: null,
-        }]);
+        setFuzzResults(prev => [...prev, { id: crypto.randomUUID(), payload, status: res.status, responseTime: Date.now() - start, responseLength: res.body.length, responseBody: res.body, error: null }]);
       } catch (err) {
-        setFuzzResults(prev => [...prev, {
-          id: crypto.randomUUID(),
-          payload,
-          status: 0,
-          responseTime: Date.now() - start,
-          responseLength: 0,
-          responseBody: "",
-          error: err instanceof Error ? err.message : String(err),
-        }]);
+        setFuzzResults(prev => [...prev, { id: crypto.randomUUID(), payload, status: 0, responseTime: Date.now() - start, responseLength: 0, responseBody: "", error: err instanceof Error ? err.message : String(err) }]);
       }
       setFuzzProgress(Math.round(((i + 1) / payloads.length) * 100));
     }
@@ -596,107 +548,61 @@ const onStartFuzz = async () => {
     setFuzzProgress(0);
   };
 
-
-
-const onImportCurl = async () => {
-  try {
-    const text = (await navigator.clipboard.readText()).trim();
-
-    if (!text.startsWith('curl')) {
-      setError('Clipboard does not contain a cURL command.');
-      return;
-    }
-
-    
-    const tokens: string[] = [];
-    let i = 0;
-    while (i < text.length) {
-      if (/\s/.test(text[i]) || (text[i] === '\\' && text[i + 1] === '\n')) {
-        i++;
-        continue;
-      }
-      if (text[i] === "'") {
-        i++;
-        let tok = '';
-        while (i < text.length && text[i] !== "'") tok += text[i++];
-        i++; // closing quote
-        tokens.push(tok);
-        continue;
-      }
-      if (text[i] === '"') {
-        i++;
-        let tok = '';
-        while (i < text.length && text[i] !== '"') {
-          if (text[i] === '\\' && text[i + 1] === '"') { tok += '"'; i += 2; }
-          else tok += text[i++];
+  const onImportCurl = async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (!text.startsWith("curl")) { setError("Clipboard does not contain a cURL command."); return; }
+      const tokens: string[] = [];
+      let i = 0;
+      while (i < text.length) {
+        if (/\s/.test(text[i]) || (text[i] === "\\" && text[i + 1] === "\n")) { i++; continue; }
+        if (text[i] === "'") {
+          i++; let tok = "";
+          while (i < text.length && text[i] !== "'") tok += text[i++];
+          i++; tokens.push(tok); continue;
         }
-        i++; // closing quote
-        tokens.push(tok);
-        continue;
-      }
-      let tok = '';
-      while (i < text.length && !/\s/.test(text[i])) tok += text[i++];
-      tokens.push(tok);
-    }
-
-    let parsedUrl = '';
-    let parsedMethod = 'GET';
-    const headerLines: string[] = [];
-    let parsedBody = '';
-
-    for (let j = 0; j < tokens.length; j++) {
-      const t = tokens[j];
-
-      if (t.startsWith('http://') || t.startsWith('https://')) {
-        parsedUrl = t;
-        continue;
-      }
-
-      if ((t === '-X' || t === '--request') && tokens[j + 1]) {
-        parsedMethod = tokens[++j].toUpperCase();
-        continue;
-      }
-
-      if ((t === '-H' || t === '--header') && tokens[j + 1]) {
-        const h = tokens[++j];
-        if (!h.startsWith(':') && !h.toLowerCase().startsWith('content-length')) {
-          headerLines.push(h);
+        if (text[i] === '"') {
+          i++; let tok = "";
+          while (i < text.length && text[i] !== '"') {
+            if (text[i] === "\\" && text[i + 1] === '"') { tok += '"'; i += 2; }
+            else tok += text[i++];
+          }
+          i++; tokens.push(tok); continue;
         }
-        continue;
+        let tok = "";
+        while (i < text.length && !/\s/.test(text[i])) tok += text[i++];
+        tokens.push(tok);
       }
-
-      if (
-        (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary') &&
-        tokens[j + 1]
-      ) {
-        parsedBody = tokens[++j];
-        continue;
+      let parsedUrl = "", parsedMethod = "GET";
+      const headerLines: string[] = [];
+      let parsedBody = "";
+      for (let j = 0; j < tokens.length; j++) {
+        const t = tokens[j];
+        if (t.startsWith("http://") || t.startsWith("https://")) { parsedUrl = t; continue; }
+        if ((t === "-X" || t === "--request") && tokens[j + 1]) { parsedMethod = tokens[++j].toUpperCase(); continue; }
+        if ((t === "-H" || t === "--header") && tokens[j + 1]) {
+          const h = tokens[++j];
+          if (!h.startsWith(":") && !h.toLowerCase().startsWith("content-length")) headerLines.push(h);
+          continue;
+        }
+        if ((t === "-d" || t === "--data" || t === "--data-raw" || t === "--data-binary") && tokens[j + 1]) {
+          parsedBody = tokens[++j]; continue;
+        }
       }
+      if (!parsedUrl) { setError("Could not parse a valid URL from the cURL command."); return; }
+      if (parsedMethod === "GET" && parsedBody) parsedMethod = "POST";
+      const VALID = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+      const safeMethod = (VALID.includes(parsedMethod) ? parsedMethod : "GET") as HttpMethod;
+      setUrl(parsedUrl);
+      setMethod(safeMethod);
+      setHeadersInput(headerLines.join("\n"));
+      setBody(parsedBody);
+      if (parsedBody) setRequestTab("body");
+      setError(null);
+    } catch {
+      setError("Failed to read clipboard. Please grant clipboard permissions.");
     }
-
-    if (!parsedUrl) {
-      setError('Could not parse a valid URL from the cURL command.');
-      return;
-    }
-
-    if (parsedMethod === 'GET' && parsedBody) parsedMethod = 'POST';
-
-    const VALID = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'];
-    const safeMethod = (VALID.includes(parsedMethod) ? parsedMethod : 'GET') as HttpMethod;
-
-    setUrl(parsedUrl);
-    setMethod(safeMethod);
-    setHeadersInput(headerLines.join('\n'));
-    setBody(parsedBody);
-    if (parsedBody) setRequestTab('body');
-    setError(null);
-
-  } catch {
-    setError('Failed to read clipboard. Please grant clipboard permissions.');
-  }
-};
-
-
+  };
 
   const onCopyPoc = async () => {
     await navigator.clipboard.writeText(activePocSnippet);
@@ -707,30 +613,28 @@ const onImportCurl = async () => {
   return {
     state: {
       method, url, headersInput, body, queryParams,
-      showMethodMenu, isLoading, error,
+      showMethodMenu, isLoading, error, pipeline,
       response, previousResponse, responseTab, requestTab,
       showPocModal, pocTab, pocCopied,
       compareMode, showSmartLogin,
       isBodyDisabled, responseCookies, displayBody, codeLines, diffLines,
-      activePocSnippet,isResponseJson, envVars,fuzzMode, fuzzAnchor,
-       fuzzPayloads, fuzzResults, isFuzzing, fuzzProgress,
-
+      activePocSnippet, isResponseJson, envVars, fuzzMode, fuzzAnchor,
+      fuzzPayloads, fuzzResults, isFuzzing, fuzzProgress,
     },
-    refs: {
-      headersRef, bodyRef
-    },
+    refs: { headersRef, bodyRef },
     setters: {
       setMethod, setUrl, setHeadersInput, setBody, setQueryParams,
       setShowMethodMenu, setIsLoading, setError,
       setResponse, setPreviousResponse, setResponseTab, setRequestTab,
       setShowPocModal, setPocTab, setPocCopied,
-      setCompareMode, setShowSmartLogin, setEnvVars,setDiffLines, setFuzzMode, setFuzzAnchor, setFuzzPayloads,
-
+      setCompareMode, setShowSmartLogin, setEnvVars, setDiffLines,
+      setFuzzMode, setFuzzAnchor, setFuzzPayloads, setPipeline,
     },
     handlers: {
-      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse, onCopyPoc, injectCookieHeader, onMirrorToRequest,onImportCurl,  onCompareWithHistory,onStartFuzz, onCancelFuzz,
- 
-    }
+      updateQueryParams, applyTextMutation, onSend, onBeautifyResponse,
+      onCopyPoc, injectCookieHeader, onMirrorToRequest, onImportCurl,
+      onCompareWithHistory, onStartFuzz, onCancelFuzz,
+    },
   };
 }
 

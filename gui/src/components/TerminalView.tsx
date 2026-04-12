@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback, memo } from "react";
+// @ts-ignore – react-virtuoso types resolved at runtime
 import { Virtuoso } from "react-virtuoso";
 import {
   FlaskConical, Bug, Shield,
@@ -767,7 +768,7 @@ export function TerminalView({ logs, findings, visitedUrls = [], activeTab, onTa
               <Virtuoso
                 style={{ height: "100%" }}
                 data={processedFindings}
-                itemContent={(_, f) => (
+                itemContent={(_: number, f: FindingWithMeta) => (
                   <div className="px-5 py-1.5">
                     <FindingCard
                       key={f.originalIndex}
