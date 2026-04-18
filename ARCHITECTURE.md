@@ -41,31 +41,31 @@ flowchart TD
         GUI_INPUT["GUI: User fills Sidebar form in React"]
     end
 
-    subgraph CLI_LAYER[" CLI Crate  (cli/src/main.rs)"]
-        CLI_ARGS["clap::Parser parses Args struct"]
+    subgraph CLI_LAYER[" CLI Crate (cli/src/main.rs)"]
+        CLI_ARGS["clap::Parser parses Args"]
         CLI_CONFIG["Builds ScanConfig"]
         CONSOLE_SINK["Creates ConsoleSink\n(colored terminal output)"]
     end
 
-    subgraph GUI_LAYER[" GUI/Tauri Backend  (gui/src-tauri/src/lib.rs)"]
+    subgraph GUI_LAYER[" GUI/Tauri Backend (gui/src-tauri/src/lib.rs)"]
         APP_TSX["App.tsx\ninvoke('start_scan', { config })"]
         VALIDATE["validate_scan_config()\nblocks shell injection,\npath traversal, SSRF"]
         TAURI_SINK["Creates TauriSink\n(emits Tauri IPC events)"]
         SCAN_RUNNING["AtomicBool: SCAN_RUNNING\nprevents double-start"]
     end
 
-    subgraph CORE[" Core Crate  (core/src/)"]
+    subgraph CORE[" Core Crate (core/src/)"]
         TARGET_MGR["TargetManager\nDeduplicating VecDeque of URLs"]
         
-        subgraph PHASE1["Phase 1: Crawler"]
+        subgraph MODULES["External Tool Orchestration"]
             KATANA["run_katana_crawler()\nSpawns Katana subprocess\nFeeds discovered URLs → TargetManager"]
-        end
-
-        subgraph PHASE2["Phase 2: Nuclei"]
             NUCLEI["run_nuclei_scan()\nSpawns Nuclei subprocess\nTemplate-based vuln detection"]
+            SUBFINDER["run_subfinder()\nSpawns Subfinder\nFeeds subdomains → TargetManager"]
+            PORTSCAN["scan_ports()\nScans top 1000 ports asynchronously"]
+            DNS["resolve_domain()\nAsync DNS & WHOIS queries"]
         end
 
-        subgraph PHASE3["Phase 3: ARKENAR Engine"]
+        subgraph PIPELINE["Phase 3: ARKENAR Engine"]
             ENGINE["ScanEngine::run()\nIterates TargetManager"]
             SEMAPHORE["Semaphore\nCaps concurrent tasks\n= config.threads"]
             MUTATOR["mutator::extract_injection_points()\nFinds URL params, headers,\nJSON fields, form params"]
@@ -76,7 +76,7 @@ flowchart TD
             DETECTOR["VulnerabilityDetector::detect()\nMatches body/timing/content-type\n→ SQLi / XSS / Sensitive / Blind"]
         end
 
-        RESULT_TX["mpsc::Sender&lt;ScanResult&gt;\nasync channel (capacity 200)"]
+        RESULT_TX["mpsc::Sender<ScanResult>\nasync channel (capacity 200)"]
         AGGREGATOR["ResultAggregator::run()\nDeduplicates by URL+vuln base\nWrites JSONL to output file\nCalls sink.on_finding()"]
     end
 
@@ -101,8 +101,7 @@ flowchart TD
     CLI_CONFIG --> TARGET_MGR
     TAURI_SINK --> TARGET_MGR
 
-    TARGET_MGR --> KATANA --> TARGET_MGR
-    TARGET_MGR --> NUCLEI
+    TARGET_MGR --> MODULES
     TARGET_MGR --> ENGINE
 
     ENGINE --> SEMAPHORE --> MUTATOR
@@ -112,7 +111,7 @@ flowchart TD
 
     AGGREGATOR --> SINK_FINDING
     ENGINE -.->|logs via| SINK_LOG
-    KATANA -.->|logs via| SINK_LOG
+    MODULES -.->|logs via| SINK_LOG
 
     CONSOLE_SINK --> SINK_LOG --> TERMINAL
     CONSOLE_SINK --> SINK_FINDING --> TERMINAL
@@ -132,7 +131,7 @@ flowchart TD
 
 ### Root
 
-```
+```text
 arkenr_pr/
 ├── Cargo.toml            # Workspace definition. Lists the 3 member crates.
 ├── Cargo.lock            # Pinned dependency versions. Check this in.
@@ -145,7 +144,7 @@ arkenr_pr/
 
 ### `core/` — The Brain
 
-```
+```text
 core/src/
 ├── lib.rs                # Public API surface of the core crate.
 │                           Exports: ScanConfig, ScanEventSink, ConsoleSink,
@@ -195,17 +194,26 @@ core/src/
 │   └── (mod.rs, client.rs)
 │
 ├── modules/
-│   ├── crawler.rs        # Wraps Katana (subprocess). Feeds discovered URLs
-│   │                       back to the caller for TargetManager ingestion.
-│   │                       ⚠️  DELETE THIS → Phase 1 crawling is gone; only direct URLs are scanned.
-│   │
-│   └── nuclei.rs         # Wraps Nuclei (subprocess). Template-based scanning.
-│                           ⚠️  DELETE THIS → Phase 2 template scanning is gone.
+│   ├── crawler.rs        # Wraps Katana (subprocess). Feeds URLs back.
+│   │                       ⚠️  DELETE THIS → Missing crawler discovery loop.
+│   ├── dns_lookup.rs     # Async DNS/WHOIS resolution logic (trust-dns).
+│   │                       ⚠️  DELETE THIS → Domains fail to resolve records in Recon.
+│   ├── js_secrets.rs     # Regex-driven secrets scanning over downloaded JS bodies.
+│   │                       ⚠️  DELETE THIS → No AWS/GitHub token leak detection.
+│   ├── nuclei.rs         # Wraps Nuclei (subprocess). Template-based scanning.
+│   │                       ⚠️  DELETE THIS → Template scanning is gone.
+│   ├── port_scanner.rs   # Async concurrent TCP connection checks on Top-1000 ports.
+│   │                       ⚠️  DELETE THIS → Cannot enumerate open services during Recon.
+│   └── subfinder.rs      # Wraps Subfinder. Enumerable domain footprinting.
+│                           ⚠️  DELETE THIS → Recon domain branching breaks.
 │
 └── utils/
     ├── detector.rs       # Pattern matching on HTTP response body, timing,
     │                       and content-type to classify vulnerabilities.
     │                       ⚠️  DELETE THIS → Engine fires requests but never detects anything.
+    │
+    ├── fingerprint.rs    # Determines exact tech-stack backend / WAFs from headers.
+    │                       ⚠️  DELETE THIS → Engine loses contextual tech-awareness payloads.
     │
     ├── installer.rs      # Downloads and installs Katana + Nuclei binaries.
     │                       Also handles self-update (--update flag).
@@ -215,61 +223,57 @@ core/src/
     │                       contextually per InjectionPoint type.
     │                       ⚠️  DELETE THIS → Engine has no payloads to inject.
     │
-    ├── mod.rs            # Exports read_lines() helper used by CLI/GUI to
-    │                       load target lists from files.
+    ├── mod.rs            # Exports read_lines() helper used by CLI/GUI.
     │
-    └── deep-hunter/brain.rs  # `JsAnalyzer` — extracts JS URLs and API endpoints via regex. Used in Phase 3 when `config.enable_js_analysis = true` and in the Recon panel's JS secrets module.
+    └── deep-hunter/brain.rs  # Extracts JS URLs and API endpoints via regex.
+                            ⚠️  DELETE THIS → Missing API endpoint spidering logic.
 ```
 
 ---
 
 ### `cli/` — The Terminal Face
 
-```
+```text
 cli/src/
-├── main.rs               # THE ENTIRE CLI. ~309 lines.
+├── main.rs               # THE ENTIRE CLI.
 │                           Parses Args with clap, builds ScanConfig, creates
 │                           ConsoleSink, calls run_scan_sequence() (3 phases).
 │                           Also handles --update and --resume.
 │                           ⚠️  DELETE THIS → arkenar binary doesn't exist.
-└── validation.rs         # CLI security boundary: `validate_text_field`, `validate_tags_field`, `validate_webhook_url`. Mirrors GUI's `validate_scan_config`. CLI accepts untrusted input without any guards.
+└── validation.rs         # CLI security boundary. Mirrors GUI's input validators.
 ```
 
 ---
 
 ### `gui/` — The Desktop Face
 
-```
+```text
 gui/src-tauri/src/
-├── lib.rs                # THE ENTIRE TAURI BACKEND. ~558 lines.
+├── lib.rs                # THE ENTIRE TAURI BACKEND.
 │                           Defines: TauriSink, start_scan, stop_scan,
 │                           check_tools, generate_report, test_webhook commands.
-│                           Handles input validation, SSRF blocking, AtomicBool
-│                           concurrency guards, scan abort logic.
+│                           Handles input validation, SSRF blocking, AtomicBool guards.
 │                           ⚠️  DELETE THIS → GUI has no backend; all IPC calls fail.
 │
 ├── reporting.rs          # Generates HTML report from findings + config.
 │                           ⚠️  DELETE THIS → "Export Report" button fails.
 │
-└── notifications.rs      # send_webhook() — POSTs finding JSON to Discord/Slack/custom.
+└── notifications.rs      # send_webhook() — POSTs finding JSON to Discord/Slack.
                             ⚠️  DELETE THIS → Webhook alerts stop working.
 
 gui/src/
-├── App.tsx               # ROOT REACT COMPONENT. Sets up Tauri event listeners
-│                           (scan-log, scan-finding, scan-complete), manages all
-│                           state (config, logs, findings, status), dispatches
-│                           invoke() calls to backend.
+├── App.tsx               # ROOT REACT COMPONENT. Sets up Tauri IPC listeners,
+│                           manages all active workspaces/panels and logic.
 │                           ⚠️  DELETE THIS → GUI renders nothing.
 │
-├── types.ts              # Shared TypeScript type definitions (ScanConfig,
-│                           LogEntry, ScanFindingEvent, etc.) and DEFAULT_CONFIG.
-│                           ⚠️  DELETE THIS → All components lose their type contracts.
+├── types.ts              # Shared TypeScript type definitions mapping Rust Structs.
+│                           ⚠️  DELETE THIS → Typescript loses all strict contracts.
 │
 └── components/
-    ├── Sidebar.tsx       # Left panel: all scan configuration inputs + Start/Stop buttons.
-    ├── TerminalView.tsx  # Right panel: scrolling log terminal + findings table tabs.
-    ├── TopStats.tsx      # Header stats bar: targets, URLs, critical, medium counts.
-    └── primitives.tsx    # Reusable micro-components (StatusDot, etc.)
+    ├── Sidebar.tsx       # Basic target inputs + Start/Stop buttons.
+    ├── TerminalView.tsx  # Terminal UI and active scanning logs.
+    ├── TopStats.tsx      # Header statistics overview.
+    └── recon/            # Visual map/board components for DNS and Host discovery.
 ```
 
 ---
@@ -278,7 +282,7 @@ gui/src/
 
 Every scan — whether launched from CLI or GUI — runs through the **same 3-phase sequence** in `core`. The only difference is the `ScanEventSink` implementation that receives the output.
 
-```
+```text
 Phase 1: CRAWL
   run_katana_crawler(target, config, sink)
     → spawns Katana subprocess
@@ -327,8 +331,8 @@ These are the laws of Arkenar. Violate them and the codebase becomes unmaintaina
 
 - The `arkenar-core` crate contains **all business logic**: scanning, detection, throttling, persistence, crawling, and reporting.
 - `cli/` and `gui/src-tauri/` are **thin adapters**. Their only job is to build a `ScanConfig` and wire up a `ScanEventSink`.
-- **If you're adding a new scan technique, a new vulnerability type, a new detection pattern, or a new output format** → it goes in `core/`. Not in `lib.rs` of the GUI, not in `main.rs` of the CLI.
-- The validation guards in `gui/src-tauri/src/lib.rs` (`validate_scan_config`) are a **GUI-only security boundary**, not business logic. They stay in the GUI.
+- **If you're adding a new scan technique, a new vulnerability type, a new detection pattern, or a new output format** → it goes in `core/`.
+- The validation guards in `gui/src-tauri/src/lib.rs` are a **GUI-only security boundary**, not business logic. They stay in the GUI.
 
 **Test:** Ask yourself — "Could the CLI use this feature too?" If yes, it belongs in `core/`.
 
@@ -470,7 +474,7 @@ Understanding where untrusted input enters the system is critical for maintenanc
 | **Nuclei/Katana tags** | GUI + CLI | `validate_tags_field()` blocks flag injection |
 | **HTML report output path** | GUI `generate_report` | Sanitized, canonicalized, must stay inside downloads directory |
 | **Payload files** | CLI `--payloads` / GUI `payloads` field | Read from disk by `PayloadLoader`; no shell execution |
-| **HTTP response bodies** | Engine `scan_single_request` | Only passed to `VulnerabilityDetector` for pattern matching; never executed |
+| **HTTP response bodies** | Engine `scan_single_request` | Passed to `VulnerabilityDetector` for matching; never executed |
 | Scope regex | CLI / GUI | Passed to `regex` crate — must be validated before compile to avoid ReDoS |
 
 ---

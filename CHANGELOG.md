@@ -4,6 +4,33 @@ All notable changes to Arkenar are documented here.
 
 ---
 
+## [1.2.0] — Phase 2: Structural Migration & Reconnaissance Suite
+
+### Added
+- **Recon Workspace** — Implemented a modern 3-panel UI architecture (`ReconTopBar`, `ReconLeftRail`, `ReconHostBoard`) for the Recon phase including a dynamic DNS Board, Subdomain tracking, and Port scanning interfaces.
+- **DNS & WHOIS Module** — Developed `dns_lookup.rs` using `trust-dns-resolver` and raw TCP connection logic to asynchronously retrieve real-time A, MX, TXT, CNAME, and raw WHOIS records.
+- **Port Scanner Module** — Constructed a high-performance, purely asynchronous TCP connect scanner in `port_scanner.rs` to fast-sweep the top 1000 ports concurrently using semaphores.
+- **JS Secrets Scanner Module** — Added an asynchronous javascript analysis module testing fetched endpoints against RegExp structures detecting AWS Keys, GitHub Tokens, JWTs, and other API secrets.
+- **Subfinder Integration** — Integrated projectdiscovery's `subfinder` to allow execution of active subdomain mapping.
+- **Live Sitemap Workspace** — Prepared a visual tree view inside the Basic Scanner to display discovered endpoints and nested domain structures.
+- **Contextual Parameter Fuzzing** — Added smart payload logic targeting specifically named parameters to optimize payload selection and drastically reduce scan times.
+
+### Changed
+- **Comprehensive Tailwind UI Migration** — Fully ported all application workspaces (Basic, Recon, Studio) to a new Tailwind CSS-driven dark-themed, mono-styled design system matching the unified Arkenar UI Mockup.
+- **CSS Variable Architecture (Phase 1)** — Replaced legacy hard-coded hex colors with a token-driven design system inside `App.css` (e.g., `--color-bg-root-2`, `--color-accent-weak`, deep black themes).
+- **Thin-Stroke Icon System (Phase 2)** — Phased out `lucide-react` entirely in favor of a centralized, custom thin-stroke `Icon` primitive for unified visual language.
+- **Cross-Tab State Persistence** — Shifted core application state (visited URLs, scan states, configs) to the top-level `App` component, resulting in seamless switching between Studio and Scanner without losing terminal outputs.
+- **Layout Adjustments** — Optimized typography, density scaling, and modernized the `AdvancedConfig` modal structure for high-density displays.
+
+### Fixed
+- **Custom Header Validation Bug** — Corrected strict header parsing inside `cli/src/main.rs` to explicitly allow `=` characters, ensuring valid Cookie string ingestion without throwing validation errors.
+- **Recon Data Flow** — Repaired the backend `run_recon` command to reliably emit IPC events for both root domains and subdomains ensuring complete table population.
+- **Native Titlebar macOS Integration** — Implemented platform-specific conditional rendering to strip out the web traffic lights and natively integrate seamless macOS transparent titlebars.
+
+### Improved / Security
+- **Global Codebase Hardening** — Performed a full pre-release behavioral-correction pass on the Rust backend targeting dead-code removal, unifying debug routing channels, and streamlining error execution.
+- **Comment Auditing** — Systematically stripped all redundant, verbose, and "AI-generated" tracking markers from the codebase, preserving only essential security and architectural documentation for a clean public release.
+
 ## [1.1.0] — Phase 1: Foundation Intelligence & Studio Refactor
 
 ### Added
