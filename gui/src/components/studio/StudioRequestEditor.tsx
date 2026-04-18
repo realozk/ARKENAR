@@ -350,7 +350,7 @@ export default function StudioRequestEditor({
                     <td className="px-2 py-0.5">
                       <input
                         type="text"
-                        placeholder="§KEY§"
+                        placeholder="MY_VAR"
                         value={v.key}
                         onChange={e => updateEnvVar(v.id, "key", e.target.value)}
                         className="w-full bg-transparent outline-none placeholder:text-[color:var(--color-text-ghost)]"

@@ -448,12 +448,16 @@ async fn run_recon(
             }
         };
 
-        // Deduplicate: root domain + subfinder results, root domain first
+        // Deduplicate: root domain + subfinder results, root domain first.
+        // Dedup is done on lowercase keys (DNS is case-insensitive) but the
+        // original-case string is stored in `hosts` for display/network use.
         let mut seen = std::collections::HashSet::new();
-        seen.insert(domain.clone());
+        let domain_lc = domain.to_ascii_lowercase();
+        seen.insert(domain_lc);
         let mut hosts = vec![domain.clone()];
         for h in subfinder_hosts {
-            if seen.insert(h.clone()) {
+            let h_lc = h.to_ascii_lowercase();
+            if seen.insert(h_lc) {
                 hosts.push(h);
             }
         }
@@ -662,7 +666,7 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
             let proxy_ref = config.proxy_ref().map(|s| s.to_string());
             let proxy_opt = proxy_ref.as_deref();
-            let http_client = match HttpClient::new(config.timeout, proxy_opt, &custom_headers) {
+            let http_client = match HttpClient::new(config.timeout, proxy_opt, &custom_headers, config.allow_insecure_tls) {
                 Ok(c) => Arc::new(c),
                 Err(e) => {
                     sink.on_log("error", &format!("Failed to build HTTP client: {}", e));

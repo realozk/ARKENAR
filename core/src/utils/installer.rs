@@ -7,6 +7,7 @@ use tokio::process::Command;
 use std::process::Stdio;
 use flate2::read::GzDecoder;
 use tar::Archive;
+use sha2::{Digest, Sha256};
 
 fn get_arkenar_asset_name() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -32,6 +33,57 @@ fn get_tool_binary_name(tool: &str) -> String {
 
 const KATANA_VERSION: &str = "1.1.0";
 const NUCLEI_VERSION: &str = "3.3.5";
+
+// SHA256 hashes for pinned tool releases — populate from official release pages before shipping.
+// None entries cause the installer to refuse that download.
+//   Katana v1.1.0: https://github.com/projectdiscovery/katana/releases/tag/v1.1.0
+//   Nuclei v3.3.5:  https://github.com/projectdiscovery/nuclei/releases/tag/v3.3.5
+struct ExpectedHashes {
+    katana_linux_amd64:   Option<&'static str>,
+    katana_macos_amd64:   Option<&'static str>,
+    katana_macos_arm64:   Option<&'static str>,
+    katana_windows_amd64: Option<&'static str>,
+    nuclei_linux_amd64:   Option<&'static str>,
+    nuclei_macos_amd64:   Option<&'static str>,
+    nuclei_macos_arm64:   Option<&'static str>,
+    nuclei_windows_amd64: Option<&'static str>,
+}
+
+const EXPECTED_HASHES: ExpectedHashes = ExpectedHashes {
+    katana_linux_amd64:   None,
+    katana_macos_amd64:   None,
+    katana_macos_arm64:   None,
+    katana_windows_amd64: None,
+    nuclei_linux_amd64:   None,
+    nuclei_macos_amd64:   None,
+    nuclei_macos_arm64:   None,
+    nuclei_windows_amd64: None,
+};
+
+fn expected_hash_for(tool: &str) -> Option<&'static str> {
+    match tool {
+        "katana" => {
+            if cfg!(target_os = "windows") { EXPECTED_HASHES.katana_windows_amd64 }
+            else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") { EXPECTED_HASHES.katana_macos_arm64 }
+            else if cfg!(target_os = "macos") { EXPECTED_HASHES.katana_macos_amd64 }
+            else { EXPECTED_HASHES.katana_linux_amd64 }
+        }
+        "nuclei" => {
+            if cfg!(target_os = "windows") { EXPECTED_HASHES.nuclei_windows_amd64 }
+            else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") { EXPECTED_HASHES.nuclei_macos_arm64 }
+            else if cfg!(target_os = "macos") { EXPECTED_HASHES.nuclei_macos_amd64 }
+            else { EXPECTED_HASHES.nuclei_linux_amd64 }
+        }
+        _ => None,
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
+}
+
 
 fn get_tool_download_url(tool: &str) -> String {
     match tool {
@@ -123,14 +175,14 @@ pub async fn check_and_install_tools() {
 
     if !tools_dir.join(&katana_bin).exists() {
         print!("{}\r\n", "[*] Katana not found. Downloading...".yellow());
-        download_and_extract(&get_tool_download_url("katana"), tools_dir).await;
+        download_and_extract(&get_tool_download_url("katana"), tools_dir, expected_hash_for("katana")).await;
     } else {
         print!("{}", "[+] Katana found.\r\n".green());
     }
 
     if !tools_dir.join(&nuclei_bin).exists() {
         print!("{}", "[*] Nuclei not found. Downloading...\r\n".yellow());
-        download_and_extract(&get_tool_download_url("nuclei"), tools_dir).await;
+        download_and_extract(&get_tool_download_url("nuclei"), tools_dir, expected_hash_for("nuclei")).await;
     } else {
         print!("{}\r\n", "[+] Nuclei found.".green());
     }
@@ -205,6 +257,10 @@ async fn update_katana() {
 }
 
 async fn self_update() {
+    // Self-update has no signature verification — warn loudly.
+    log::warn!("Self-update performs NO signature verification yet. Consider an out-of-band verification channel.");
+    print!("{}\r\n", "[!] WARNING: self-update is unsigned. Verify manually if possible.".yellow().bold());
+
     print!("\r\n{}\r\n", "[*] Checking for ARKENAR self-update...".bright_cyan());
     let asset_name = get_arkenar_asset_name();
     let binary_name = get_arkenar_binary_name();
@@ -214,7 +270,17 @@ async fn self_update() {
         Err(e) => { print!("{}\r\n", format!("[!] Cannot determine current exe path: {}", e).red()); return; }
     };
     print!("{}\r\n", format!("[*] Downloading {} ...", download_url).dimmed());
-    let response = match reqwest::get(&download_url).await {
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => { print!("{}\r\n", format!("[!] Failed to build HTTP client: {}", e).red()); return; }
+    };
+
+    let response = match client.get(&download_url).send().await {
         Ok(r) => r,
         Err(e) => { print!("{}\r\n", format!("[!] Download failed: {}", e).red()); return; }
     };
@@ -222,10 +288,17 @@ async fn self_update() {
         print!("{}\r\n", format!("[!] Server returned status: {}", response.status()).red());
         return;
     }
+
+    const MAX_DOWNLOAD: usize = 200 * 1024 * 1024;
     let bytes = match response.bytes().await {
         Ok(b) => b,
         Err(e) => { print!("{}\r\n", format!("[!] Failed to read response: {}", e).red()); return; }
     };
+    if bytes.len() > MAX_DOWNLOAD {
+        eprint!("{}\r\n", format!("[!] Refusing to install: download exceeds {} bytes", MAX_DOWNLOAD).red());
+        return;
+    }
+
     print!("{}\r\n", "[*] Extracting binary from archive...".blue());
     let extracted = if asset_name.ends_with(".tar.gz") {
         extract_binary_from_tar_gz(&bytes, binary_name)
@@ -309,15 +382,61 @@ fn extract_binary_from_zip(data: &[u8], binary_name: &str) -> io::Result<Vec<u8>
     Err(io::Error::new(io::ErrorKind::NotFound, format!("binary '{}' not found in archive", binary_name)))
 }
 
-async fn download_and_extract(url: &str, target_dir: &Path) {
-    let response = match reqwest::get(url).await {
+async fn download_and_extract(url: &str, target_dir: &Path, expected_sha256: Option<&str>) {
+    let expected = match expected_sha256 {
+        Some(h) => h,
+        None => {
+            eprint!("{}\r\n", format!(
+                "[!] REFUSING TO INSTALL: no expected SHA256 hash configured for this release.\n    \
+                 Edit core/src/utils/installer.rs EXPECTED_HASHES and rebuild.\n    \
+                 URL: {}",
+                url
+            ).red().bold());
+            return;
+        }
+    };
+
+    // Build a bounded client with explicit timeouts
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => { eprint!("{}\r\n", format!("[!] Failed to build HTTP client: {}", e).red()); return; }
+    };
+
+    let response = match client.get(url).send().await {
         Ok(r) => r,
         Err(e) => { eprint!("{}\r\n", format!("[!] Download failed for {}: {}", url, e).red()); return; }
     };
+    if !response.status().is_success() {
+        eprint!("{}\r\n", format!("[!] Download server returned: {}", response.status()).red());
+        return;
+    }
+
+    const MAX_DOWNLOAD: usize = 200 * 1024 * 1024; // 200 MB
     let bytes = match response.bytes().await {
         Ok(b) => b,
         Err(e) => { eprint!("{}\r\n", format!("[!] Failed to read download response: {}", e).red()); return; }
     };
+    if bytes.len() > MAX_DOWNLOAD {
+        eprint!("{}\r\n", format!("[!] Refusing to install: download exceeds {} bytes", MAX_DOWNLOAD).red());
+        return;
+    }
+
+    // Verify SHA256 before touching the filesystem
+    let actual = sha256_hex(&bytes);
+    if !actual.eq_ignore_ascii_case(expected) {
+        eprint!("{}\r\n", format!(
+            "[!] INTEGRITY CHECK FAILED for {}:\n    expected: {}\n    got:      {}\n    \
+             Refusing to install. This could indicate a compromised download or MITM attack.",
+            url, expected, actual
+        ).red().bold());
+        return;
+    }
+    print!("{}\r\n", "[+] SHA256 verified.".green());
+
     print!("{}\r\n", "[*] Extracting...".blue());
     let cursor = Cursor::new(bytes);
     let mut archive = match zip::ZipArchive::new(cursor) {

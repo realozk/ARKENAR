@@ -255,9 +255,10 @@ function App() {
             setActiveTab("terminal");
             invoke("start_scan", { config: { ...configRef.current, target: nextTarget, listFile: "" } }).catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
-              setScanQueue(rest);
+              // Re-prepend the failed target so it stays visible and can be retried.
+              setScanQueue([nextTarget, ...rest]);
               setScanStatus("error");
-              addToast("error", `Scan failed: ${msg}`);
+              addToast("error", `Failed to start queued scan for ${nextTarget}: ${msg}`);
             });
           }, 500);
           if (finishedTimerRef.current) clearTimeout(finishedTimerRef.current);
@@ -296,8 +297,9 @@ function App() {
           const m = new Map(prev);
           const h = m.get(e.payload.host);
           if (h) {
-            h.ports = [...new Set([...h.ports, ...e.payload.ports])].sort((a, b) => a - b);
-            m.set(e.payload.host, h);
+            // Spread to a new object so React.memo children see a reference change.
+            const mergedPorts = [...new Set([...h.ports, ...e.payload.ports])].sort((a, b) => a - b);
+            m.set(e.payload.host, { ...h, ports: mergedPorts });
           }
           return m;
         });
@@ -307,8 +309,11 @@ function App() {
           const m = new Map(prev);
           const h = m.get(e.payload.host);
           if (h) {
-            h.dns = { a: e.payload.a, mx: e.payload.mx, txt: e.payload.txt, cname: e.payload.cname, whois: e.payload.whois };
-            m.set(e.payload.host, h);
+            // Spread to a new object so React.memo children see a reference change.
+            m.set(e.payload.host, {
+              ...h,
+              dns: { a: e.payload.a, mx: e.payload.mx, txt: e.payload.txt, cname: e.payload.cname, whois: e.payload.whois },
+            });
           }
           return m;
         });
@@ -317,16 +322,25 @@ function App() {
         setReconHosts(prev => {
           let hostName = "";
           try {
-            const urlObj = new URL(e.payload.url);
-            hostName = urlObj.hostname;
+            hostName = new URL(e.payload.url).hostname;
           } catch {
             hostName = e.payload.url.split('/')[0];
           }
           const m = new Map(prev);
           const h = m.get(hostName);
+          const newSecret = {
+            url: e.payload.url,
+            secret_type: e.payload.secret_type,
+            matched_value: e.payload.matched_value,
+            line_number: e.payload.line_number,
+          };
           if (h) {
-            h.jsSecrets.push({ url: e.payload.url, secret_type: e.payload.secret_type, matched_value: e.payload.matched_value, line_number: e.payload.line_number });
-            m.set(hostName, h);
+            // Spread to a new object so React.memo children see a reference change.
+            m.set(hostName, { ...h, jsSecrets: [...h.jsSecrets, newSecret] });
+          } else {
+            // Host not yet in map (race between secret scanner and subdomain discovery).
+            // Create a placeholder entry so the secret is never silently dropped.
+            m.set(hostName, { host: hostName, ports: [], dns: null, jsSecrets: [newSecret] });
           }
           return m;
         });
@@ -599,6 +613,23 @@ function App() {
       if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
     };
   }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings, showPalette]);
+
+  // Task 9: If scan finishes naturally while user is mid-hold, cancel the timers so
+  // the delayed callback doesn't fire a spurious stop/start on an already-idle app.
+  useEffect(() => {
+    if (scanStatus !== "running" && isHoldingStop) {
+      if (spaceTimerRef.current) { clearTimeout(spaceTimerRef.current); spaceTimerRef.current = null; }
+      if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
+      setIsHoldingStop(false);
+      setHoldTimeRemaining(2.0);
+    }
+    if (scanStatus === "running" && isHoldingSpace) {
+      if (spaceTimerRef.current) { clearTimeout(spaceTimerRef.current); spaceTimerRef.current = null; }
+      if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
+      setIsHoldingSpace(false);
+      setHoldTimeRemaining(2.0);
+    }
+  }, [scanStatus, isHoldingStop, isHoldingSpace]);
 
   const handleResetConfig = useCallback(() => {
     setConfig({

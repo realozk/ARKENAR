@@ -107,6 +107,26 @@ async fn run_nuclei_scan_inner(
         }
     };
 
+    // Flag-injection guard: reject targets/tags that would become CLI flags.
+    if target.starts_with('-') {
+        sink.on_log("error", &format!(
+            "[!] Refusing to pass '{}' to nuclei — starts with '-' (flag-injection guard).",
+            target
+        ));
+        return Ok(());
+    }
+    if let Some(tags) = custom_tags {
+        for tag in tags.split(',') {
+            if tag.trim().starts_with('-') {
+                sink.on_log("error", &format!(
+                    "[!] Refusing to pass tag '{}' to nuclei — starts with '-' (flag-injection guard).",
+                    tag.trim()
+                ));
+                return Ok(());
+            }
+        }
+    }
+
     let is_simple = mode != "advanced";
     let timeout_str = if is_simple { "5" } else { "10" };
     let concurrency = if is_simple { "25" } else { "50" };

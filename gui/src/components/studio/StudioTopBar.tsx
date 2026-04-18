@@ -12,8 +12,9 @@ const STAGES: { id: PipelineStage; label: string }[] = [
   { id: "render", label: "RENDER" },
 ];
 
-// Inline icon hint tokens that appear inside the URL bar (mockup design)
-const INJECTION_HINTS = ["§payload§", "§reqid§", "§token§"] as const;
+// TASK 4: Removed INJECTION_HINTS constant and its render block.
+// §payload§ | §reqid§ | §token§ were mockup decorations with no functional purpose.
+// A real variable injection feature will be implemented as a proper dropdown later.
 
 interface StudioTopBarProps {
   method: HttpMethod;
@@ -63,7 +64,7 @@ export default function StudioTopBar({
       {/* METHOD DROPDOWN */}
       <div className="relative shrink-0">
         <button
-          className="h-7 px-2 pr-1.5 flex items-center gap-1.5 border border-[color:var(--color-border-subtle)] rounded-sm font-mono text-[11px]"
+          className="h-7 px-2 pr-1.5 flex items-center gap-1.5 border border-[color:var(--color-border-subtle)] rounded-sm font-mono text-[11px] focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
           style={{ background: "var(--color-bg-panel)" }}
           onClick={onToggleMethodMenu}
         >
@@ -82,7 +83,7 @@ export default function StudioTopBar({
               <button
                 key={m}
                 onClick={() => { onMethodChange(m); onToggleMethodMenu(); }}
-                className="w-full text-left px-2 py-0.5 font-mono text-[11px] hover:bg-[color:var(--color-bg-hover)] flex items-center justify-between transition-colors"
+                className="w-full text-left px-2 py-0.5 font-mono text-[11px] hover:bg-[color:var(--color-bg-hover)] flex items-center justify-between transition-colors focus-visible:outline-none focus-visible:bg-[color:var(--color-bg-hover)]"
               >
                 <span className="font-bold" style={{ color: getMethodColor(m) }}>{m}</span>
                 {method === m && (
@@ -94,7 +95,7 @@ export default function StudioTopBar({
         )}
       </div>
 
-      {/* URL BAR */}
+      {/* URL BAR — clean, no injection hint tokens */}
       <div
         className="flex-1 min-w-0 h-7 flex items-stretch border border-[color:var(--color-border-subtle)] rounded-sm focus-within:border-[color:var(--color-accent)] transition-colors"
         style={{ background: "var(--color-bg-panel)" }}
@@ -108,24 +109,13 @@ export default function StudioTopBar({
           className="flex-1 min-w-0 bg-transparent font-mono text-[11.5px] text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-ghost)] outline-none px-2"
           spellCheck={false}
         />
-        {/* Injection hint tokens — decorative, from mockup */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2 border-l border-[color:var(--color-border-subtle)] font-mono text-[10px] text-[color:var(--color-text-muted)] shrink-0">
-          {INJECTION_HINTS.map((hint, i) => (
-            <React.Fragment key={hint}>
-              <span style={{ color: i === 0 ? "#fca5a5" : undefined }}>{hint}</span>
-              {i < INJECTION_HINTS.length - 1 && (
-                <span className="text-[color:var(--color-border-hover)]">|</span>
-              )}
-            </React.Fragment>
-          ))}
-        </div>
       </div>
 
       {/* IMPORT CURL */}
       <button
         onClick={onImportCurl}
         title="Import cURL"
-        className="w-7 h-7 border border-[color:var(--color-border-subtle)] rounded-sm flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors shrink-0"
+        className="w-7 h-7 border border-[color:var(--color-border-subtle)] rounded-sm flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors shrink-0 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
         style={{ background: "var(--color-bg-panel)" }}
       >
         <ClipboardIcon size={11} />
@@ -134,7 +124,7 @@ export default function StudioTopBar({
       {/* SAVE */}
       <button
         title="Save request"
-        className="w-7 h-7 border border-[color:var(--color-border-subtle)] rounded-sm flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors shrink-0"
+        className="w-7 h-7 border border-[color:var(--color-border-subtle)] rounded-sm flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors shrink-0 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
         style={{ background: "var(--color-bg-panel)" }}
       >
         <SaveIcon size={11} />
@@ -167,7 +157,7 @@ export default function StudioTopBar({
       {isLoading ? (
         <button
           onClick={onAbort}
-          className="h-7 px-3 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.14em] font-semibold text-white rounded-sm border border-[color:var(--color-status-critical)] text-[color:var(--color-status-critical)] hover:bg-[rgba(239,68,68,0.1)] active:scale-95 transition-all duration-150 shrink-0"
+          className="h-7 px-3 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.14em] font-semibold text-white rounded-sm border border-[color:var(--color-status-critical)] text-[color:var(--color-status-critical)] hover:bg-[rgba(239,68,68,0.1)] active:scale-95 transition-all duration-150 shrink-0 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
         >
           <StopIcon size={10} />
           <span className="max-[600px]:hidden">ABORT</span>
@@ -176,7 +166,7 @@ export default function StudioTopBar({
         <button
           onClick={onSend}
           disabled={!url.trim()}
-          className="h-7 px-3 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.14em] font-semibold text-white rounded-sm active:scale-95 transition-all duration-150 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-7 px-3 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.14em] font-semibold text-white rounded-sm active:scale-95 transition-all duration-150 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-1 focus-visible:outline-white focus-visible:outline-offset-2"
           style={{ background: "var(--color-accent)" }}
         >
           <PlayIcon size={10} />

@@ -135,6 +135,9 @@ pub struct Args {
 
     #[arg(long, default_value_t = String::new(), help = "Path to custom Nuclei templates directory")]
     pub nuclei_templates: String,
+
+    #[arg(long, default_value_t = false, help = "Accept invalid TLS certificates (DANGEROUS — MITM-able). Only for testing broken internal targets.")]
+    pub allow_insecure_tls: bool,
 }
 
 
@@ -255,6 +258,7 @@ async fn main() {
         enable_js_analysis: args.enable_js_analysis,
         // Evasion
         enable_waf_evasion: args.enable_waf_evasion,
+        allow_insecure_tls: args.allow_insecure_tls,
         ..ScanConfig::default()
     };
 
@@ -354,7 +358,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
 
-    let http_client = match HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers) {
+    let http_client = match HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers, config.allow_insecure_tls) {
         Ok(c) => Arc::new(c),
         Err(e) => {
             sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));

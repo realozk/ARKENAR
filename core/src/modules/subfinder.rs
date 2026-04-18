@@ -17,6 +17,15 @@ pub async fn run_subfinder(
     sink: SinkRef,
     abort: Arc<AtomicBool>,
 ) -> anyhow::Result<Vec<String>> {
+    // Flag-injection guard: reject domains that would become CLI flags.
+    if domain.starts_with('-') {
+        sink.on_log("error", &format!(
+            "[!] Refusing to pass '{}' to subfinder — starts with '-' (flag-injection guard).",
+            domain
+        ));
+        return Ok(Vec::new());
+    }
+
     let binary = match utils::get_binary_path("subfinder") {
         Some(p) => p,
         None => anyhow::bail!("'subfinder' binary not found. Run the scanner once to auto install, or use the CLI to trigger auto installation."),

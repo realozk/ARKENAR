@@ -75,7 +75,10 @@ const CSRF_HINTS: &[&str] = &[
 /// look like CSRF tokens.  If `preferred` is given, only that exact name is
 /// returned (ignoring CSRF heuristics).
 fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, String)> {
-   let selector = HIDDEN_INPUT_SEL.get_or_init(|| Selector::parse("input[type='hidden']").unwrap());
+   let selector = HIDDEN_INPUT_SEL.get_or_init(|| {
+        Selector::parse("input[type='hidden']")
+            .expect("hidden-input CSS selector is hardcoded and must parse")
+    });
     let mut results = Vec::new();
 
     for el in doc.select(&selector) {
@@ -103,8 +106,14 @@ fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, St
 /// Tries to find the `action` attribute of the login form (the `<form>` that
 /// contains a `<input type="password">`).  Falls back to `login_url`.
 fn resolve_form_action(doc: &Html, base_url: &url::Url) -> String {
-    let form_sel = FORM_SEL.get_or_init(|| Selector::parse("form").unwrap());
-    let pass_sel = PASS_SEL.get_or_init(|| Selector::parse("input[type='password']").unwrap());
+    let form_sel = FORM_SEL.get_or_init(|| {
+        Selector::parse("form")
+            .expect("form CSS selector is hardcoded and must parse")
+    });
+    let pass_sel = PASS_SEL.get_or_init(|| {
+        Selector::parse("input[type='password']")
+            .expect("password-input CSS selector is hardcoded and must parse")
+    });
 
     for form in doc.select(&form_sel) {
         if form.select(&pass_sel).next().is_none() {

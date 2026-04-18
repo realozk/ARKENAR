@@ -2,6 +2,7 @@ pub mod core;
 pub mod http;
 pub mod modules;
 pub mod utils;
+pub mod validation;
 #[path = "deep-hunter/brain.rs"]
 pub mod deep_hunter;
 
@@ -48,6 +49,10 @@ pub struct ScanConfig {
     pub scope_regex: String,
     pub nuclei_templates_dir: String,
     pub enable_smart_payloads: bool,
+
+    /// If true, accept invalid TLS certificates. Defaults to false.
+    /// Enable only when explicitly opted in by the user — MITM-able when true.
+    pub allow_insecure_tls: bool,
 
     // ── Auth (v1.3) ───────────────────────────────────────────────────────
     pub auth_type: String,
@@ -97,6 +102,7 @@ impl Default for ScanConfig {
             scope_regex: String::new(),
             nuclei_templates_dir: String::new(),
             enable_smart_payloads: true,
+            allow_insecure_tls: false,
             // Auth
             auth_type: "none".to_string(),
             auth_token: None,

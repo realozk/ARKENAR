@@ -563,3 +563,67 @@ export function SettingsIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** Globe — circle with horizontal equator and two meridian arcs */
+export function GlobeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </Icon>
+  );
+}
+
+/** Eye — almond shape with inner pupil circle */
+export function EyeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </Icon>
+  );
+}
+
+/** Network — connected dots in a hub-spoke pattern */
+export function NetworkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="16" y="16" width="6" height="6" rx="1" />
+      <rect x="2" y="16" width="6" height="6" rx="1" />
+      <rect x="9" y="2" width="6" height="6" rx="1" />
+      <path d="M5 16v-4a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v4M12 8v2" />
+    </Icon>
+  );
+}
+
+/** Timer — clock face with a single hand pointing up-right */
+export function TimerIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="13" r="9" />
+      <path d="M12 9v4l3 3" />
+      <path d="M9 2h6M12 2v2" />
+    </Icon>
+  );
+}
+
+/** Activity — ECG / pulse waveform */
+export function ActivityIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </Icon>
+  );
+}
+
+/** Target / crosshair — concentric circles with cross-hairs */
+export function TargetIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </Icon>
+  );
+}
+

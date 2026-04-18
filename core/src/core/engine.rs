@@ -97,6 +97,8 @@ impl ScanEngine {
         let fingerprinter = Arc::new(TechFingerprinter::new());
         let js_analyzer = Arc::new(JsAnalyzer::new());
 
+        let concurrency_limit = self.concurrency_limit;
+
         let mut tasks = Vec::new();
 
         while let Some(target_url) = self.target_manager.next() {
@@ -235,6 +237,7 @@ impl ScanEngine {
                     enable_fingerprint,
                     enable_smart_payloads,
                     enable_param_fuzz,
+                    concurrency_limit,
                 ).await;
 
                 extra_targets
@@ -276,6 +279,7 @@ impl ScanEngine {
             self.enable_fingerprint,
             self.enable_smart_payloads,
             self.enable_param_fuzz,
+            self.concurrency_limit,
         ).await;
     }
 }
@@ -321,6 +325,7 @@ async fn scan_single_request(
     enable_fingerprint: bool,
     enable_smart_payloads: bool,
     enable_param_fuzz: bool,
+    concurrency: usize,
 ) {
     let injection_points = mutator::extract_injection_points(&request);
 
@@ -355,7 +360,7 @@ async fn scan_single_request(
         }
     }
 
-    let concurrency = network_semaphore.available_permits().max(1);
+    let concurrency = concurrency.max(1);
 
     if enable_param_fuzz {
         if let Ok(parsed_url) = url::Url::parse(&request.url.to_string()) {
@@ -559,7 +564,7 @@ mod tests {
     #[test]
     fn test_engine_creation() {
         let target_manager = TargetManager::new();
-        let client = Arc::new(HttpClient::new(10, None, &vec![]).expect("test: failed to build HTTP client"));
+        let client = Arc::new(HttpClient::new(10, None, &vec![], false).expect("test: failed to build HTTP client"));
         let engine = ScanEngine::new(target_manager, client, 10, 0, None);
         assert_eq!(engine.concurrency_limit, 10);
     }

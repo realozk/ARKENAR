@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+/* ─── TASK 2: Desktop Type Scale ─────────────────────────────────── */
+:root {
+  --fs-chrome: 11px;      /* titlebar, status strip, table headers */
+  --fs-label:  10.5px;    /* section labels, uppercase metadata */
+  --fs-body:   12.5px;    /* default body/input */
+  --fs-value:  13px;      /* stat values, key figures */
+  --fs-code:   12px;      /* monospace code and URLs */
+  --fs-h:      13.5px;    /* panel headers */
+
+  --lh-tight:  1.25;
+  --lh-body:   1.5;
+
+  --tr-label:  0.14em;    /* uppercase tracking for labels */
+  --tr-chrome: 0.18em;    /* tighter chrome labels */
+  --tr-heavy:  0.22em;    /* wordmark/accent labels */
+
+  /* Surface gradient */
+  --gradient-surface: linear-gradient(180deg, var(--color-bg-panel) 0%, var(--color-bg-root) 100%);
+}
+
 *, *::before, *::after {
   -webkit-user-select: none;
   user-select: none;
@@ -85,23 +105,52 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 #root {
   border-radius: 12px;
   overflow: hidden;
+  /* TASK 2: Apply --ui-scale as an accessibility transform on the root,
+     not as root font-size (which caused proportional bloat).
+     The scale is set in App.tsx via document.documentElement.style.setProperty("--ui-scale", …).
+     We keep this as a declaration only; the actual application happens via JS. */
 }
 
-
-/* Surfaces — unified */
-:root {
-  --gradient-surface: linear-gradient(180deg, var(--color-bg-panel) 0%, var(--color-bg-root) 100%);
-}
 
 /* ─── Base ────────────────────────────────────────────────────── */
 html {
   background: var(--color-bg-root);
   color: var(--color-text-primary);
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: calc(16px * var(--ui-scale, 1));
+  /* TASK 2: Flat 14px desktop base. --ui-scale is applied as transform on #root via JS, not here. */
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "tnum";
+}
+
+/* TASK 2: Monospace elements — disable ligatures, use coding-specific features */
+.mono, .font-mono, code, kbd, pre {
+  font-variant-ligatures: none;
+  font-feature-settings: "tnum", "zero", "ss01";
+}
+
+/* TASK 2: On 2K+ displays (≥1.5dppx), enforce visually thin outlines instead of
+   doubled-looking 1px borders. Use 0.5px where browsers honor it. */
+@media (min-resolution: 1.5dppx) {
+  .border-hairline {
+    outline: 0.5px solid var(--color-border-subtle);
+    border: none !important;
+  }
+}
+
+/* TASK 6: Global focus ring — applied to all interactive elements via focus-visible */
+:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Don't show focus ring on elements that use their own focus treatment */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
 }
 
 .reduce-motion *,
@@ -153,9 +202,10 @@ input[type="number"] {
 
 .toggle-track {
   position: relative;
-  width: 34px;
-  height: 20px;
-  border-radius: 10px;
+  /* TASK 5: Reduced toggle size to 28×14px for denser chrome */
+  width: 28px;
+  height: 14px;
+  border-radius: 7px;
   background: rgba(255, 255, 255, 0.05);
   transition: background 0.3s ease, box-shadow 0.3s ease;
   cursor: pointer;
@@ -164,15 +214,16 @@ input[type="number"] {
 
 .toggle-track.active {
   background: var(--color-accent);
-  box-shadow: 0 0 10px var(--color-accent-dim), inset 0 0 4px var(--color-accent-dim);
+  box-shadow: 0 0 8px var(--color-accent-dim), inset 0 0 3px var(--color-accent-dim);
 }
 
 .toggle-thumb {
   position: absolute;
   top: 50%;
-  left: 3px;
-  width: 14px;
-  height: 14px;
+  left: 2px;
+  /* TASK 5: Smaller thumb 10×10 */
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #fff;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -182,7 +233,7 @@ input[type="number"] {
 
 .toggle-track.active .toggle-thumb {
   transform: translate(14px, -50%);
-  box-shadow: 0 0 8px var(--color-accent), 0 0 4px rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 6px var(--color-accent), 0 0 3px rgba(255, 255, 255, 0.8);
 }
 
 /* ─── Range Slider ────────────────────────────────────────────── */

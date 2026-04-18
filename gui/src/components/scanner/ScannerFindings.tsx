@@ -26,18 +26,20 @@ function isCriticalVuln(vulnType: string): boolean {
 function SeverityBadge({ critical }: { critical: boolean }) {
   return (
     <span
-      className={`mono text-[10px] font-bold tracking-[0.1em] uppercase px-2 py-0.5 rounded-sm shrink-0 border ${
+      className={`font-mono uppercase px-2 py-0.5 rounded-sm shrink-0 border ${
         critical
           ? "bg-[color:var(--color-status-critical)]/10 text-[color:var(--color-status-critical)] border-[color:var(--color-status-critical)]/30"
           : "bg-[color:var(--color-status-warning)]/10 text-[color:var(--color-status-warning)] border-[color:var(--color-status-warning)]/30"
       }`}
+      style={{ fontSize: 'var(--fs-label)', letterSpacing: '0.1em', fontWeight: 700 }}
     >
       {critical ? "Critical" : "Medium"}
     </span>
   );
 }
 
-/* ── Pill filter button ────────────────────────────────────────────────── */
+/* ── Filter pill — TASK 5: Compact h-6 dense chip ─────────────────────── */
+// TASK 5: Replaced rounded-full pill with sharp 1px border chip, denser padding
 function Pill({
   active,
   critical,
@@ -52,13 +54,14 @@ function Pill({
   return (
     <button
       onClick={onClick}
-      className={`mono text-[10px] font-bold tracking-[0.1em] uppercase px-2.5 py-0.5 rounded-full cursor-pointer transition-colors duration-150 border ${
+      className={`font-mono uppercase px-2.5 h-6 cursor-pointer transition-colors duration-150 border focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2 ${
         active
           ? critical
             ? "border-[color:var(--color-status-critical)]/50 bg-[color:var(--color-status-critical)]/10 text-[color:var(--color-status-critical)]"
             : "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
-          : "border-[color:var(--color-border-subtle)] bg-transparent text-[color:var(--color-text-ghost)]"
+          : "border-[color:var(--color-border-subtle)] bg-transparent text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)]"
       }`}
+      style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)', fontWeight: 700 }}
     >
       {children}
     </button>
@@ -73,7 +76,8 @@ function IconBtn({ onClick, title, children }: { onClick: (e: React.MouseEvent) 
       title={title}
       className="flex items-center justify-center p-1 rounded-sm
         text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)]
-        hover:bg-[color:var(--color-bg-hover)] transition-colors duration-150"
+        hover:bg-[color:var(--color-bg-hover)] transition-colors duration-150
+        focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-1"
     >
       {children}
     </button>
@@ -84,7 +88,10 @@ function IconBtn({ onClick, title, children }: { onClick: (e: React.MouseEvent) 
 function ExpandField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mono text-[10px] font-bold tracking-[0.18em] uppercase text-[color:var(--color-text-ghost)] mb-1">
+      <div
+        className="font-mono uppercase text-[color:var(--color-text-ghost)] mb-1"
+        style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)', fontWeight: 700 }}
+      >
         {label}
       </div>
       {children}
@@ -124,13 +131,22 @@ function FindingCard({ finding, index, onSendToStudio }: FindingCardProps) {
     >
       {/* Card header */}
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="mono text-[10px] text-[color:var(--color-text-ghost)] min-w-[24px]">
+        <span
+          className="font-mono text-[color:var(--color-text-ghost)] min-w-[24px]"
+          style={{ fontSize: 'var(--fs-label)' }}
+        >
           #{index + 1}
         </span>
-        <span className="mono text-[12px] font-bold text-[color:var(--color-text-primary)] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+        <span
+          className="font-mono font-bold text-[color:var(--color-text-primary)] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+          style={{ fontSize: 'var(--fs-code)' }}
+        >
           {finding.vuln_type}
         </span>
-        <span className="mono text-[11px] text-[color:var(--color-text-muted)] overflow-hidden text-ellipsis whitespace-nowrap max-w-[220px]">
+        <span
+          className="font-mono text-[color:var(--color-text-muted)] overflow-hidden text-ellipsis whitespace-nowrap max-w-[220px]"
+          style={{ fontSize: 'var(--fs-code)' }}
+        >
           {finding.url}
         </span>
         <SeverityBadge critical={critical} />
@@ -153,14 +169,20 @@ function FindingCard({ finding, index, onSendToStudio }: FindingCardProps) {
           style={{ background: "var(--color-bg-panel)" }}
         >
           <ExpandField label="Target URL">
-            <div className="mono text-[11px] text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed">
+            <div
+              className="font-mono text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed"
+              style={{ fontSize: 'var(--fs-code)' }}
+            >
               {finding.url}
             </div>
           </ExpandField>
 
           {finding.payload && (
             <ExpandField label="Payload">
-              <div className="mono text-[11px] text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed">
+              <div
+                className="font-mono text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed"
+                style={{ fontSize: 'var(--fs-code)' }}
+              >
                 {finding.payload}
               </div>
             </ExpandField>
@@ -168,20 +190,23 @@ function FindingCard({ finding, index, onSendToStudio }: FindingCardProps) {
 
           <div className="flex gap-4">
             <ExpandField label="Status">
-              <span className="mono text-[11px] text-[color:var(--color-text-primary)]">{finding.status_code}</span>
+              <span className="font-mono text-[color:var(--color-text-primary)]" style={{ fontSize: 'var(--fs-code)' }}>{finding.status_code}</span>
             </ExpandField>
             <ExpandField label="Timing">
-              <span className="mono text-[11px] text-[color:var(--color-text-primary)]">{finding.timing_ms}ms</span>
+              <span className="font-mono text-[color:var(--color-text-primary)]" style={{ fontSize: 'var(--fs-code)' }}>{finding.timing_ms}ms</span>
             </ExpandField>
             {finding.server && (
               <ExpandField label="Server">
-                <span className="mono text-[11px] text-[color:var(--color-text-primary)]">{finding.server}</span>
+                <span className="font-mono text-[color:var(--color-text-primary)]" style={{ fontSize: 'var(--fs-code)' }}>{finding.server}</span>
               </ExpandField>
             )}
           </div>
 
           <ExpandField label="Reproduce (cURL)">
-            <div className="mono text-[11px] text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed select-text">
+            <div
+              className="font-mono text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed select-text"
+              style={{ fontSize: 'var(--fs-code)' }}
+            >
               {finding.curl_cmd}
             </div>
           </ExpandField>
@@ -192,7 +217,8 @@ function FindingCard({ finding, index, onSendToStudio }: FindingCardProps) {
                 {finding.tech_stack.map((t) => (
                   <span
                     key={t}
-                    className="mono text-[10px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-sm border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
+                    className="font-mono uppercase px-1.5 py-0.5 rounded-sm border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
+                    style={{ fontSize: 'var(--fs-label)', letterSpacing: '0.1em', fontWeight: 700 }}
                   >
                     {t}
                   </span>
@@ -270,13 +296,14 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
             placeholder="Search findings…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 min-w-0 bg-transparent mono text-[11px]
+            className="flex-1 min-w-0 bg-transparent font-mono
               text-[color:var(--color-text-primary)] placeholder-[color:var(--color-text-ghost)]
               outline-none"
+            style={{ fontSize: 'var(--fs-code)' }}
           />
         </div>
 
-        {/* Severity pills */}
+        {/* TASK 5: Dense h-6 filter chips (replaced rounded-full pills) */}
         <Pill active={severity === "all"} onClick={() => setSeverity("all")}>
           All ({findings.length})
         </Pill>
@@ -291,9 +318,11 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortMode)}
-          className="mono text-[10px] tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-sm
+          className="font-mono uppercase px-1.5 py-0.5 rounded-sm
             cursor-pointer outline-none transition-colors duration-150"
           style={{
+            fontSize: 'var(--fs-label)',
+            letterSpacing: '0.1em',
             background: "var(--color-bg-root)",
             border: "1px solid var(--color-border-subtle)",
             color: "var(--color-text-muted)",
@@ -304,14 +333,16 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
           <option value="url">URL A→Z</option>
         </select>
 
-        {/* Export */}
+        {/* TASK 5: "Clear Findings" flat styled button — TrashIcon + label */}
         {findings.length > 0 && (
           <button
             onClick={handleExport}
-            className="h-6 px-2 flex items-center gap-1 rounded-sm mono text-[10px] uppercase tracking-[0.1em]
+            className="h-6 px-2 flex items-center gap-1 rounded-sm font-mono uppercase
               border border-[color:var(--color-border-subtle)]
               text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]
-              hover:border-[color:var(--color-border-hover)] transition-colors duration-150"
+              hover:border-[color:var(--color-border-hover)] transition-colors duration-150
+              focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
+            style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)' }}
           >
             <DownloadIcon size={10} />
             Export
@@ -319,13 +350,14 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
         )}
       </div>
 
-      {/* Content */}
+      {/* Content — TASK 6: Better centered empty state */}
       {processed.length === 0 ? (
         <div
-          className="flex-1 flex flex-col items-center justify-center gap-2
-            mono text-[12px] text-[color:var(--color-text-ghost)]"
+          className="flex-1 flex flex-col items-center justify-center gap-3
+            font-mono text-[color:var(--color-text-ghost)]"
+          style={{ fontSize: 'var(--fs-code)' }}
         >
-          <ExternalLinkIcon size={28} className="opacity-20" />
+          <ExternalLinkIcon size={24} className="opacity-20" />
           <span>
             {findings.length === 0
               ? "No findings yet — launch a scan."

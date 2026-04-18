@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Crosshair, FileText, Layers, Radar, Telescope, Zap,
-   ListOrdered, FolderSearch,
-   BookmarkPlus, 
-   Bookmark,
-   ClipboardPaste, RotateCcw} from "lucide-react";
+// TASK 5: Removed oversized lucide-react section icons (Crosshair, FileText, Layers, Radar, Telescope, Zap)
+// Section labels now use plain muted mono text matching Studio pattern — no icons needed.
+import { ListOrdered, FolderSearch, BookmarkPlus, Bookmark, ClipboardPaste, RotateCcw } from "lucide-react";
 import { CloseIcon, PlusIcon } from './icons';
+import { log } from '../utils/logger';
 
 import type { ScanConfig } from "../types";
 import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
@@ -30,7 +29,7 @@ interface SidebarProps {
 }
 
 const TEMPLATES_KEY = "arkenar-templates";
-const URL_REGEX = /^https?:\/\/(\w[\w-]*(\.[\w-]+)+)(:\d+)?(\/.*)?$/;
+const URL_REGEX = /^https?:\/\/(\w[\w-]*(\.[\\w-]+)+)(:\d+)?(\/.*)?$/;
 
 interface ScanTemplate { id: string; name: string; config: Partial<ScanConfig>; }
 
@@ -41,8 +40,25 @@ function saveTemplates(tpls: ScanTemplate[]) {
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(tpls));
 }
 
-
-
+/* ── Studio-style plain section divider label ──────────────────────────── */
+// TASK 5: Replaces SectionLabel (with icon) for the sidebar.
+// No icon, muted color, thin uppercase mono — matches Studio's section labels exactly.
+function PlainSectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-0 pt-4 pb-2">
+      <span
+        className="font-mono uppercase block"
+        style={{
+          fontSize: 'var(--fs-label)',
+          letterSpacing: 'var(--tr-label)',
+          color: 'var(--color-text-muted)',
+        }}
+      >
+        {children}
+      </span>
+    </div>
+  );
+}
 
 export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueue, 
   onRemoveFromQueue }: SidebarProps) {
@@ -54,7 +70,7 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
   const [savingTemplate, setSavingTemplate] = useState(false);
   // S2: URL validator
   const [urlValid, setUrlValid] = useState<null | boolean>(null);
-const debounceRef = useRef<number | undefined>(undefined);
+  const debounceRef = useRef<number | undefined>(undefined);
 
   const handleBrowseList = async () => {
     try {
@@ -71,7 +87,7 @@ const debounceRef = useRef<number | undefined>(undefined);
         onUpdate("target", "");
       }
     } catch (err) {
-      console.error("Failed to open dialog", err);
+      log.error("Failed to open dialog", err);
     }
   };
 
@@ -105,24 +121,24 @@ const debounceRef = useRef<number | undefined>(undefined);
         onUpdate("listFile", "");
       }
     } catch (err) {
-      console.error("Paste failed", err);
+      log.error("Paste failed", err);
     }
   }, [onUpdate]);
 
   // S2: validate URL on every keystroke (debounced 300ms)
-useEffect(() => {
-  if (debounceRef.current) clearTimeout(debounceRef.current);
-  
-  if (!config.target) { setUrlValid(null); return; }
-  
-  debounceRef.current = window.setTimeout(() => {
-    setUrlValid(URL_REGEX.test(config.target));
-  }, 300);
-  
-  return () => {
+  useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-  };
-}, [config.target]);
+    
+    if (!config.target) { setUrlValid(null); return; }
+    
+    debounceRef.current = window.setTimeout(() => {
+      setUrlValid(URL_REGEX.test(config.target));
+    }, 300);
+    
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [config.target]);
 
 
   // S1: save current config as template
@@ -148,20 +164,28 @@ useEffect(() => {
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">
-      <div className="px-5 pt-6 pb-5 space-y-6 flex-1">
+      <div className="px-4 pt-4 pb-5 space-y-0 flex-1">
 
-        {/* S1: Templates Section */}
+        {/* S1: Templates Section — kept using primitives SectionLabel since it's a utility section */}
         {(templates.length > 0 || savingTemplate) && (
-          <div>
+          <div className="mb-0">
             <div className="flex items-center justify-between mb-2">
               <SectionLabel icon={Bookmark} className="!mb-0">Templates</SectionLabel>
             </div>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {templates.map(tpl => (
                 <div key={tpl.id} className="flex items-center gap-1 rounded-lg bg-bg-input border border-border-subtle px-2.5 py-1 group">
-                  <button onClick={() => handleLoadTemplate(tpl)} className="text-[11px] font-medium text-text-secondary hover:text-accent-text transition-colors">{tpl.name}</button>
-                  <button onClick={() => handleDeleteTemplate(tpl.id)} className="opacity-0 group-hover:opacity-100 p-0.5 text-text-ghost hover:text-status-critical transition-all duration-150">
-                  <CloseIcon size={10} />
+                  <button
+                    onClick={() => handleLoadTemplate(tpl)}
+                    className="text-[11px] font-medium text-text-secondary hover:text-accent-text transition-colors focus-visible:outline-none focus-visible:text-accent-text"
+                  >
+                    {tpl.name}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteTemplate(tpl.id)}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-text-ghost hover:text-status-critical transition-all duration-150 focus-visible:opacity-100 focus-visible:text-status-critical"
+                  >
+                    <CloseIcon size={10} />
                   </button>
                 </div>
               ))}
@@ -169,9 +193,10 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Target Section */}
+        {/* ── TARGET ─────────────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no bullseye icon, muted color */}
+        <PlainSectionLabel>Target</PlainSectionLabel>
         <div>
-          <SectionLabel icon={Crosshair}>Target</SectionLabel>
           <div className="flex gap-2 items-center">
             <div className="flex-1">
               <TextInput id="target-input" value={config.target} onChange={(v) => onUpdate("target", v)} placeholder="https://example.com" mono />
@@ -183,7 +208,7 @@ useEffect(() => {
             <button
               onClick={handlePaste}
               title="Paste"
-              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95 h-9"
+              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95 h-9 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
             >
               <ClipboardPaste size={16} strokeWidth={2.5} />
             </button>
@@ -200,29 +225,30 @@ useEffect(() => {
                   placeholder="Template name..."
                   className="flex-1 bg-bg-input border border-border-subtle rounded-lg px-3 py-1 text-xs font-mono text-text-primary outline-none focus:border-accent/40 transition-all duration-200"
                 />
-                <button onClick={handleSaveTemplate} disabled={!templateNameInput.trim()} className="px-2.5 py-1 rounded-lg bg-accent/15 border border-accent/20 text-[11px] font-bold text-accent-text hover:bg-accent/25 transition-all duration-150 disabled:opacity-40">
+                <button onClick={handleSaveTemplate} disabled={!templateNameInput.trim()} className="px-2.5 py-1 rounded-lg bg-accent/15 border border-accent/20 text-[11px] font-bold text-accent-text hover:bg-accent/25 transition-all duration-150 disabled:opacity-40 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)]">
                   Save
                 </button>
-                <button onClick={() => { setSavingTemplate(false); setTemplateNameInput(""); }} className="p-1 text-text-ghost hover:text-text-primary transition-colors">
-                <CloseIcon size={13} />
+                <button onClick={() => { setSavingTemplate(false); setTemplateNameInput(""); }} className="p-1 text-text-ghost hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:text-text-primary">
+                  <CloseIcon size={13} />
                 </button>
               </div>
             ) : (
-              <button onClick={() => setSavingTemplate(true)} className="flex items-center gap-1 text-[10px] text-text-ghost hover:text-accent-text transition-colors duration-150">
+              <button onClick={() => setSavingTemplate(true)} className="flex items-center gap-1 text-[10px] text-text-ghost hover:text-accent-text transition-colors duration-150 focus-visible:outline-none focus-visible:text-accent-text">
                 <BookmarkPlus size={11} strokeWidth={2.5} />Save as template
               </button>
             )}
           </div>
         </div>
 
-        {/* Target List Section */}
+        {/* ── TARGET LIST ─────────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no FileText icon */}
+        <PlainSectionLabel>Target List</PlainSectionLabel>
         <div
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`transition-all duration-300 rounded-xl p-3 -mx-3 ${isDragging ? "bg-accent/10 border border-accent border-dashed scale-[1.02]" : "border border-transparent"}`}
+          className={`transition-all duration-300 rounded-sm p-2 -mx-2 ${isDragging ? "bg-accent/10 border border-accent border-dashed scale-[1.02]" : "border border-transparent"}`}
         >
-          <SectionLabel icon={FileText}>Target List</SectionLabel>
           <div className="flex gap-2">
             <div className="flex-1">
               <TextInput value={config.listFile} onChange={(v) => onUpdate("listFile", v)} placeholder="Drop file or browse..." mono />
@@ -230,36 +256,49 @@ useEffect(() => {
             <button
               onClick={handleBrowseList}
               title="Browse for a target list file"
-              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
+              className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
             >
               <FolderSearch size={16} strokeWidth={2.5} />
             </button>
           </div>
-          <p className="mt-2 text-xs text-text-ghost leading-snug">
-            Drag & drop a file, or click browse. Overrides single target.
+          {/* TASK 5: Shorter helper text */}
+          <p
+            className="mt-1.5 font-mono text-text-ghost leading-snug"
+            style={{ fontSize: 'var(--fs-label)' }}
+          >
+            Drag & drop or browse. Overrides single target.
           </p>
         </div>
 
-        {/* Scan Mode Section */}
+        {/* ── SCAN MODE ─────────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no Layers icon */}
+        <PlainSectionLabel>{t("scanMode")}</PlainSectionLabel>
         <div>
-          <SectionLabel icon={Layers}>{t("scanMode")}</SectionLabel>
-          <div className="relative flex rounded-lg overflow-hidden bg-bg-input p-1">
-            <div
-              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-accent transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] left-1`}
-              style={{
-                transform: (config.mode === "simple" ? "translateX(0)" : "translateX(100%)"),
-              }}
-            />
-            {(["simple", "advanced"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => onUpdate("mode", m)}
-                className={`relative z-10 flex-1 py-1.5 text-sm font-medium capitalize transition-colors duration-300 ${config.mode === m ? "text-bg-root" : "text-text-muted hover:text-text-secondary"
-                  }`}
-              >
-                {m === "simple" ? "simple" : "advanced"}
-              </button>
-            ))}
+          {/* TASK 5: Studio segmented control pattern — flat border, accent-bg for active */}
+          <div
+            className="flex overflow-hidden border border-[color:var(--color-border-subtle)]"
+            style={{ background: "var(--color-bg-root)" }}
+          >
+            {(["simple", "advanced"] as const).map((m) => {
+              const on = config.mode === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => onUpdate("mode", m)}
+                  aria-pressed={on}
+                  className="flex-1 py-1.5 font-mono uppercase font-bold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
+                  style={{
+                    fontSize: 'var(--fs-label)',
+                    letterSpacing: 'var(--tr-label)',
+                    background: on ? "rgba(249,115,22,0.12)" : "transparent",
+                    color: on ? "var(--color-accent-hover)" : "var(--color-text-ghost)",
+                    borderBottom: on ? "2px solid var(--color-accent)" : "2px solid transparent",
+                  }}
+                >
+                  {m === "simple" ? "Simple" : "Advanced"}
+                </button>
+              );
+            })}
           </div>
 
           <div className={`grid transition-all duration-300 ease-in-out ${config.mode === "advanced" ? "grid-rows-[1fr] mt-4 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
@@ -289,9 +328,10 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Discovery Section */}
+        {/* ── DISCOVERY ─────────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no Telescope icon */}
+        <PlainSectionLabel>Discovery</PlainSectionLabel>
         <div>
-          <SectionLabel icon={Telescope}>Discovery</SectionLabel>
           <ToggleRow label="JS Endpoint Analysis" desc="Crawls discovered .js files for hidden API endpoints" checked={config.enableJsAnalysis} onChange={(v) => onUpdate("enableJsAnalysis", v)} />
           <ToggleRow label="Parameter Fuzzing" desc="Contextual payload selection per query parameter name" checked={config.enableParamFuzz} onChange={(v) => onUpdate("enableParamFuzz", v)} />
           <div className="mt-3">
@@ -301,9 +341,10 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Integrations Section */}
+        {/* ── INTEGRATIONS ─────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no Radar icon */}
+        <PlainSectionLabel>{t("integrations")}</PlainSectionLabel>
         <div>
-          <SectionLabel icon={Radar}>{t("integrations")}</SectionLabel>
           <ToggleRow label={t("katanaCrawler")} desc={t("katanaCrawlerDesc")} checked={config.enableCrawler} onChange={(v) => onUpdate("enableCrawler", v)} />
           <ToggleRow label={t("nucleiScanner")} desc={t("nucleiScannerDesc")} checked={config.enableNuclei} onChange={(v) => onUpdate("enableNuclei", v)} />
           {config.enableNuclei && (
@@ -315,17 +356,19 @@ useEffect(() => {
           )}
         </div>
 
-        {/* Options Section */}
+        {/* ── OPTIONS ─────────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no Telescope icon */}
+        <PlainSectionLabel>{t("options")}</PlainSectionLabel>
         <div>
-          <SectionLabel icon={Telescope}>{t("options")}</SectionLabel>
           <ToggleRow label={t("sameDomainScope")} desc={t("sameDomainScopeDesc")} checked={config.scope} onChange={(v) => onUpdate("scope", v)} />
           <ToggleRow label={t("verbose")} checked={config.verbose} onChange={(v) => onUpdate("verbose", v)} />
           <ToggleRow label={t("dryRun")} desc={t("dryRunDesc")} checked={config.dryRun} onChange={(v) => onUpdate("dryRun", v)} />
         </div>
 
-        {/* Performance Section */}
+        {/* ── PERFORMANCE ─────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no Zap icon */}
+        <PlainSectionLabel>{t("performance")}</PlainSectionLabel>
         <div className="space-y-4">
-          <SectionLabel icon={Zap}>{t("performance")}</SectionLabel>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("threads")}</p>
@@ -342,17 +385,19 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Engine Section */}
+        {/* ── ENGINE ─────────────────────────────────────────────── */}
+        {/* TASK 5: PlainSectionLabel — no Zap icon */}
+        <PlainSectionLabel>Engine</PlainSectionLabel>
         <div>
-          <SectionLabel icon={Zap}>Engine</SectionLabel>
           <ToggleRow label="Smart Payload Selection" desc="Prioritizes payloads by parameter name" checked={config.enableSmartPayloads} onChange={(v) => onUpdate("enableSmartPayloads", v)} />
         </div>
 
-        {/* Crawler Config */}
+        {/* Crawler Config — conditionally shown */}
         <div className={`grid transition-all duration-300 ease-in-out ${config.enableCrawler ? "grid-rows-[1fr] mt-2 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
           <div className="overflow-hidden">
             <div className="pt-4 space-y-4">
-              <SectionLabel icon={Radar}>{t("crawler")}</SectionLabel>
+              {/* TASK 5: PlainSectionLabel for Crawler too */}
+              <PlainSectionLabel>{t("crawler")}</PlainSectionLabel>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("depth")}</p>
@@ -371,11 +416,20 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Scan Queue Section */}
-        <div className="flex-1 flex flex-col min-h-0 pt-4 border-t border-border-subtle/50">
+        {/* ── SCAN QUEUE ─────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-h-0 pt-4 border-t border-border-subtle/50 mt-4">
           <div className="flex items-center justify-between mb-4">
             <SectionLabel icon={ListOrdered} className="!mb-0">{t("scanQueue")}</SectionLabel>
-            <span className="text-[10px] font-bold bg-accent/10 text-accent px-2 py-0.5 rounded-full uppercase tracking-tighter">
+            <span
+              className="font-mono uppercase"
+              style={{
+                fontSize: 'var(--fs-label)',
+                letterSpacing: 'var(--tr-label)',
+                background: 'rgba(249,115,22,0.10)',
+                color: 'var(--color-accent)',
+                padding: '2px 8px',
+              }}
+            >
               {scanQueue.length} {t("tasks")}
             </span>
           </div>
@@ -391,20 +445,25 @@ useEffect(() => {
             <button
               onClick={handleAddToQueue}
               disabled={!queueInput.trim()}
-              className={`flex items-center gap-1.5 w-full justify-center rounded-lg py-2 text-xs font-semibold transition-all duration-200 ${queueInput.trim() ? "bg-accent/15 text-accent-text border border-accent/20 hover:bg-accent/25" : "bg-bg-input text-text-ghost cursor-not-allowed border border-transparent"}`}
+              className={`flex items-center gap-1.5 w-full justify-center rounded-lg py-2 text-xs font-semibold transition-all duration-200 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2 ${queueInput.trim() ? "bg-accent/15 text-accent-text border border-accent/20 hover:bg-accent/25" : "bg-bg-input text-text-ghost cursor-not-allowed border border-transparent"}`}
             >
               <PlusIcon size={14} />
               {t("addToQueue")}
             </button>
             {scanQueue.length > 0 && (
               <div className="space-y-1 mt-2">
-                <p className="text-[10px] text-text-ghost uppercase tracking-wider">{t("queuedTargets")} ({scanQueue.length})</p>
+                <p
+                  className="font-mono uppercase text-text-ghost"
+                  style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)' }}
+                >
+                  {t("queuedTargets")} ({scanQueue.length})
+                </p>
                 {scanQueue.map((target, i) => (
                   <div key={i} className="flex items-center rounded-lg bg-bg-input px-3 py-1.5 group gap-2">
                     <span className="text-xs font-mono text-text-secondary truncate flex-1" dir="ltr">{target}</span>
                     <button
                       onClick={() => onRemoveFromQueue?.(i)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-text-ghost hover:text-status-critical transition-all duration-200"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-text-ghost hover:text-status-critical transition-all duration-200 focus-visible:opacity-100 focus-visible:text-status-critical"
                     >
                       <CloseIcon size={14} />
                     </button>
@@ -417,10 +476,10 @@ useEffect(() => {
 
       </div>
 
-      <div className="px-5 py-4 border-t border-border-subtle bg-bg-panel shrink-0">
+      <div className="px-4 py-4 border-t border-border-subtle bg-bg-panel shrink-0">
         <button
           onClick={onReset}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-subtle bg-bg-card py-2.5 text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 active:scale-95"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-subtle bg-bg-card py-2.5 text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 active:scale-95 focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
         >
           <RotateCcw size={16} strokeWidth={2.5} />
           {t("resetDefaults")}

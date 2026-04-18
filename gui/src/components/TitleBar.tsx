@@ -78,46 +78,34 @@ export function TitleBar({
       <button
         onClick={() => setSidebarCollapsed(p => !p)}
         aria-label="Toggle sidebar"
-        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-bg-hover)] rounded-sm transition-colors"
+        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-bg-hover)] rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
       >
         <SidebarIcon size={13} />
       </button>
       <button
         onClick={onOpenInfo}
         aria-label="App info"
-        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-bg-hover)] rounded-sm transition-colors"
+        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-bg-hover)] rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
       >
         <InfoIcon size={13} />
       </button>
       <button
         onClick={onOpenSettings}
         aria-label="Settings"
-        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-bg-hover)] rounded-sm transition-colors"
+        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:bg-[color:var(--color-bg-hover)] rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
       >
         <CogIcon size={13} />
       </button>
     </div>
   );
 
-  // ── macOS traffic lights ───────────────────────────────────────────
-  const TrafficLights = (
-    <div className="flex items-center gap-[7px] pl-3 pr-2">
-      <button
-        onClick={() => getCurrentWindow().close()}
-        aria-label="Close window"
-        className="w-[11px] h-[11px] rounded-full bg-[#ff5f57] hover:brightness-110 transition-all"
-      />
-      <button
-        onClick={() => getCurrentWindow().minimize()}
-        aria-label="Minimize window"
-        className="w-[11px] h-[11px] rounded-full bg-[#febc2e] hover:brightness-110 transition-all"
-      />
-      <button
-        onClick={() => getCurrentWindow().toggleMaximize()}
-        aria-label="Maximize window"
-        className="w-[11px] h-[11px] rounded-full bg-[#28c840] hover:brightness-110 transition-all"
-      />
-    </div>
+  // ── macOS traffic light spacer — when titleBarStyle:Overlay is active,
+  //    the OS draws the native traffic lights (red/yellow/green) at the
+  //    position set by trafficLightPosition in tauri.conf.json (x:14, y:16).
+  //    We reserve that space with a spacer so content doesn't collide.
+  //    Width 78px = 3 × (~12px button + 7px gap) + left padding left-room.
+  const MacSpacer = (
+    <div style={{ width: 78, height: '100%', flexShrink: 0 }} aria-hidden="true" />
   );
 
   // ── Non-Mac window controls (right side) ───────────────────────────
@@ -126,21 +114,21 @@ export function TitleBar({
       <button
         onClick={() => getCurrentWindow().minimize()}
         title="Minimize"
-        className="w-8 h-7 flex items-center justify-center text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-bg-hover)] transition-colors"
+        className="w-8 h-7 flex items-center justify-center text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-bg-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
       >
         <MinimizeIcon size={12} />
       </button>
       <button
         onClick={() => getCurrentWindow().toggleMaximize()}
         title="Maximize / Restore"
-        className="w-8 h-7 flex items-center justify-center text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-bg-hover)] transition-colors"
+        className="w-8 h-7 flex items-center justify-center text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-bg-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
       >
         <MaximizeIcon size={10} />
       </button>
       <button
         onClick={() => getCurrentWindow().close()}
         title="Close"
-        className="w-8 h-7 flex items-center justify-center text-[color:var(--color-text-muted)] hover:bg-[#e81123] hover:text-white transition-colors"
+        className="w-8 h-7 flex items-center justify-center text-[color:var(--color-text-muted)] hover:bg-[#e81123] hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)]"
       >
         <CloseIcon size={12} />
       </button>
@@ -152,13 +140,15 @@ export function TitleBar({
     <div className="flex items-center gap-2">
       {/* Queue badge */}
       {scanQueue.length > 0 && (
-        <span className="rounded-sm border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-panel)] px-2 py-0.5 font-mono text-[10px] tracking-[0.2em] text-[color:var(--color-text-secondary)] uppercase">
+        <span className="rounded-sm border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-panel)] px-2 py-0.5 font-mono uppercase"
+              style={{ fontSize: 'var(--fs-chrome)', letterSpacing: 'var(--tr-heavy)', color: 'var(--color-text-secondary)' }}>
           {t("queue")}: {scanQueue.length}
         </span>
       )}
 
       {/* Status dot + label */}
-      <div className="flex items-center gap-1.5 font-mono text-[10.5px] tracking-[0.2em]">
+      <div className="flex items-center gap-1.5 font-mono"
+           style={{ fontSize: 'var(--fs-chrome)', letterSpacing: 'var(--tr-chrome)' }}>
         <StatusDot status={scanStatus} className="h-2 w-2" />
         <span
           key={scanStatus}
@@ -173,11 +163,12 @@ export function TitleBar({
         <button
           onClick={handleStopScan}
           disabled={isStopping}
-          className={`relative overflow-hidden h-7 px-3 flex items-center gap-1.5 rounded-sm font-mono text-[10.5px] tracking-[0.18em] uppercase font-semibold text-white transition-all duration-300 active:scale-95 ${
+          className={`relative overflow-hidden h-7 px-3 flex items-center gap-1.5 rounded-sm font-mono uppercase font-semibold text-white transition-all duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white ${
             isStopping
               ? "bg-[color:var(--color-status-warning)] text-black cursor-not-allowed opacity-80"
               : `bg-[color:var(--color-status-critical)] hover:brightness-110 ${isHoldingStop ? "animate-pulse scale-105" : ""}`
           }`}
+          style={{ fontSize: 'var(--fs-chrome)', letterSpacing: 'var(--tr-chrome)' }}
         >
           {isStopping ? (
             <>
@@ -206,17 +197,20 @@ export function TitleBar({
           onClick={handleStartScan}
           disabled={!hasTarget}
           title="Execute engine"
-          className={`relative overflow-hidden h-7 px-3 flex items-center gap-1.5 rounded-sm font-mono text-[10.5px] tracking-[0.18em] uppercase font-semibold text-white transition-all duration-300 active:scale-95 ${
+          className={`relative overflow-hidden h-7 px-3 flex items-center gap-1.5 rounded-sm font-mono uppercase font-semibold text-white transition-all duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)] ${
             hasTarget
               ? `${isHoldingSpace ? "scale-105" : "hover:brightness-110"}`
               : "bg-[color:var(--color-bg-panel)] text-[color:var(--color-text-ghost)] cursor-not-allowed border border-[color:var(--color-border-subtle)]"
           }`}
           style={hasTarget ? {
             backgroundColor: "var(--color-accent)",
+            // TASK 6: Reduced glow intensity from 0.20 to 0.15
             boxShadow: isHoldingSpace
               ? "0 0 18px rgba(249,115,22,0.45)"
-              : "0 0 10px rgba(249,115,22,0.20)",
-          } : undefined}
+              : "0 0 8px rgba(249,115,22,0.15)",
+            fontSize: 'var(--fs-chrome)',
+            letterSpacing: 'var(--tr-chrome)',
+          } : { fontSize: 'var(--fs-chrome)', letterSpacing: 'var(--tr-chrome)' }}
         >
           {isHoldingSpace && (
             <div
@@ -248,12 +242,16 @@ export function TitleBar({
               onClick={() => setSection(key, setActiveTab)}
               aria-pressed={on}
               className={
-                "relative px-4 h-7 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.18em] transition-colors duration-200 " +
+                "relative px-4 h-7 flex items-center gap-1.5 font-mono transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)] " +
                 (on
                   ? "text-[color:var(--color-accent-hover)]"
                   : "text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]")
               }
-              style={on ? { background: "rgba(249,115,22,0.12)" } : {}}
+              style={{
+                fontSize: 'var(--fs-chrome)',
+                letterSpacing: 'var(--tr-chrome)',
+                background: on ? "rgba(249,115,22,0.12)" : undefined,
+              }}
             >
               <Icon size={12} className={on ? "text-[color:var(--color-accent)]" : ""} />
               <span>{label}</span>
@@ -288,16 +286,27 @@ export function TitleBar({
       className="relative h-11 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center select-none z-10 chrome"
       style={{ background: "var(--color-bg-root-2)" }}
     >
-      {/* LEFT: traffic lights (mac) + icon buttons + wordmark */}
+      {/* LEFT: mac spacer (OS draws traffic lights) OR left padding + icon buttons + wordmark */}
       <div className="flex items-center shrink-0">
-        {isMac ? TrafficLights : <div className="pl-3" />}
+        {/*
+          TASK 1: On macOS with titleBarStyle:"Overlay", the OS renders the native
+          traffic lights (red/yellow/green) at trafficLightPosition (x:14, y:16).
+          We DO NOT render our own traffic-light buttons — instead we use a 78px spacer
+          that reserves the same horizontal space so content doesn't overlap the OS chrome.
+          On non-macOS, we use a small left-padding div and show WindowControls on the right.
+        */}
+        {isMac ? MacSpacer : <div className="pl-3" />}
         <div className="flex items-center gap-0.5 pl-1 pr-2">
           {IconButtons}
         </div>
         <div className="pr-3">
           <span
-            className="font-mono text-[12px] font-bold tracking-[0.22em]"
-            style={{ color: "var(--color-accent)" }}
+            className="font-mono font-bold"
+            style={{
+              fontSize: 'var(--fs-chrome)',
+              letterSpacing: 'var(--tr-heavy)',
+              color: "var(--color-accent)",
+            }}
           >
             ARKENAR
           </span>
@@ -310,7 +319,7 @@ export function TitleBar({
       {/* SPACER */}
       <div className="flex-1" />
 
-      {/* RIGHT: status + action + window controls */}
+      {/* RIGHT: status + action + window controls (non-mac only) */}
       <div className="flex items-center gap-2 pr-2">
         {StatusAndAction}
         {!isMac && WindowControls}

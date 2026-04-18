@@ -18,7 +18,7 @@ interface ScannerWorkspaceProps {
   webhookUrl?: string;
 }
 
-/* ── Tab bar button ────────────────────────────────────────────────────── */
+/* ── Tab bar button — TASK 5: Studio-style flat bottom-border tabs ─── */
 function TabBtn({
   active,
   onClick,
@@ -35,21 +35,22 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`relative flex items-center gap-1.5 px-3.5 h-8 mono text-[11px] font-bold tracking-[0.14em] uppercase cursor-pointer border-none transition-colors duration-150 border-b-2 ${
+      className={`flex items-center gap-1.5 px-4 h-9 font-mono uppercase cursor-pointer border-none border-b-2 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-accent)] ${
         active
-          ? "bg-[color:var(--color-accent)]/5 text-[color:var(--color-accent-hover)] border-b-[color:var(--color-accent)]"
-          : "bg-transparent text-[color:var(--color-text-ghost)] border-b-transparent"
+          ? "border-b-[color:var(--color-accent)] text-[color:var(--color-accent-hover)]"
+          : "border-b-transparent text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]"
       }`}
-      style={{ marginBottom: -1 }}
+      style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-chrome)', marginBottom: -1 }}
     >
       {children}
       {!!badge && badge > 0 && (
         <span
-          className={`mono text-[10px] px-1 py-px rounded-sm ${
+          className={`font-mono px-1 rounded-sm ${
             badgeCritical
               ? "bg-[color:var(--color-status-critical)]/10 text-[color:var(--color-status-critical)]"
-              : "bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
+              : "bg-[color:var(--color-bg-hover)] text-[color:var(--color-text-muted)]"
           }`}
+          style={{ fontSize: '10px' }}
         >
           {badge}
         </span>
@@ -120,7 +121,7 @@ export default function ScannerWorkspace({
 
         {/* Main panel */}
         <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-          {/* Tab bar */}
+          {/* TASK 5: Flat bottom-border tab bar — matches Studio tab pattern */}
           <div
             className="flex items-end px-3 border-b border-[color:var(--color-border-subtle)] shrink-0"
             style={{ background: "var(--color-bg-panel)" }}

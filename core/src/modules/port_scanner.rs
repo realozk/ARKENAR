@@ -1,5 +1,4 @@
-use std::net::SocketAddr;
-use std::str::FromStr;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -83,6 +82,20 @@ pub async fn scan_ports(
     abort: Arc<AtomicBool>,
     sink: SinkRef,
 ) -> anyhow::Result<Vec<u16>> {
+    let resolved: IpAddr = match tokio::net::lookup_host(format!("{}:0", host)).await {
+        Ok(mut it) => match it.next() {
+            Some(sock) => sock.ip(),
+            None => {
+                sink.on_log("error", &format!("[!] Could not resolve host: {}", host));
+                return Ok(Vec::new());
+            }
+        },
+        Err(e) => {
+            sink.on_log("error", &format!("[!] DNS lookup failed for {}: {}", host, e));
+            return Ok(Vec::new());
+        }
+    };
+
     let sem = Arc::new(Semaphore::new(200));
     let mut handles = Vec::with_capacity(TOP_1000_PORTS.len());
     let total = TOP_1000_PORTS.len();
@@ -99,18 +112,15 @@ pub async fn scan_ports(
         }
 
         let permit = sem.clone().acquire_owned().await?;
-        let addr_str = format!("{}:{}", host, port);
         let abort_clone = abort.clone();
+
+        let addr = std::net::SocketAddr::new(resolved, port);
 
         let handle = tokio::spawn(async move {
             let _permit = permit;
             if abort_clone.load(Ordering::Relaxed) {
                 return None;
             }
-            let addr = match SocketAddr::from_str(&addr_str) {
-                Ok(a) => a,
-                Err(_) => return None,
-            };
             match timeout(Duration::from_millis(800), TcpStream::connect(addr)).await {
                 Ok(Ok(_)) => Some(port),
                 _ => None,

@@ -69,7 +69,11 @@ export default function ScannerTopBar({
     >
       {/* ── Target row ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2.5">
-        <span className="mono text-[10px] font-bold tracking-[0.18em] uppercase text-[color:var(--color-accent)] shrink-0">
+        {/* TASK 5: Section label uses Studio mono uppercase style */}
+        <span
+          className="font-mono uppercase shrink-0"
+          style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)' }}
+        >
           Target
         </span>
 
@@ -85,22 +89,25 @@ export default function ScannerTopBar({
           onKeyDown={(e) => {
             if (e.key === "Enter" && hasTarget && !isRunning) onStart();
           }}
-          className="flex-1 min-w-0 h-7 px-2.5 mono text-[11.5px] rounded-sm
+          className="flex-1 min-w-0 h-7 px-2.5 font-mono rounded-sm
             bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)]
             text-[color:var(--color-text-primary)] placeholder-[color:var(--color-text-ghost)]
             outline-none focus:border-[color:var(--color-accent)]
             transition-colors duration-150"
+          style={{ fontSize: 'var(--fs-code)' }}
         />
 
-        {/* Paste button */}
+        {/* Paste button — TASK 6: hover affordance + focus ring */}
         <button
           onClick={handlePaste}
           title="Paste from clipboard"
-          className="h-7 px-2.5 flex items-center gap-1.5 rounded-sm mono text-[10px]
+          className="h-7 px-2.5 flex items-center gap-1.5 rounded-sm font-mono
             tracking-[0.14em] uppercase
             bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)]
             text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]
-            hover:border-[color:var(--color-border-hover)] transition-colors duration-150"
+            hover:border-[color:var(--color-border-hover)] transition-colors duration-150
+            focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
+          style={{ fontSize: 'var(--fs-label)' }}
         >
           <ClipboardIcon size={11} />
           {pasting ? "…" : "Paste"}
@@ -111,12 +118,18 @@ export default function ScannerTopBar({
           <button
             onClick={onStop}
             disabled={isStopping}
-            className="h-7 px-3 flex items-center gap-1.5 rounded-sm mono text-[10px]
-              tracking-[0.14em] uppercase font-bold
+            className="h-7 px-3 flex items-center gap-1.5 rounded-sm font-mono
+              uppercase font-bold
               border border-[color:var(--color-status-critical)]
               text-[color:var(--color-status-critical)]
-              hover:bg-[color:var(--color-status-critical)]/5 transition-colors duration-150"
-            style={{ opacity: isStopping ? 0.6 : 1, cursor: isStopping ? "not-allowed" : "pointer" }}
+              hover:bg-[color:var(--color-status-critical)]/5 transition-colors duration-150
+              focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
+            style={{
+              fontSize: 'var(--fs-label)',
+              letterSpacing: 'var(--tr-label)',
+              opacity: isStopping ? 0.6 : 1,
+              cursor: isStopping ? "not-allowed" : "pointer",
+            }}
           >
             <StopIcon size={11} />
             {isStopping ? "Stopping…" : "Abort"}
@@ -125,10 +138,13 @@ export default function ScannerTopBar({
           <button
             onClick={onStart}
             disabled={!hasTarget}
-            className="h-7 px-3 flex items-center gap-1.5 rounded-sm mono text-[10px]
-              tracking-[0.14em] uppercase font-bold text-white
-              transition-colors duration-150"
+            className="h-7 px-3 flex items-center gap-1.5 rounded-sm font-mono
+              uppercase font-bold text-white
+              transition-colors duration-150
+              focus-visible:outline-1 focus-visible:outline-white focus-visible:outline-offset-2"
             style={{
+              fontSize: 'var(--fs-label)',
+              letterSpacing: 'var(--tr-label)',
               background: "var(--color-accent)",
               opacity: hasTarget ? 1 : 0.4,
               cursor: hasTarget ? "pointer" : "not-allowed",
@@ -153,7 +169,8 @@ export default function ScannerTopBar({
 
       {/* ── Stat strip ─────────────────────────────────────────────── */}
       <div
-        className="flex items-center gap-0 px-4 py-1.5 border-t border-[color:var(--color-border-subtle)] mono text-[10px]"
+        className="flex items-center gap-0 px-4 py-1.5 border-t border-[color:var(--color-border-subtle)] font-mono"
+        style={{ fontSize: 'var(--fs-chrome)' }}
       >
         {/* Status with dot */}
         <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
@@ -161,18 +178,21 @@ export default function ScannerTopBar({
             className="w-[7px] h-[7px] rounded-full shrink-0"
             style={{ background: dotColor }}
           />
-          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Status</span>
-          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">
+          <span style={{ letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Status</span>
+          <span style={{ letterSpacing: '0.06em', color: 'var(--color-text-primary)', fontWeight: 600 }}>
             {scanStatus.toUpperCase()}
           </span>
         </div>
 
         {/* Findings */}
         <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
-          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Findings</span>
+          <span style={{ letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Findings</span>
           <span
-            className="tracking-[0.06em] font-semibold"
-            style={{ color: findings > 0 ? "var(--color-status-critical)" : "var(--color-text-primary)" }}
+            style={{
+              letterSpacing: '0.06em',
+              fontWeight: 600,
+              color: findings > 0 ? "var(--color-status-critical)" : "var(--color-text-primary)",
+            }}
           >
             {findings}
           </span>
@@ -180,22 +200,23 @@ export default function ScannerTopBar({
 
         {/* Logs */}
         <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
-          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Logs</span>
-          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">{logs}</span>
+          <span style={{ letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Logs</span>
+          <span style={{ letterSpacing: '0.06em', color: 'var(--color-text-primary)', fontWeight: 600 }}>{logs}</span>
         </div>
 
         {/* URLs */}
         <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
-          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">URLs</span>
-          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">{stats?.urls ?? 0}</span>
+          <span style={{ letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>URLs</span>
+          <span style={{ letterSpacing: '0.06em', color: 'var(--color-text-primary)', fontWeight: 600 }}>{stats?.urls ?? 0}</span>
         </div>
 
         {/* Critical */}
         <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
-          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Critical</span>
+          <span style={{ letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Critical</span>
           <span
-            className="tracking-[0.06em] font-semibold"
             style={{
+              letterSpacing: '0.06em',
+              fontWeight: 600,
               color: (stats?.critical ?? 0) > 0 ? "var(--color-status-critical)" : "var(--color-text-primary)",
             }}
           >
@@ -205,8 +226,8 @@ export default function ScannerTopBar({
 
         {/* Elapsed */}
         <div className="flex items-center gap-1.5">
-          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Elapsed</span>
-          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">
+          <span style={{ letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Elapsed</span>
+          <span style={{ letterSpacing: '0.06em', color: 'var(--color-text-primary)', fontWeight: 600 }}>
             {stats?.elapsed ?? "—"}
           </span>
         </div>
@@ -225,7 +246,9 @@ export default function ScannerTopBar({
               className="h-5 px-2 flex items-center gap-1 rounded-sm
                 border border-[color:var(--color-border-subtle)]
                 text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]
-                hover:border-[color:var(--color-border-hover)] transition-colors duration-150"
+                hover:border-[color:var(--color-border-hover)] transition-colors duration-150
+                focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2"
+              style={{ fontSize: 'var(--fs-chrome)' }}
             >
               <DownloadIcon size={10} />
               Export

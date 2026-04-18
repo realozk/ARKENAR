@@ -16,13 +16,35 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-    pub fn new(timeout_seconds: u64, proxy_url: Option<&str>, custom_headers: &[(String, String)]) -> Result<Self, reqwest::Error> {
+    /// Create a new HTTP client.
+    ///
+    /// # Parameters
+    /// - `timeout_seconds` — per-request timeout
+    /// - `proxy_url` — optional HTTP/SOCKS proxy URL
+    /// - `custom_headers` — key-value pairs to attach to every request
+    /// - `allow_insecure_tls` — if `true`, accept invalid TLS certificates
+    ///   (self-signed, expired, hostname mismatch). **SECURITY NOTE: enabling
+    ///   this makes scanner traffic MITM-able.** Defaults to `false` on every
+    ///   normal call site; only set `true` when the user explicitly opts in.
+    pub fn new(
+        timeout_seconds: u64,
+        proxy_url: Option<&str>,
+        custom_headers: &[(String, String)],
+        allow_insecure_tls: bool,
+    ) -> Result<Self, reqwest::Error> {
+        if allow_insecure_tls {
+            log::warn!(
+                "HTTP client configured with INSECURE TLS (accepting invalid certificates). \
+                 Traffic is MITM-vulnerable."
+            );
+        }
+
         let timeout = Duration::from_secs(timeout_seconds);
 
         let mut builder = ClientBuilder::new()
             .timeout(timeout)
             .redirect(Policy::limited(5))
-            .danger_accept_invalid_certs(true);
+            .danger_accept_invalid_certs(allow_insecure_tls);
 
         if let Some(proxy) = proxy_url {
             if let Ok(p) = Proxy::all(proxy) {
@@ -41,7 +63,6 @@ impl HttpClient {
                 default_headers.insert(name, value);
             }
         }
-        // Randomized User-Agent pool for fingerprint evasion
         let user_agents = vec![
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
              (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -148,6 +169,8 @@ impl HttpClient {
 
     fn get_random_user_agent(&self) -> &'static str {
         let mut rng = rand::rng();
-        *self.user_agents.choose(&mut rng).unwrap_or(&"Mozilla/5.0")
+        *self.user_agents
+            .choose(&mut rng)
+            .expect("user_agents pool is constructor-initialized and non-empty")
     }
 }

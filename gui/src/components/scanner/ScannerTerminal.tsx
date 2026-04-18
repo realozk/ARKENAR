@@ -22,15 +22,17 @@ const LEVELS = ["all", "info", "success", "warn", "error", "phase"] as const;
 type LevelFilter = (typeof LEVELS)[number];
 
 /* ── Pill ─────────────────────────────────────────────────────────────── */
+// TASK 5: Dense flat border chip matching ScannerFindings style
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`mono text-[10px] font-bold tracking-[0.1em] uppercase px-2 py-0.5 rounded-full cursor-pointer transition-colors duration-150 border ${
+      className={`font-mono uppercase px-2 h-6 cursor-pointer transition-colors duration-150 border focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2 ${
         active
           ? "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
-          : "border-[color:var(--color-border-subtle)] bg-transparent text-[color:var(--color-text-ghost)]"
+          : "border-[color:var(--color-border-subtle)] bg-transparent text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)]"
       }`}
+      style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)', fontWeight: 700 }}
     >
       {children}
     </button>
@@ -56,12 +58,17 @@ function IconBtn({
       onClick={onClick}
       title={title}
       disabled={disabled}
-      className={`h-6 px-2 flex items-center gap-1.5 rounded-sm mono text-[10px] uppercase tracking-[0.1em] transition-colors duration-150 border ${
+      className={`h-6 px-2 flex items-center gap-1.5 rounded-sm font-mono uppercase transition-colors duration-150 border focus-visible:outline-1 focus-visible:outline-[color:var(--color-accent)] focus-visible:outline-offset-2 ${
         active
           ? "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
-          : "border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] text-[color:var(--color-text-muted)]"
+          : "border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] hover:border-[color:var(--color-border-hover)]"
       }`}
-      style={{ opacity: disabled ? 0.4 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+      style={{
+        fontSize: 'var(--fs-label)',
+        letterSpacing: 'var(--tr-label)',
+        opacity: disabled ? 0.4 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
     >
       {children}
     </button>
@@ -137,7 +144,8 @@ export default function ScannerTerminal({ logs }: ScannerTerminalProps) {
       {/* Log area */}
       {filtered.length === 0 ? (
         <div
-          className="flex-1 flex items-center justify-center mono text-[12px] text-[color:var(--color-text-ghost)]"
+          className="flex-1 flex items-center justify-center font-mono text-[color:var(--color-text-ghost)]"
+          style={{ fontSize: 'var(--fs-code)' }}
         >
           {logs.length === 0 ? "Awaiting scan…" : "No matching log entries."}
         </div>
@@ -145,8 +153,12 @@ export default function ScannerTerminal({ logs }: ScannerTerminalProps) {
         <div
           ref={containerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-3 py-2 mono text-[12px] leading-relaxed"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "var(--color-border-hover) transparent" } as React.CSSProperties}
+          className="flex-1 overflow-y-auto px-3 py-2 font-mono leading-relaxed"
+          style={{
+            fontSize: 'var(--fs-code)',
+            scrollbarWidth: "thin",
+            scrollbarColor: "var(--color-border-hover) transparent",
+          } as React.CSSProperties}
         >
           {filtered.map((log) => (
             <div
@@ -154,13 +166,20 @@ export default function ScannerTerminal({ logs }: ScannerTerminalProps) {
               className="flex items-start gap-2 py-px"
             >
               {showTimestamps && (
-                <span className="shrink-0 text-[11px] text-[color:var(--color-text-ghost)] select-none leading-[inherit]">
+                <span
+                  className="shrink-0 text-[color:var(--color-text-ghost)] select-none leading-[inherit]"
+                  style={{ fontSize: 'var(--fs-label)' }}
+                >
                   {log.time}
                 </span>
               )}
               <span
-                className="shrink-0 font-bold text-[10px] tracking-[0.08em] uppercase min-w-[58px] leading-[inherit]"
-                style={{ color: LEVEL_COLORS[log.level] ?? "var(--color-text-muted)" }}
+                className="shrink-0 font-bold uppercase min-w-[58px] leading-[inherit]"
+                style={{
+                  fontSize: 'var(--fs-label)',
+                  letterSpacing: '0.08em',
+                  color: LEVEL_COLORS[log.level] ?? "var(--color-text-muted)",
+                }}
               >
                 [{log.level === "error" ? "CRIT" : log.level.toUpperCase()}]
               </span>
