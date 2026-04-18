@@ -1,3 +1,5 @@
+import { PlayIcon, StopIcon, DownloadIcon } from "../icons";
+
 interface ReconTopBarProps {
   domain: string;
   onDomainChange: (v: string) => void;
@@ -27,134 +29,134 @@ export default function ReconTopBar({
   totalDns,
   onExportCsv,
 }: ReconTopBarProps) {
-  const statusColor = isRunning ? "#ff6b35" : isComplete ? "#4caf50" : "#555";
+  const statusColor = isRunning
+    ? "var(--color-accent)"
+    : isComplete
+    ? "var(--color-status-success)"
+    : "var(--color-text-ghost)";
+
   const statusLabel = isRunning ? "SCANNING" : isComplete ? "COMPLETE" : "IDLE";
 
   return (
-    <div style={{
-      height: 48,
-      minHeight: 48,
-      background: "#111111",
-      borderBottom: "1px solid #2a2a2a",
-      display: "flex",
-      alignItems: "center",
-      padding: "0 12px",
-      gap: 8,
-      flexShrink: 0,
-    }}>
-      <span style={{ color: "#ff6b35", fontSize: 10, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-         ARKENAR RECON
-      </span>
-      <span style={{ color: "#2a2a2a", margin: "0 4px" }}>·</span>
+    <div
+      className="flex items-center gap-2 px-3 shrink-0 border-b border-[color:var(--color-border-subtle)]"
+      style={{ height: 48, minHeight: 48, background: "var(--color-bg-root-2)" }}
+    >
+      {/* Wordmark + status */}
       <span
-        className={isRunning ? "rw-pulse" : ""}
-        style={{ color: statusColor, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", whiteSpace: "nowrap" }}
+        className="font-mono text-[10px] font-bold tracking-[0.22em] uppercase whitespace-nowrap"
+        style={{ color: "var(--color-accent)" }}
       >
-        ● {statusLabel}
+        RECON
+      </span>
+      <span className="text-[color:var(--color-border-hover)]">·</span>
+      <span
+        className={`font-mono text-[10px] font-bold tracking-[0.14em] whitespace-nowrap flex items-center gap-1${isRunning ? " rw-pulse" : ""}`}
+        style={{ color: statusColor }}
+      >
+        <span style={{ fontSize: 8 }}>●</span>
+        {statusLabel}
       </span>
 
-      <div style={{ flex: 1, minWidth: 0, display: "flex", gap: 6, marginLeft: 8 }}>
-        <input
-          value={domain}
-          onChange={(e) => onDomainChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !isRunning) onRun(); }}
-          placeholder="target domain (e.g. example.com)"
-          disabled={isRunning}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: "#0d0d0d",
-            border: "1px solid #2a2a2a",
-            color: "#e0e0e0",
-            borderRadius: 4,
-            padding: "0 10px",
-            height: 30,
-            fontSize: 12,
-            outline: "none",
-          }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "#ff6b35")}
-          onBlur={(e) => (e.currentTarget.style.borderColor = "#2a2a2a")}
-        />
+      {/* Domain input + action button */}
+      <div className="flex flex-1 min-w-0 items-center gap-1.5 ml-1">
+        <div
+          className="flex-1 min-w-0 h-7 flex items-stretch rounded-sm border border-[color:var(--color-border-subtle)] focus-within:border-[color:var(--color-accent)]"
+          style={{ background: "var(--color-bg-panel)", transition: "border-color 0.15s" }}
+        >
+          <input
+            value={domain}
+            onChange={(e) => onDomainChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !isRunning) onRun();
+            }}
+            placeholder="target domain (e.g. example.com)"
+            disabled={isRunning}
+            spellCheck={false}
+            className="flex-1 min-w-0 bg-transparent font-mono text-[11.5px] px-2 outline-none placeholder-[color:var(--color-text-ghost)] text-[color:var(--color-text-primary)]"
+            style={{ opacity: isRunning ? 0.5 : 1 }}
+          />
+        </div>
+
         {!isRunning ? (
           <button
             onClick={onRun}
             disabled={!domain.trim()}
+            className="h-7 px-3 flex items-center gap-1.5 font-mono text-[10.5px] font-bold tracking-[0.14em] text-white rounded-sm transition-opacity"
             style={{
-              background: domain.trim() ? "#ff6b35" : "#222",
-              color: domain.trim() ? "#000" : "#555",
-              border: "none",
-              borderRadius: 4,
-              padding: "0 14px",
-              height: 30,
-              fontSize: 11,
-              fontWeight: 700,
-              fontFamily: "monospace",
+              background: domain.trim() ? "var(--color-accent)" : "var(--color-bg-hover)",
+              color: domain.trim() ? "var(--color-bg-root)" : "var(--color-text-ghost)",
               cursor: domain.trim() ? "pointer" : "not-allowed",
-              whiteSpace: "nowrap",
-              letterSpacing: "0.1em",
+              opacity: domain.trim() ? 1 : 0.5,
             }}
           >
-            ▶ LAUNCH
+            <PlayIcon size={10} />
+            LAUNCH
           </button>
         ) : (
           <button
             onClick={onStop}
+            className="h-7 px-3 flex items-center gap-1.5 font-mono text-[10.5px] font-bold tracking-[0.14em] rounded-sm border"
             style={{
               background: "transparent",
-              color: "#f44336",
-              border: "1px solid #f44336",
-              borderRadius: 4,
-              padding: "0 14px",
-              height: 30,
-              fontSize: 11,
-              fontWeight: 700,
-              fontFamily: "monospace",
+              color: "var(--color-status-critical)",
+              borderColor: "var(--color-status-critical)",
               cursor: "pointer",
-              whiteSpace: "nowrap",
-              letterSpacing: "0.1em",
             }}
           >
-            ■ ABORT
+            <StopIcon size={10} />
+            ABORT
           </button>
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
+      {/* Stats strip */}
+      <div className="flex items-center gap-4 shrink-0">
         {[
-          { label: "Hosts", val: totalHosts },
-          { label: "Alive", val: totalAlive },
-          { label: "Ports", val: totalPorts },
-          { label: "Secrets", val: totalSecrets },
-          { label: "DNS", val: totalDns },
-        ].map(({ label, val }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}:</span>
-            <span style={{ fontSize: 11, color: val > 0 ? "#e0e0e0" : "#444", fontWeight: 700 }}>{val}</span>
+          { label: "HOSTS", val: totalHosts, color: "var(--color-accent)" },
+          { label: "ALIVE", val: totalAlive, color: "var(--color-status-success)" },
+          { label: "PORTS", val: totalPorts, color: "var(--color-text-primary)" },
+          { label: "SEC", val: totalSecrets, color: totalSecrets > 0 ? "var(--color-status-warning)" : "var(--color-text-ghost)" },
+          { label: "DNS", val: totalDns, color: "var(--color-accent-hover)" },
+        ].map(({ label, val, color }) => (
+          <div key={label} className="flex items-center gap-1">
+            <span className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">
+              {label}
+            </span>
+            <span
+              className="font-mono text-[11px] font-bold"
+              style={{ color: val > 0 ? color : "var(--color-text-ghost)" }}
+            >
+              {val}
+            </span>
           </div>
         ))}
       </div>
 
+      {/* Export CSV */}
       <button
         onClick={onExportCsv}
         disabled={totalHosts === 0}
         title="Export CSV"
+        className="h-7 px-2 flex items-center gap-1.5 font-mono text-[10px] tracking-[0.12em] rounded-sm border border-[color:var(--color-border-subtle)] text-[color:var(--color-text-muted)] transition-colors shrink-0"
         style={{
-          background: "#1a1a1a",
-          border: "1px solid #2a2a2a",
-          color: totalHosts > 0 ? "#aaa" : "#444",
-          borderRadius: 4,
-          padding: "0 10px",
-          height: 30,
-          fontSize: 11,
-          fontFamily: "monospace",
+          background: "var(--color-bg-panel)",
           cursor: totalHosts > 0 ? "pointer" : "not-allowed",
-          whiteSpace: "nowrap",
-          flexShrink: 0,
+          opacity: totalHosts > 0 ? 1 : 0.4,
         }}
-        onMouseEnter={(e) => { if (totalHosts > 0) { e.currentTarget.style.borderColor = "#ff6b35"; e.currentTarget.style.color = "#ff6b35"; } }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.color = totalHosts > 0 ? "#aaa" : "#444"; }}
+        onMouseEnter={(e) => {
+          if (totalHosts > 0) {
+            e.currentTarget.style.borderColor = "var(--color-accent)";
+            e.currentTarget.style.color = "var(--color-accent)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-border-subtle)";
+          e.currentTarget.style.color = "var(--color-text-muted)";
+        }}
       >
-        ⎘ Export CSV
+        <DownloadIcon size={10} />
+        CSV
       </button>
     </div>
   );

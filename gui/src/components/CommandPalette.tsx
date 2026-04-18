@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Play, Square, Terminal, ScanSearch, History,
-  Settings, Trash2, PanelLeftClose, Download, X
-} from "lucide-react";
+  PlayIcon, StopIcon, TerminalIcon, ScanSearchIcon, HistoryIcon,
+  SettingsIcon, TrashIcon, PanelLeftCloseIcon, DownloadIcon, CloseIcon, SearchIcon
+} from "./icons";
 
 interface Action {
   id: string;
@@ -46,41 +46,41 @@ export function CommandPalette({
 
   const actions: Action[] = [
     {
-      id: "start", label: "Start Scan", icon: Play, section: "SCAN",
+      id: "start", label: "Start Scan", icon: PlayIcon, section: "SCAN",
       shortcut: "Space", disabled: !hasTarget || scanStatus === "running",
       onRun: () => { onStartScan(); close(); }
     },
     {
-      id: "stop", label: "Stop Scan", icon: Square, section: "SCAN",
+      id: "stop", label: "Stop Scan", icon: StopIcon, section: "SCAN",
       shortcut: "Esc", disabled: scanStatus !== "running",
       onRun: () => { onStopScan(); close(); }
     },
     {
-      id: "terminal", label: "Go to Terminal", icon: Terminal, section: "NAVIGATE",
+      id: "terminal", label: "Go to Terminal", icon: TerminalIcon, section: "NAVIGATE",
       shortcut: "T", onRun: () => { onTabChange("terminal"); close(); }
     },
     {
-      id: "findings", label: "Go to Findings", icon: ScanSearch, section: "NAVIGATE",
+      id: "findings", label: "Go to Findings", icon: ScanSearchIcon, section: "NAVIGATE",
       shortcut: "F", onRun: () => { onTabChange("findings"); close(); }
     },
     {
-      id: "history", label: "Go to History", icon: History, section: "NAVIGATE",
+      id: "history", label: "Go to History", icon: HistoryIcon, section: "NAVIGATE",
       shortcut: "H", onRun: () => { onTabChange("history"); close(); }
     },
     {
-      id: "settings", label: "Open Settings", icon: Settings, section: "TOOLS",
+      id: "settings", label: "Open Settings", icon: SettingsIcon, section: "TOOLS",
       shortcut: "Ctrl+,", onRun: () => { onOpenSettings(); close(); }
     },
     {
-      id: "clear", label: "Clear Current Tab", icon: Trash2, section: "TOOLS",
+      id: "clear", label: "Clear Current Tab", icon: TrashIcon, section: "TOOLS",
       shortcut: "C", onRun: () => { onRequestClear(); close(); }
     },
     {
-      id: "sidebar", label: "Toggle Sidebar", icon: PanelLeftClose, section: "TOOLS",
+      id: "sidebar", label: "Toggle Sidebar", icon: PanelLeftCloseIcon, section: "TOOLS",
       shortcut: "Ctrl+B", onRun: () => { onToggleSidebar(); close(); }
     },
     {
-      id: "export", label: "Export History CSV", icon: Download, section: "TOOLS",
+      id: "export", label: "Export History CSV", icon: DownloadIcon, section: "TOOLS",
       disabled: !hasFindings,
       onRun: () => { onExportFindings(); close(); }
     },
@@ -134,85 +134,93 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center pt-[18vh]"
-      style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+      className="fixed inset-0 z-[100] flex items-start justify-center pt-[18vh] bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
       <div
-        className="w-[640px] rounded-2xl overflow-hidden"
+        className="w-[600px] overflow-hidden border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-panel)]"
         style={{
-          background: "#1c1c1e",
-          border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
           animation: exiting
             ? "paletteOut 0.15s ease-in forwards"
             : "paletteIn 0.15s ease-out forwards",
         }}
       >
         {/* Search Input */}
-        <div
-          className="flex items-center gap-3 px-5 py-4 border-b border-white/[0.06]"
-          style={{ background: "#242426" }}  // ← slightly lighter than #1c1c1e
-        >
-        <input
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)]">
+          <SearchIcon size={14} className="text-[color:var(--color-text-ghost)] shrink-0" />
+          <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search actions..."
-            className="flex-1 bg-transparent text-[17px] text-white placeholder-white/25 outline-none font-normal"
+            className="flex-1 bg-transparent text-sm text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-ghost)] outline-none font-mono"
             style={{ boxShadow: "none", WebkitAppearance: "none" }}
-            />
-          <button onClick={close} className="text-white/20 hover:text-white/50 transition-colors">
-            <X size={16} />
+          />
+          <button
+            onClick={close}
+            className="w-5 h-5 flex items-center justify-center text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-muted)] transition-colors duration-150 shrink-0"
+          >
+            <CloseIcon size={12} />
           </button>
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="overflow-y-auto" style={{ maxHeight: 360 }}>
+        <div ref={listRef} className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 340 }}>
           {filtered.length === 0 ? (
-            <div className="px-5 py-10 text-center text-sm text-white/25">
+            <div className="px-5 py-10 text-center text-xs font-mono text-[color:var(--color-text-ghost)]">
               No results for "{query}"
             </div>
           ) : (
             sections.map(section => (
               <div key={section}>
-                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/25">
+                {/* Section label */}
+                <div className="px-4 pt-3 pb-1 text-[9px] font-mono uppercase tracking-[0.22em] text-[color:var(--color-text-ghost)]">
                   {section}
                 </div>
                 {filtered.filter(a => a.section === section).map(action => {
                   const currentIndex = flatIndex++;
                   const isSelected = currentIndex === selectedIndex;
-                  const Icon = action.icon;
+                  const ActionIcon = action.icon;
                   return (
                     <div
                       key={action.id}
                       data-index={currentIndex}
                       onClick={() => !action.disabled && action.onRun()}
                       onMouseEnter={() => setSelectedIndex(currentIndex)}
-                      className={`flex items-center gap-3 px-3 mx-2 mb-0.5 rounded-lg cursor-pointer transition-colors duration-75 ${
+                      className={`flex items-center gap-3 px-3 mx-1.5 mb-px transition-colors duration-75 ${
                         action.disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"
-                      } ${isSelected && !action.disabled ? "bg-white/[0.08]" : ""}`}
-                      style={{ height: 44 }}
-                    >
-                      {/* Icon Box */}
-                      <div className={`flex items-center justify-center w-7 h-7 rounded-md ${
+                      } ${
                         isSelected && !action.disabled
-                          ? "bg-white/10 text-white"
-                          : "bg-white/[0.05] text-white/40"
+                          ? "bg-[color:var(--color-bg-hover)] border-l border-[color:var(--color-accent)]"
+                          : "border-l border-transparent"
+                      }`}
+                      style={{ height: 40 }}
+                    >
+                      {/* Icon */}
+                      <div className={`flex items-center justify-center w-6 h-6 shrink-0 ${
+                        isSelected && !action.disabled
+                          ? "text-[color:var(--color-accent)]"
+                          : "text-[color:var(--color-text-ghost)]"
                       }`}>
-                        <Icon size={14} />
+                        <ActionIcon size={13} />
                       </div>
 
                       {/* Label */}
-                      <span className={`flex-1 text-sm font-medium ${
-                        isSelected && !action.disabled ? "text-white" : "text-white/60"
+                      <span className={`flex-1 text-xs font-mono ${
+                        isSelected && !action.disabled
+                          ? "text-[color:var(--color-text-primary)]"
+                          : "text-[color:var(--color-text-muted)]"
                       }`}>
                         {action.label}
                       </span>
 
-                      {/* Shortcut */}
+                      {/* Shortcut hint */}
                       {action.shortcut && (
-                        <kbd className="px-2 py-0.5 rounded text-[11px] font-mono text-white/25 bg-white/[0.04] border border-white/[0.06]">
+                        <kbd className={`px-1.5 py-0.5 text-[10px] font-mono border transition-colors duration-150 ${
+                          isSelected && !action.disabled
+                            ? "border-[color:var(--color-accent)]/40 text-[color:var(--color-accent)]"
+                            : "border-[color:var(--color-border-subtle)] text-[color:var(--color-text-ghost)]"
+                        }`}>
                           {action.shortcut}
                         </kbd>
                       )}
@@ -225,22 +233,22 @@ export function CommandPalette({
           <div className="h-2" />
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center gap-4 px-5 py-2.5 border-t border-white/[0.05] text-[11px] text-white/20">
-          <span><kbd className="font-mono">↑↓</kbd> navigate</span>
-          <span><kbd className="font-mono">↵</kbd> select</span>
-          <span><kbd className="font-mono">Esc</kbd> close</span>
+        {/* Footer hint bar */}
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-[color:var(--color-border-subtle)] text-[10px] font-mono text-[color:var(--color-text-ghost)]">
+          <span><kbd className="font-mono tracking-tight">↑↓</kbd> navigate</span>
+          <span><kbd className="font-mono tracking-tight">↵</kbd> select</span>
+          <span><kbd className="font-mono tracking-tight">Esc</kbd> close</span>
         </div>
       </div>
 
       <style>{`
         @keyframes paletteIn {
-          from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+          from { opacity: 0; transform: scale(0.97) translateY(-6px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
         }
         @keyframes paletteOut {
           from { opacity: 1; transform: scale(1) translateY(0); }
-          to   { opacity: 0; transform: scale(0.96) translateY(-8px); }
+          to   { opacity: 0; transform: scale(0.97) translateY(-6px); }
         }
       `}</style>
     </div>

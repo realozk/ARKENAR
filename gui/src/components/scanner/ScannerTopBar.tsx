@@ -1,143 +1,11 @@
 import { useState, useRef } from "react";
-import { Play, Square, Download, ClipboardPaste } from "lucide-react";
 import type { ScanConfig, ScanStatus, ScanStatsEvent } from "../../types";
-
-const S: Record<string, React.CSSProperties> = {
-  root: {
-    flexShrink: 0,
-    background: "#141414",
-    borderBottom: "1px solid #2a2a2a",
-    display: "flex",
-    flexDirection: "column",
-    gap: 0,
-  },
-  top: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 16px",
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: 2,
-    textTransform: "uppercase" as const,
-    color: "#ff6b35",
-    whiteSpace: "nowrap" as const,
-  },
-  input: {
-    flex: 1,
-    background: "#0d0d0d",
-    border: "1px solid #2a2a2a",
-    borderRadius: 4,
-    padding: "6px 10px",
-    fontSize: 12,
-    fontFamily: "monospace",
-    color: "#e0e0e0",
-    outline: "none",
-    minWidth: 0,
-  },
-  btnPrimary: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#ff6b35",
-    border: "none",
-    borderRadius: 4,
-    padding: "6px 14px",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: 1,
-    color: "#000",
-    cursor: "pointer",
-    whiteSpace: "nowrap" as const,
-    textTransform: "uppercase" as const,
-  },
-  btnDanger: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "transparent",
-    border: "1px solid #f44336",
-    borderRadius: 4,
-    padding: "6px 14px",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: 1,
-    color: "#f44336",
-    cursor: "pointer",
-    whiteSpace: "nowrap" as const,
-    textTransform: "uppercase" as const,
-  },
-  btnSecondary: {
-    display: "flex",
-    alignItems: "center",
-    gap: 5,
-    background: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 4,
-    padding: "5px 10px",
-    fontSize: 11,
-    color: "#aaaaaa",
-    cursor: "pointer",
-    fontFamily: "monospace",
-    textTransform: "uppercase" as const,
-    letterSpacing: 1,
-  },
-  statRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 0,
-    borderTop: "1px solid #2a2a2a",
-    padding: "6px 16px",
-  },
-  statItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    paddingRight: 20,
-    marginRight: 20,
-    borderRight: "1px solid #2a2a2a",
-  },
-  statItemLast: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  },
-  statKey: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: 2,
-    textTransform: "uppercase" as const,
-    color: "#666666",
-  },
-  statVal: {
-    fontSize: 12,
-    fontFamily: "monospace",
-    color: "#e0e0e0",
-    fontWeight: 700,
-  },
-  progressBar: {
-    height: 2,
-    background: "#1a1a1a",
-    position: "relative" as const,
-    overflow: "hidden" as const,
-  },
-  progressFill: {
-    position: "absolute" as const,
-    top: 0,
-    left: 0,
-    height: "100%",
-    background: "#ff6b35",
-    transition: "width 0.3s ease",
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: "50%",
-    flexShrink: 0,
-  },
-};
+import {
+  PlayIcon,
+  StopIcon,
+  ClipboardIcon,
+  DownloadIcon,
+} from "../icons";
 
 interface ScannerTopBarProps {
   config: ScanConfig;
@@ -184,105 +52,169 @@ export default function ScannerTopBar({
   const isStopping = scanStatus === "stopping";
   const hasTarget = !!(config.target || config.listFile);
 
+  /* Status dot color via CSS tokens */
   const dotColor =
     scanStatus === "running"
-      ? "#ff6b35"
+      ? "var(--color-accent)"
       : scanStatus === "finished" || isComplete
-      ? "#4caf50"
+      ? "var(--color-status-success)"
       : scanStatus === "error"
-      ? "#f44336"
-      : "#444444";
+      ? "var(--color-status-critical)"
+      : "var(--color-border-hover)";
 
   return (
-    <div style={S.root}>
-      <div style={S.top}>
-        <span style={S.label}>Target</span>
+    <div
+      className="shrink-0 flex flex-col border-b border-[color:var(--color-border-subtle)]"
+      style={{ background: "var(--color-bg-panel)" }}
+    >
+      {/* ── Target row ─────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 px-4 py-2.5">
+        <span className="mono text-[10px] font-bold tracking-[0.18em] uppercase text-[color:var(--color-accent)] shrink-0">
+          Target
+        </span>
 
         <input
           ref={inputRef}
-          style={S.input}
           type="text"
           placeholder="https://target.com"
           value={config.target}
-          onChange={(e) => { onUpdate("target", e.target.value); onUpdate("listFile", ""); }}
-          onKeyDown={(e) => { if (e.key === "Enter" && hasTarget && !isRunning) onStart(); }}
+          onChange={(e) => {
+            onUpdate("target", e.target.value);
+            onUpdate("listFile", "");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && hasTarget && !isRunning) onStart();
+          }}
+          className="flex-1 min-w-0 h-7 px-2.5 mono text-[11.5px] rounded-sm
+            bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)]
+            text-[color:var(--color-text-primary)] placeholder-[color:var(--color-text-ghost)]
+            outline-none focus:border-[color:var(--color-accent)]
+            transition-colors duration-150"
         />
 
+        {/* Paste button */}
         <button
-          style={S.btnSecondary}
           onClick={handlePaste}
           title="Paste from clipboard"
+          className="h-7 px-2.5 flex items-center gap-1.5 rounded-sm mono text-[10px]
+            tracking-[0.14em] uppercase
+            bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)]
+            text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]
+            hover:border-[color:var(--color-border-hover)] transition-colors duration-150"
         >
-          <ClipboardPaste size={12} />
+          <ClipboardIcon size={11} />
           {pasting ? "…" : "Paste"}
         </button>
 
+        {/* Start / Abort */}
         {isRunning || isStopping ? (
           <button
-            style={{
-              ...S.btnDanger,
-              opacity: isStopping ? 0.6 : 1,
-              cursor: isStopping ? "not-allowed" : "pointer",
-            }}
             onClick={onStop}
             disabled={isStopping}
+            className="h-7 px-3 flex items-center gap-1.5 rounded-sm mono text-[10px]
+              tracking-[0.14em] uppercase font-bold
+              border border-[color:var(--color-status-critical)]
+              text-[color:var(--color-status-critical)]
+              hover:bg-[color:var(--color-status-critical)]/5 transition-colors duration-150"
+            style={{ opacity: isStopping ? 0.6 : 1, cursor: isStopping ? "not-allowed" : "pointer" }}
           >
-            <Square size={12} />
+            <StopIcon size={11} />
             {isStopping ? "Stopping…" : "Abort"}
           </button>
         ) : (
           <button
+            onClick={onStart}
+            disabled={!hasTarget}
+            className="h-7 px-3 flex items-center gap-1.5 rounded-sm mono text-[10px]
+              tracking-[0.14em] uppercase font-bold text-white
+              transition-colors duration-150"
             style={{
-              ...S.btnPrimary,
+              background: "var(--color-accent)",
               opacity: hasTarget ? 1 : 0.4,
               cursor: hasTarget ? "pointer" : "not-allowed",
             }}
-            onClick={onStart}
-            disabled={!hasTarget}
           >
-            <Play size={12} />
+            <PlayIcon size={11} />
             Launch
           </button>
         )}
       </div>
 
-      <div style={S.progressBar}>
-        <div style={{ ...S.progressFill, width: `${progress}%` }} />
+      {/* ── Progress bar ───────────────────────────────────────────── */}
+      <div
+        className="h-0.5 relative overflow-hidden"
+        style={{ background: "var(--color-bg-root)" }}
+      >
+        <div
+          className="absolute inset-y-0 left-0 transition-[width] duration-300"
+          style={{ width: `${progress}%`, background: "var(--color-accent)" }}
+        />
       </div>
 
-      <div style={S.statRow}>
-        <div style={S.statItem}>
-          <div style={{ ...S.statusDot, background: dotColor }} />
-          <span style={S.statKey}>Status</span>
-          <span style={S.statVal}>{scanStatus.toUpperCase()}</span>
+      {/* ── Stat strip ─────────────────────────────────────────────── */}
+      <div
+        className="flex items-center gap-0 px-4 py-1.5 border-t border-[color:var(--color-border-subtle)] mono text-[10px]"
+      >
+        {/* Status with dot */}
+        <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
+          <span
+            className="w-[7px] h-[7px] rounded-full shrink-0"
+            style={{ background: dotColor }}
+          />
+          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Status</span>
+          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">
+            {scanStatus.toUpperCase()}
+          </span>
         </div>
-        <div style={S.statItem}>
-          <span style={S.statKey}>Findings</span>
-          <span style={{ ...S.statVal, color: findings > 0 ? "#ff4444" : "#e0e0e0" }}>{findings}</span>
+
+        {/* Findings */}
+        <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
+          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Findings</span>
+          <span
+            className="tracking-[0.06em] font-semibold"
+            style={{ color: findings > 0 ? "var(--color-status-critical)" : "var(--color-text-primary)" }}
+          >
+            {findings}
+          </span>
         </div>
-        <div style={S.statItem}>
-          <span style={S.statKey}>Logs</span>
-          <span style={S.statVal}>{logs}</span>
+
+        {/* Logs */}
+        <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
+          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Logs</span>
+          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">{logs}</span>
         </div>
-        <div style={S.statItem}>
-          <span style={S.statKey}>URLs</span>
-          <span style={S.statVal}>{stats?.urls ?? 0}</span>
+
+        {/* URLs */}
+        <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
+          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">URLs</span>
+          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">{stats?.urls ?? 0}</span>
         </div>
-        <div style={S.statItem}>
-          <span style={S.statKey}>Critical</span>
-          <span style={{ ...S.statVal, color: (stats?.critical ?? 0) > 0 ? "#ff4444" : "#e0e0e0" }}>
+
+        {/* Critical */}
+        <div className="flex items-center gap-1.5 pr-4 mr-4 border-r border-[color:var(--color-border-subtle)]">
+          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Critical</span>
+          <span
+            className="tracking-[0.06em] font-semibold"
+            style={{
+              color: (stats?.critical ?? 0) > 0 ? "var(--color-status-critical)" : "var(--color-text-primary)",
+            }}
+          >
             {stats?.critical ?? 0}
           </span>
         </div>
-        <div style={S.statItemLast}>
-          <span style={S.statKey}>Elapsed</span>
-          <span style={S.statVal}>{stats?.elapsed ?? "—"}</span>
+
+        {/* Elapsed */}
+        <div className="flex items-center gap-1.5">
+          <span className="tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">Elapsed</span>
+          <span className="tracking-[0.06em] text-[color:var(--color-text-primary)] font-semibold">
+            {stats?.elapsed ?? "—"}
+          </span>
         </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+        {/* Export — pushed right */}
+        <div className="ml-auto flex gap-1.5">
           {stats && (
             <button
-              style={S.btnSecondary}
               onClick={() => {
                 const blob = new Blob([JSON.stringify(stats, null, 2)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
@@ -290,8 +222,12 @@ export default function ScannerTopBar({
                 a.href = url; a.download = "scan-stats.json"; a.click();
                 URL.revokeObjectURL(url);
               }}
+              className="h-5 px-2 flex items-center gap-1 rounded-sm
+                border border-[color:var(--color-border-subtle)]
+                text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]
+                hover:border-[color:var(--color-border-hover)] transition-colors duration-150"
             >
-              <Download size={11} />
+              <DownloadIcon size={10} />
               Export
             </button>
           )}

@@ -36,8 +36,9 @@ function nowStr(): string {
 
 const SCROLLBAR_CSS = `
   .rw-scroll::-webkit-scrollbar { width: 4px; }
-  .rw-scroll::-webkit-scrollbar-track { background: #0d0d0d; }
-  .rw-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .rw-scroll::-webkit-scrollbar-track { background: transparent; }
+  .rw-scroll::-webkit-scrollbar-thumb { background: var(--color-border-hover); border-radius: 2px; }
+  .rw-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-ghost); }
   @keyframes rw-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
   .rw-pulse { animation: rw-pulse 1.2s ease-in-out infinite; }
   .rw-toggle {
@@ -138,16 +139,13 @@ export default function ReconWorkspace({
   }, [queuedHosts, onAddToQueue]);
 
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      height: "100%",
-      width: "100%",
-      background: "#111111",
-      fontFamily: "monospace",
-      color: "#e0e0e0",
-      overflow: "hidden",
-    }}>
+    <div
+      className="flex flex-col h-full w-full overflow-hidden font-mono"
+      style={{
+        background: "var(--color-bg-root)",
+        color: "var(--color-text-primary)",
+      }}
+    >
       <style>{SCROLLBAR_CSS}</style>
 
       <ReconTopBar
@@ -165,7 +163,7 @@ export default function ReconWorkspace({
         onExportCsv={handleExportCsv}
       />
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+      <div className="flex flex-1 overflow-hidden min-h-0">
         <ReconLeftRail
           enableSubdomains={enableSubdomains}
           enablePortScan={enablePortScan}
@@ -199,16 +197,10 @@ export default function ReconWorkspace({
           eventFeed={eventFeed}
         />
 
-        <div style={{
-          width: 320,
-          minWidth: 320,
-          flexShrink: 0,
-          background: "#141414",
-          borderLeft: "1px solid #2a2a2a",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}>
+        <div
+          className="flex flex-col overflow-hidden shrink-0 border-l border-[color:var(--color-border-subtle)]"
+          style={{ width: 320, minWidth: 320 }}
+        >
           <ReconHostDetail
             host={selectedHost}
             activeTab={activeTab}

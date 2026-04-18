@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { X, Settings, PanelLeftClose, PanelLeft, Info, Minus, Square } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 import { ToastContainer, type Toast, type ToastType } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
 import type { ScanConfig, LogLevel, LogEntry, ScanStatsEvent, ScanLogEvent, ScanFindingEvent, ScanStatus, ScanHistoryEntry, ReconHost } from "./types";
 import { DEFAULT_CONFIG } from "./types";
-import { StatusDot, ConfirmationModal } from "./components/primitives";
+import { ConfirmationModal } from "./components/primitives";
 import { Sidebar } from "./components/Sidebar";
 import { TopStats } from "./components/TopStats";
 import { TerminalView } from "./components/TerminalView";
@@ -19,7 +18,9 @@ import { t } from "./utils/i18n";
 import { playSound } from "./utils/audio";
 import { checkForAppUpdates } from './lib/updateChecker';
 import { ChangelogModal } from './components/ChangelogModal';
-import { Terminal, Blocks, Radar } from "lucide-react";
+import { CloseIcon } from './components/icons';
+import { TitleBar } from './components/TitleBar';
+import { StatusStrip } from './components/StatusStrip';
 import { useScanStore } from './store';
 import ReconPanel from "./components/ReconPanel";
 
@@ -690,302 +691,39 @@ function App() {
   return (
     <div className="flex h-screen flex-col bg-bg-root overflow-hidden rounded-xl">
       <div className="relative z-0 flex flex-1 flex-col min-h-0">
-        {isMac === null && (
-          <div className="h-[64px] shrink-0 border-b border-border-subtle/40 bg-transparent" />
+        {/* ── TitleBar (replaces both isMac branches) ───────────── */}
+        <TitleBar
+          isMac={isMac}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          sidebarCollapsed={sidebarCollapsed}
+          setSidebarCollapsed={setSidebarCollapsed}
+          scanStatus={scanStatus}
+          scanQueue={scanQueue}
+          config={config}
+          handleStartScan={handleStartScan}
+          handleStopScan={handleStopScan}
+          isHoldingSpace={isHoldingSpace}
+          isHoldingStop={isHoldingStop}
+          holdTimeRemaining={holdTimeRemaining}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenInfo={() => setShowInfo(true)}
+        />
+
+        {/* ── StatusStrip — only visible in Studio mode ─────────── */}
+        {activeTab === 'studio' && (
+          <StatusStrip
+            config={config}
+            onClearFindings={requestClear}
+          />
         )}
 
-        {isMac === false && (
-          <header data-tauri-drag-region className="relative flex h-[64px] shrink-0 items-center justify-between border-b border-border-subtle/40 px-6 bg-transparent select-none z-10" style={{ paddingLeft: 'max(24px, env(titlebar-area-x, 80px))' }}>
-
-            <div className="flex items-center gap-4 shrink-0">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSidebarCollapsed(p => !p)}
-                  className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-                >
-                  {sidebarCollapsed ? <PanelLeft size={18} strokeWidth={2.5} /> : <PanelLeftClose size={18} strokeWidth={2.5} />}
-                </button>
-                <button
-                  onClick={() => setShowInfo(true)}
-                  className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-                >
-                  <Info size={18} strokeWidth={2.5} />
-                </button>
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="flex items-center justify-center h-8 w-8 rounded-lg text-text-ghost hover:text-text-primary hover:bg-bg-panel/60 border border-transparent hover:border-border-subtle transition-all duration-300 active:scale-95"
-                >
-                  <Settings size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-
-              <div className="h-5 w-[1px] bg-border-subtle/50 mx-1" />
-              <h1 className="text-[13px] font-black uppercase tracking-[0.2em] text-accent drop-shadow-sm">
-                Arkenar
-              </h1>
-            </div>
-
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <div className="relative flex items-center p-1.5 bg-black/20 rounded-xl border border-border-subtle/30 backdrop-blur-md shadow-inner">
-                <div
-                  className="absolute top-1.5 bottom-1.5 w-[130px] bg-bg-panel border border-border-subtle/50 rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out"
-                  style={{ transform: activeTab === 'studio' ? 'translateX(130px)' : activeTab === 'recon' ? 'translateX(260px)' : 'translateX(0)' }}
-                />
-
-                <button
-                  onClick={() => { if (activeTab === 'studio' || activeTab === 'recon') setActiveTab('terminal'); }}
-                  className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
-                    activeTab !== 'studio' && activeTab !== 'recon' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
-                  }`}
-                >
-                  <Terminal size={16} className={activeTab !== 'studio' && activeTab !== 'recon' ? 'text-accent' : 'opacity-50'} />
-                  <span>Basic</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('studio')}
-                  className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
-                    activeTab === 'studio' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
-                  }`}
-                >
-                  <Blocks size={16} className={activeTab === 'studio' ? 'text-status-warning' : 'opacity-50'} />
-                  <span>Studio</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('recon')}
-                  className={`relative z-10 flex items-center justify-center gap-2 w-[130px] py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-300 ${
-                    activeTab === 'recon' ? 'text-text-primary' : 'text-text-ghost hover:text-text-secondary'
-                  }`}
-                >
-                  <Radar size={16} className={activeTab === 'recon' ? 'text-accent' : 'opacity-50'} />
-                  <span>Recon</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 shrink-0">
-              <div className="flex items-center gap-4 border-r border-border-subtle/40 pr-4">
-                {scanQueue.length > 0 && (
-                  <span className="rounded-md bg-bg-panel border border-border-subtle px-2 py-1 text-[10px] font-black uppercase tracking-wider text-text-secondary">
-                    {t("queue")}: {scanQueue.length}
-                  </span>
-                )}
-                <div className="flex items-center gap-2">
-                  <StatusDot status={scanStatus} className="h-2 w-2" />
-                  <span
-                    key={scanStatus}
-                    className="text-[11px] font-bold uppercase tracking-widest text-text-secondary animate-fade-slide-in"
-                  >
-                    {t(scanStatus === "error" ? "scanError" : scanStatus)}
-                  </span>
-                </div>
-              </div>
-
-              {scanStatus === "running" || scanStatus === "stopping" ? (
-                <button
-                  onClick={handleStopScan}
-                  disabled={scanStatus === "stopping"}
-                  className={`relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
-                    scanStatus === "stopping"
-                      ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
-                      : `bg-status-critical text-white hover:brightness-110 shadow-[0_0_15px_rgba(244,63,94,0.3)] ${isHoldingStop ? "animate-pulse scale-105" : ""}`
-                  }`}
-                >
-                  {scanStatus === "stopping" ? (
-                    <div className="flex items-center gap-2 ">
-                      <svg width="10" height="12" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
-                        <rect x="0" y="0" width="4" height="14" rx="1" />
-                        <rect x="8" y="0" width="4" height="14" rx="1" />
-                      </svg>
-                      {t("stopping")}
-                    </div>
-                  ) : (
-                    <>
-                      {isHoldingStop && (
-                        <div
-                          className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
-                          style={{ width: `${((1 - holdTimeRemaining) / 1) * 100}%` }}
-                        />
-                      )}
-                      <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                      {t("stopScan")}
-                      {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleStartScan}
-                  disabled={!config.target && !config.listFile}
-                  className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
-                    config.target || config.listFile
-                      ? `text-white ${isHoldingSpace ? "scale-105" : "hover:brightness-110"}`
-                      : "bg-bg-panel text-text-ghost cursor-not-allowed border border-border-subtle/50"
-                  }`}
-                  style={config.target || config.listFile ? {
-                    backgroundColor: "#10b981",
-                    boxShadow: isHoldingSpace
-                      ? "0 0 20px rgba(16,185,129,0.4)"
-                      : "0 0 12px rgba(16,185,129,0.2)",
-                  } : undefined}
-                >
-                  {isHoldingSpace && (
-                    <div
-                      className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
-                      style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
-                    />
-                  )}
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
-                  {isHoldingSpace ? `${t("ready")} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan")}
-                </button>
-              )}
-
-              <div className="flex items-center h-full ml-2">
-                {navigator.userAgent.toLowerCase().includes('mac') ? (
-                  <div className="flex items-center gap-2 px-3 group">
-                    <button onClick={() => getCurrentWindow().close()} className="w-[13px] h-[13px] rounded-full bg-[#ff5f56] border border-black/10 flex items-center justify-center hover:brightness-110">
-                      <X size={8} className="opacity-0 group-hover:opacity-100 text-[#990000]" strokeWidth={4} />
-                    </button>
-                    <button onClick={() => getCurrentWindow().minimize()} className="w-[13px] h-[13px] rounded-full bg-[#ffbd2e] border border-black/10 flex items-center justify-center hover:brightness-110">
-                      <Minus size={8} className="opacity-0 group-hover:opacity-100 text-[#995700]" strokeWidth={4} />
-                    </button>
-                    <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-[13px] h-[13px] rounded-full bg-[#27c93f] border border-black/10 flex items-center justify-center hover:brightness-110">
-                      <Square size={6} className="opacity-0 group-hover:opacity-100 text-[#006500]" strokeWidth={4} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center">
-                    <button onClick={() => getCurrentWindow().minimize()} title="Minimize" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
-                      <Minus size={18} strokeWidth={2} />
-                    </button>
-                    <button onClick={() => getCurrentWindow().toggleMaximize()} title="Maximize / Restore" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:text-text-primary hover:bg-bg-panel/80 transition-colors">
-                      <Square size={14} strokeWidth={2} />
-                    </button>
-                    <button onClick={() => getCurrentWindow().close()} title="Close" className="flex items-center justify-center w-[46px] h-[36px] text-text-ghost hover:bg-[#e81123] hover:text-white transition-colors">
-                      <X size={18} strokeWidth={2} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </header>
-        )}
-
-        {isMac === true && (
-          <div
-            data-tauri-drag-region
-            className="flex items-center h-11 shrink-0 border-b border-border-subtle bg-bg-panel select-none z-10"
-            style={{ paddingLeft: 80 }}
-          >
-            {/* Logo */}
-            <span className="font-black text-accent text-sm tracking-widest mr-6">ARKENAR</span>
-
-            {/* Nav tabs */}
-            <div className="flex items-center gap-1 bg-bg-input rounded-xl p-1">
-              {(['terminal','studio','recon'] as ActiveTab[]).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-200
-                    ${activeTab === tab
-                      ? 'bg-bg-card text-text-primary shadow-sm border border-border-subtle'
-                      : 'text-text-ghost hover:text-text-secondary'}`}
-                >
-                  {tab === 'terminal' && <Terminal size={13} strokeWidth={2.5} />}
-                  {tab === 'studio' && <Blocks size={13} strokeWidth={2.5} />}
-                  {tab === 'recon' && <Radar size={13} strokeWidth={2.5} />}
-                  {tab === 'terminal' ? 'basic' : tab}
-                </button>
-              ))}
-            </div>
-
-            {/* Right side — status + execute, NO close/min/max buttons */}
-            <div className="flex items-center gap-4 ml-auto pr-4">
-              <div className="flex items-center gap-4 border-r border-border-subtle/40 pr-4">
-                {scanQueue.length > 0 && (
-                  <span className="rounded-md bg-bg-panel border border-border-subtle px-2 py-1 text-[10px] font-black uppercase tracking-wider text-text-secondary">
-                    {t("queue")}: {scanQueue.length}
-                  </span>
-                )}
-                <div className="flex items-center gap-2">
-                  <StatusDot status={scanStatus} className="h-2 w-2" />
-                  <span
-                    key={scanStatus}
-                    className="text-[11px] font-bold uppercase tracking-widest text-text-secondary animate-fade-slide-in"
-                  >
-                    {t(scanStatus === "error" ? "scanError" : scanStatus)}
-                  </span>
-                </div>
-              </div>
-
-              {scanStatus === "running" || scanStatus === "stopping" ? (
-                <button
-                  onClick={handleStopScan}
-                  disabled={scanStatus === "stopping"}
-                  className={`relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
-                    scanStatus === "stopping"
-                      ? "bg-status-warning text-black cursor-not-allowed opacity-80 shadow-[0_0_14px_rgba(234,179,8,0.30)]"
-                      : `bg-status-critical text-white hover:brightness-110 shadow-[0_0_15px_rgba(244,63,94,0.3)] ${isHoldingStop ? "animate-pulse scale-105" : ""}`
-                  }`}
-                >
-                  {scanStatus === "stopping" ? (
-                    <div className="flex items-center gap-2 ">
-                      <svg width="10" height="12" viewBox="0 0 12 14" fill="currentColor" className="shrink-0">
-                        <rect x="0" y="0" width="4" height="14" rx="1" />
-                        <rect x="8" y="0" width="4" height="14" rx="1" />
-                      </svg>
-                      {t("stopping")}
-                    </div>
-                  ) : (
-                    <>
-                      {isHoldingStop && (
-                        <div
-                          className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
-                          style={{ width: `${((1 - holdTimeRemaining) / 1) * 100}%` }}
-                        />
-                      )}
-                      <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                      {t("stopScan")}
-                      {isHoldingStop && <span className="ml-1 opacity-70">({holdTimeRemaining.toFixed(1)}s)</span>}
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleStartScan}
-                  disabled={!config.target && !config.listFile}
-                  className={`start-scan-btn relative overflow-hidden flex items-center gap-2 rounded-lg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 active:scale-95 ${
-                    config.target || config.listFile
-                      ? `text-white ${isHoldingSpace ? "scale-105" : "hover:brightness-110"}`
-                      : "bg-bg-panel text-text-ghost cursor-not-allowed border border-border-subtle/50"
-                  }`}
-                  style={config.target || config.listFile ? {
-                    backgroundColor: "#10b981",
-                    boxShadow: isHoldingSpace
-                      ? "0 0 20px rgba(16,185,129,0.4)"
-                      : "0 0 12px rgba(16,185,129,0.2)",
-                  } : undefined}
-                >
-                  {isHoldingSpace && (
-                    <div
-                      className="absolute inset-x-0 bottom-0 h-1 bg-white/40 transition-all duration-100 ease-linear"
-                      style={{ width: `${((2 - holdTimeRemaining) / 2) * 100}%` }}
-                    />
-                  )}
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="drop-shadow-sm"><polygon points="2,1 9,5 2,9" /></svg>
-                  {isHoldingSpace ? `${t("ready")} (${holdTimeRemaining.toFixed(1)}s)` : t("startScan")}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         {errorMsg && (
           <div className="animate-fade-slide-in flex items-center justify-between bg-status-critical/8 border-b border-status-critical/15 px-6 py-2.5">
             <span className="text-sm text-status-critical">{errorMsg}</span>
             <button onClick={() => setErrorMsg(null)} className="p-1 text-status-critical/50 hover:text-status-critical transition-all duration-300 hover:scale-110 active:scale-90">
-              <X size={15} />
+              <CloseIcon size={15} />
             </button>
           </div>
         )}

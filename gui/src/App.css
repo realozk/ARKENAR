@@ -11,11 +11,11 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 }
 /* ===== Selection Color ===== */
 ::selection {
-  background: rgba(255, 94, 0, 0.35);
+  background: rgba(249, 115, 22, 0.35);
   color: #ffffff;
 }
 ::-moz-selection {
-  background: rgba(255, 94, 0, 0.35);
+  background: rgba(249, 115, 22, 0.35);
   color: #ffffff;
 }
 
@@ -24,41 +24,43 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 /* ─── Arkenar Premium Design System — Core Black & Plasma Orange ─────── */
 @theme {
   /* Surfaces — deep black palette */
-  --color-bg-root: #0E0E12;
-  --color-bg-panel: #141419;
-  --color-bg-card: rgba(255, 255, 255, 0.035);
-  --color-bg-input: #0A0A0D;
-  --color-bg-hover: rgba(255, 255, 255, 0.06);
-  --color-bg-terminal: #0A0A0D;
+  --color-bg-root: #0b0b0d;
+  --color-bg-root-2: #0f0f12;
+  --color-bg-panel: #121215;
+  --color-bg-card: rgba(255, 255, 255, 0.025);
+  --color-bg-input: #0f0f12;
+  --color-bg-hover: #16161b;
+  --color-bg-terminal: #0b0b0d;
 
   /* Borders — sharp, subtle */
-  --color-border-subtle: #1F1F24;
-  --color-border-hover: #2A2A30;
-  --color-border-focus: rgba(255, 94, 0, 0.4);
+  --color-border-subtle: #1f1f24;
+  --color-border-hover: #26262c;
+  --color-border-focus: rgba(249, 115, 22, 0.4);
 
   /* Text — lifted for readability */
-  --color-text-primary: #f8f8f8;
-  --color-text-secondary: #b4b4be;
-  --color-text-muted: #868699;
-  --color-text-ghost: #5a5a6e;
+  --color-text-primary: #d4d4d8;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #6b7280;
+  --color-text-ghost: #4b5563;
 
   /* Accent — Plasma Orange */
-  --color-accent: #FF5E00;
-  --color-accent-dim: rgba(255, 94, 0, 0.10);
-  --color-accent-hover: #ff7526;
-  --color-accent-text: #FF5E00;
+  --color-accent: #f97316;
+  --color-accent-dim: rgba(249, 115, 22, 0.10);
+  --color-accent-hover: #fb923c;
+  --color-accent-text: #f97316;
+  --color-accent-weak: #7c2d12;
 
   /* Status */
-  --color-status-critical: #f43f5e;
+  --color-status-critical: #ef4444;
   --color-status-warning: #eab308;
-  --color-status-success: #10b981;
-  --color-status-info: #FF5E00;
+  --color-status-success: #22c55e;
+  --color-status-info: #f97316;
   --color-status-idle: #444460;
 
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-accent-glow: 0 0 24px rgba(255, 94, 0, 0.12), 0 0 48px rgba(255, 94, 0, 0.04);
-  --shadow-accent-btn: 0 0 20px rgba(255, 94, 0, 0.2), 0 0 40px rgba(255, 94, 0, 0.06);
+  --shadow-accent-glow: 0 0 24px rgba(249, 115, 22, 0.12), 0 0 48px rgba(249, 115, 22, 0.04);
+  --shadow-accent-btn: 0 0 20px rgba(249, 115, 22, 0.2), 0 0 40px rgba(249, 115, 22, 0.06);
 
   /* Font stacks */
   --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;

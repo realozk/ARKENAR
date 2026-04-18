@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Crosshair, FileText, Layers, Radar, Telescope, Zap,
-   Plus, X, ListOrdered, FolderSearch,
+   ListOrdered, FolderSearch,
    BookmarkPlus, 
    Bookmark,
    ClipboardPaste, RotateCcw} from "lucide-react";
+import { CloseIcon, PlusIcon } from './icons';
 
 import type { ScanConfig } from "../types";
 import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
@@ -160,7 +161,7 @@ useEffect(() => {
                 <div key={tpl.id} className="flex items-center gap-1 rounded-lg bg-bg-input border border-border-subtle px-2.5 py-1 group">
                   <button onClick={() => handleLoadTemplate(tpl)} className="text-[11px] font-medium text-text-secondary hover:text-accent-text transition-colors">{tpl.name}</button>
                   <button onClick={() => handleDeleteTemplate(tpl.id)} className="opacity-0 group-hover:opacity-100 p-0.5 text-text-ghost hover:text-status-critical transition-all duration-150">
-                    <X size={10} strokeWidth={2.5} />
+                  <CloseIcon size={10} />
                   </button>
                 </div>
               ))}
@@ -203,7 +204,7 @@ useEffect(() => {
                   Save
                 </button>
                 <button onClick={() => { setSavingTemplate(false); setTemplateNameInput(""); }} className="p-1 text-text-ghost hover:text-text-primary transition-colors">
-                  <X size={13} strokeWidth={2.5} />
+                <CloseIcon size={13} />
                 </button>
               </div>
             ) : (
@@ -392,7 +393,7 @@ useEffect(() => {
               disabled={!queueInput.trim()}
               className={`flex items-center gap-1.5 w-full justify-center rounded-lg py-2 text-xs font-semibold transition-all duration-200 ${queueInput.trim() ? "bg-accent/15 text-accent-text border border-accent/20 hover:bg-accent/25" : "bg-bg-input text-text-ghost cursor-not-allowed border border-transparent"}`}
             >
-              <Plus size={14} strokeWidth={2.5} />
+              <PlusIcon size={14} />
               {t("addToQueue")}
             </button>
             {scanQueue.length > 0 && (
@@ -405,7 +406,7 @@ useEffect(() => {
                       onClick={() => onRemoveFromQueue?.(i)}
                       className="opacity-0 group-hover:opacity-100 p-1 text-text-ghost hover:text-status-critical transition-all duration-200"
                     >
-                      <X size={14} />
+                      <CloseIcon size={14} />
                     </button>
                   </div>
                 ))}

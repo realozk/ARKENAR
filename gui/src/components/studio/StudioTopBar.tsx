@@ -1,5 +1,7 @@
 import React from "react";
-import { Square, ChevronDown, Clipboard, Send } from "lucide-react";
+import {
+  ChevronIcon, PlayIcon, StopIcon, ClipboardIcon, DotIcon, SaveIcon,
+} from "../icons";
 import type { HttpMethod, PipelineStage } from "./useStudio";
 import { METHODS } from "./useStudio";
 
@@ -9,6 +11,9 @@ const STAGES: { id: PipelineStage; label: string }[] = [
   { id: "await", label: "AWAIT" },
   { id: "render", label: "RENDER" },
 ];
+
+// Inline icon hint tokens that appear inside the URL bar (mockup design)
+const INJECTION_HINTS = ["§payload§", "§reqid§", "§token§"] as const;
 
 interface StudioTopBarProps {
   method: HttpMethod;
@@ -24,113 +29,158 @@ interface StudioTopBarProps {
   onImportCurl: () => void;
 }
 
+function getMethodColor(m: string): string {
+  switch (m) {
+    case "GET":    return "#22c55e";
+    case "POST":   return "var(--color-accent)";
+    case "PUT":    return "#3b82f6";
+    case "DELETE": return "#ef4444";
+    case "PATCH":  return "#a855f7";
+    default:       return "var(--color-text-muted)";
+  }
+}
+
 export default function StudioTopBar({
   method, url, isLoading, pipeline,
   showMethodMenu, onMethodChange, onUrlChange, onSend, onAbort,
   onToggleMethodMenu, onImportCurl,
 }: StudioTopBarProps) {
 
-  const getMethodColor = (m: string) => {
-    switch (m) {
-      case "GET": return "text-status-success";
-      case "POST": return "text-status-warning";
-      case "PUT":
-      case "PATCH": return "text-blue-400";
-      case "DELETE": return "text-status-critical";
-      default: return "text-text-muted";
-    }
-  };
-
   const getStageStatus = (stageId: PipelineStage) => {
     const order: PipelineStage[] = ["draft", "dispatch", "await", "render"];
     const si = order.indexOf(stageId);
     const ci = order.indexOf(pipeline);
-    
     if (si === ci && isLoading) return "active";
     if (si < ci || (si === ci && !isLoading && pipeline === "render")) return "done";
     return "inactive";
   };
 
   return (
-    <div className="flex items-center h-11 shrink-0 bg-bg-panel border-b border-border-subtle px-4 gap-3">
-      
+    <div
+      className="h-10 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center gap-2 px-2"
+      style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+    >
+      {/* METHOD DROPDOWN */}
       <div className="relative shrink-0">
-        <button 
-          className="flex items-center gap-1 px-3 h-[30px] rounded-md border border-border-subtle bg-bg-card font-mono text-xs font-bold text-accent-text hover:bg-accent10 hover:border-accent transition-all duration-150 shrink-0" 
+        <button
+          className="h-7 px-2 pr-1.5 flex items-center gap-1.5 border border-[color:var(--color-border-subtle)] rounded-sm font-mono text-[11px]"
+          style={{ background: "var(--color-bg-panel)" }}
           onClick={onToggleMethodMenu}
         >
-          <span className={getMethodColor(method)}>{method}</span>
-          <ChevronDown size={10} />
+          <span className="font-bold" style={{ color: getMethodColor(method) }}>
+            {method}
+          </span>
+          <ChevronIcon size={10} className="text-[color:var(--color-text-muted)]" />
         </button>
+
         {showMethodMenu && (
-          <div className="absolute top-[calc(100%+4px)] left-0 z-[999] bg-bg-panel border border-border-subtle rounded-md min-w-[100px] overflow-hidden shadow-xl">
+          <div
+            className="absolute left-0 top-full mt-0.5 w-24 border border-[color:var(--color-border-subtle)] rounded-sm z-20 py-0.5"
+            style={{ background: "var(--color-bg-panel)" }}
+          >
             {METHODS.map((m) => (
               <button
                 key={m}
-                className={`block w-full px-3 py-2 text-left font-mono text-xs font-bold hover:bg-bg-hover transition-colors ${getMethodColor(m)}`}
                 onClick={() => { onMethodChange(m); onToggleMethodMenu(); }}
+                className="w-full text-left px-2 py-0.5 font-mono text-[11px] hover:bg-[color:var(--color-bg-hover)] flex items-center justify-between transition-colors"
               >
-                {m}
+                <span className="font-bold" style={{ color: getMethodColor(m) }}>{m}</span>
+                {method === m && (
+                  <DotIcon size={6} className="text-[color:var(--color-accent)]" />
+                )}
               </button>
             ))}
           </div>
         )}
       </div>
 
-      <div className="flex-1 min-w-0 flex items-center h-[30px] rounded-md border border-border-subtle bg-bg-root focus-within:border-accent transition-colors overflow-hidden">
+      {/* URL BAR */}
+      <div
+        className="flex-1 min-w-0 h-7 flex items-stretch border border-[color:var(--color-border-subtle)] rounded-sm focus-within:border-[color:var(--color-accent)] transition-colors"
+        style={{ background: "var(--color-bg-panel)" }}
+      >
         <input
           type="text"
           placeholder="https://target.com/api/endpoint"
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !isLoading && url.trim()) onSend(); }}
-          className="flex-1 min-w-0 h-full bg-transparent border-none outline-none font-mono text-xs text-text-primary px-3 placeholder:text-text-ghost"
+          className="flex-1 min-w-0 bg-transparent font-mono text-[11.5px] text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-ghost)] outline-none px-2"
           spellCheck={false}
         />
+        {/* Injection hint tokens — decorative, from mockup */}
+        <div className="hidden sm:flex items-center gap-1.5 px-2 border-l border-[color:var(--color-border-subtle)] font-mono text-[10px] text-[color:var(--color-text-muted)] shrink-0">
+          {INJECTION_HINTS.map((hint, i) => (
+            <React.Fragment key={hint}>
+              <span style={{ color: i === 0 ? "#fca5a5" : undefined }}>{hint}</span>
+              {i < INJECTION_HINTS.length - 1 && (
+                <span className="text-[color:var(--color-border-hover)]">|</span>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
+      {/* IMPORT CURL */}
       <button
         onClick={onImportCurl}
         title="Import cURL"
-        className="flex items-center justify-center w-[30px] h-[30px] rounded-md border border-border-subtle bg-bg-card text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-150 shrink-0"
+        className="w-7 h-7 border border-[color:var(--color-border-subtle)] rounded-sm flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors shrink-0"
+        style={{ background: "var(--color-bg-panel)" }}
       >
-        <Clipboard size={13} />
+        <ClipboardIcon size={11} />
       </button>
 
-      <div className="max-[600px]:hidden flex items-center gap-[3px] ml-2 shrink-0">
+      {/* SAVE */}
+      <button
+        title="Save request"
+        className="w-7 h-7 border border-[color:var(--color-border-subtle)] rounded-sm flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors shrink-0"
+        style={{ background: "var(--color-bg-panel)" }}
+      >
+        <SaveIcon size={11} />
+      </button>
+
+      {/* PIPELINE DOTS */}
+      <div className="max-[600px]:hidden flex items-center gap-[3px] shrink-0">
         {STAGES.map((s, idx) => {
           const status = getStageStatus(s.id);
-          let dotClass = "w-[6px] h-[6px] rounded-full transition-colors duration-300 ";
-          
-          if (status === "active") dotClass += "bg-accent shadow-[0_0_8px_var(--color-accent)]";
-          else if (status === "done") dotClass += "bg-status-success";
-          else dotClass += "bg-[var(--color-bg-hover)]";
-
+          let style: React.CSSProperties = {};
+          let baseClass = "w-[5px] h-[5px] rounded-full transition-colors duration-300 ";
+          if (status === "active") {
+            baseClass += "shadow-[0_0_8px_var(--color-accent)]";
+            style = { background: "var(--color-accent)" };
+          } else if (status === "done") {
+            style = { background: "var(--color-status-success)" };
+          } else {
+            style = { background: "var(--color-border-hover)" };
+          }
           return (
             <React.Fragment key={s.id}>
-              {idx > 0 && <div className="w-2 h-px bg-border-subtle" />}
-              <div className={dotClass} title={s.label} />
+              {idx > 0 && <div className="w-2 h-px bg-[color:var(--color-border-subtle)]" />}
+              <div className={baseClass} style={style} title={s.label} />
             </React.Fragment>
           );
         })}
       </div>
 
+      {/* SEND / ABORT */}
       {isLoading ? (
         <button
           onClick={onAbort}
-          className="flex items-center gap-2 px-4 h-[30px] rounded-md border border-status-critical text-status-critical text-xs font-bold uppercase tracking-widest hover:bg-status-critical10 active:scale-95 transition-all duration-150 shrink-0"
+          className="h-7 px-3 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.14em] font-semibold text-white rounded-sm border border-[color:var(--color-status-critical)] text-[color:var(--color-status-critical)] hover:bg-[rgba(239,68,68,0.1)] active:scale-95 transition-all duration-150 shrink-0"
         >
-          <Square size={12} fill="currentColor" />
-          <span className="max-[600px]:hidden">Abort</span>
+          <StopIcon size={10} />
+          <span className="max-[600px]:hidden">ABORT</span>
         </button>
       ) : (
         <button
           onClick={onSend}
           disabled={!url.trim()}
-          className="flex items-center gap-2 px-4 h-[30px] rounded-md bg-accent text-black text-xs font-bold uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all duration-150 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-7 px-3 flex items-center gap-1.5 font-mono text-[11px] tracking-[0.14em] font-semibold text-white rounded-sm active:scale-95 transition-all duration-150 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: "var(--color-accent)" }}
         >
-          <Send size={12} />
-          <span className="max-[600px]:hidden">Send</span>
+          <PlayIcon size={10} />
+          <span className="max-[600px]:hidden">SEND</span>
         </button>
       )}
     </div>

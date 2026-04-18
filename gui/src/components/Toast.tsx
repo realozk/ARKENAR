@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, CheckCircle, AlertTriangle, XCircle, Info } from "lucide-react";
+import { CloseIcon, CheckCircleIcon, CheckIcon, InfoIcon } from "./icons";
 
 export type ToastType = "success" | "error" | "warning" | "info";
 
@@ -9,19 +9,25 @@ export interface Toast {
   message: string;
 }
 
-const ICONS = { success: CheckCircle, error: XCircle, warning: AlertTriangle, info: Info };
+// Icon map — using available icons from icons.tsx
+function ToastIcon({ type }: { type: ToastType }) {
+  if (type === "success") return <CheckCircleIcon size={16} className="shrink-0" />;
+  if (type === "error") return <CloseIcon size={16} className="shrink-0" />;
+  if (type === "warning") return <CheckIcon size={16} className="shrink-0" />;
+  return <InfoIcon size={16} className="shrink-0" />;
+}
+
 const COLORS = {
-  success: "border-status-success/20 bg-status-success/8 text-status-success",
-  error: "border-status-critical/20 bg-status-critical/8 text-status-critical",
-  warning: "border-status-warning/20 bg-status-warning/8 text-status-warning",
-  info: "border-accent/20 bg-accent/8 text-accent-text",
+  success: "border-[color:var(--color-status-success)]/20 bg-[color:var(--color-status-success)]/5 text-[color:var(--color-status-success)]",
+  error: "border-[color:var(--color-status-critical)]/20 bg-[color:var(--color-status-critical)]/5 text-[color:var(--color-status-critical)]",
+  warning: "border-[color:var(--color-status-warning)]/20 bg-[color:var(--color-status-warning)]/5 text-[color:var(--color-status-warning)]",
+  info: "border-[color:var(--color-accent)]/20 bg-[color:var(--color-accent)]/5 text-[color:var(--color-accent)]",
 };
 
 const TOAST_DURATION_MS = 3_500;
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) => void }) {
   const [exiting, setExiting] = useState(false);
-  const Icon = ICONS[toast.type];
 
   // Guard against double-removal: auto-dismiss timer + manual close button
   const dismissedRef = useRef(false);
@@ -43,13 +49,13 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
         exiting ? "opacity-0 translate-x-4" : "opacity-100 translate-x-0"
       }`}
     >
-      <Icon size={16} className="shrink-0" />
-      <span className="text-text-primary">{toast.message}</span>
+      <ToastIcon type={toast.type} />
+      <span className="text-[color:var(--color-text-primary)]">{toast.message}</span>
       <button
         onClick={dismiss}
-        className="ml-auto text-text-ghost hover:text-text-primary transition-colors"
+        className="ml-auto text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] transition-colors"
       >
-        <X size={14} />
+        <CloseIcon size={14} />
       </button>
     </div>
   );

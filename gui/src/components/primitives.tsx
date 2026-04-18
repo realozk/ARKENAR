@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Trash2 } from "lucide-react";
+import { TrashIcon } from './icons';
 import type { ScanStatus } from "../types";
 
 export function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -280,7 +280,7 @@ export function ConfirmationModal({
             <div className={`p-2 rounded-lg ${type === "danger" ? "bg-status-critical/10 text-status-critical" :
               type === "warning" ? "bg-status-warning/10 text-status-warning" : "bg-accent/10 text-accent-text"
               }`}>
-              <Trash2 size={20} strokeWidth={2.5} />
+              <TrashIcon size={20} />
             </div>
             <h3 className="text-lg font-bold text-text-primary">{title}</h3>
           </div>

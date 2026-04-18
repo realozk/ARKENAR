@@ -1,205 +1,98 @@
 import { useState, useMemo } from "react";
-import { Copy, ExternalLink, Download, Search, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import type { ScanFindingEvent } from "../../types";
+import {
+  CopyIcon,
+  DownloadIcon,
+  SearchIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ExternalLinkIcon,
+  BoltIcon,
+} from "../icons";
 
-const CRITICAL_PATTERNS = ["sqli", "sql injection", "rce", "exec", "command injection", "lfi", "path traversal", "ssrf", "xxe", "remote code"];
+/* ── helpers ──────────────────────────────────────────────────────────── */
+
+const CRITICAL_PATTERNS = [
+  "sqli", "sql injection", "rce", "exec", "command injection",
+  "lfi", "path traversal", "ssrf", "xxe", "remote code",
+];
 
 function isCriticalVuln(vulnType: string): boolean {
   const v = vulnType.toLowerCase();
   return CRITICAL_PATTERNS.some((p) => v.includes(p));
 }
 
-function getSeverityStyle(isCritical: boolean): React.CSSProperties {
-  return {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: 1,
-    textTransform: "uppercase" as const,
-    padding: "2px 8px",
-    borderRadius: 3,
-    background: isCritical ? "rgba(255,68,68,0.15)" : "rgba(255,152,0,0.15)",
-    color: isCritical ? "#ff4444" : "#ff9800",
-    border: `1px solid ${isCritical ? "rgba(255,68,68,0.3)" : "rgba(255,152,0,0.3)"}`,
-    whiteSpace: "nowrap" as const,
-  };
+/* ── Severity badge ───────────────────────────────────────────────────── */
+function SeverityBadge({ critical }: { critical: boolean }) {
+  return (
+    <span
+      className={`mono text-[10px] font-bold tracking-[0.1em] uppercase px-2 py-0.5 rounded-sm shrink-0 border ${
+        critical
+          ? "bg-[color:var(--color-status-critical)]/10 text-[color:var(--color-status-critical)] border-[color:var(--color-status-critical)]/30"
+          : "bg-[color:var(--color-status-warning)]/10 text-[color:var(--color-status-warning)] border-[color:var(--color-status-warning)]/30"
+      }`}
+    >
+      {critical ? "Critical" : "Medium"}
+    </span>
+  );
 }
 
-const S: Record<string, React.CSSProperties> = {
-  root: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    background: "#111111",
-  },
-  toolbar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 14px",
-    borderBottom: "1px solid #2a2a2a",
-    flexShrink: 0,
-  },
-  searchWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#0d0d0d",
-    border: "1px solid #2a2a2a",
-    borderRadius: 4,
-    padding: "4px 8px",
-    flex: 1,
-  },
-  searchInput: {
-    background: "transparent",
-    border: "none",
-    outline: "none",
-    fontSize: 11,
-    fontFamily: "monospace",
-    color: "#e0e0e0",
-    flex: 1,
-    minWidth: 0,
-  },
-  btnSecondary: {
-    display: "flex",
-    alignItems: "center",
-    gap: 5,
-    background: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 4,
-    padding: "4px 10px",
-    fontSize: 10,
-    color: "#aaaaaa",
-    cursor: "pointer",
-    fontFamily: "monospace",
-    textTransform: "uppercase" as const,
-    letterSpacing: 1,
-    whiteSpace: "nowrap" as const,
-  },
-  list: {
-    flex: 1,
-    overflowY: "auto" as const,
-    padding: "8px 10px",
-  },
-  empty: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#444444",
-    fontFamily: "monospace",
-    fontSize: 12,
-    gap: 8,
-  },
-  card: {
-    background: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 6,
-    marginBottom: 6,
-    overflow: "hidden",
-    cursor: "pointer",
-    transition: "border-color 0.15s",
-  },
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 12px",
-  },
-  cardNum: {
-    fontSize: 10,
-    color: "#444444",
-    fontFamily: "monospace",
-    minWidth: 24,
-  },
-  cardType: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#e0e0e0",
-    fontFamily: "monospace",
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
-  },
-  cardUrl: {
-    fontSize: 11,
-    color: "#aaaaaa",
-    fontFamily: "monospace",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap" as const,
-    maxWidth: 260,
-  },
-  expandBody: {
-    borderTop: "1px solid #2a2a2a",
-    padding: "10px 12px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 8,
-  },
-  fieldLabel: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: 2,
-    textTransform: "uppercase" as const,
-    color: "#666666",
-    marginBottom: 2,
-  },
-  fieldValue: {
-    fontSize: 11,
-    fontFamily: "monospace",
-    color: "#e0e0e0",
-    wordBreak: "break-all" as const,
-    lineHeight: 1.5,
-  },
-  codeBlock: {
-    background: "#0d0d0d",
-    border: "1px solid #2a2a2a",
-    borderRadius: 4,
-    padding: "6px 10px",
-    fontSize: 11,
-    fontFamily: "monospace",
-    color: "#aaaaaa",
-    wordBreak: "break-all" as const,
-    lineHeight: 1.5,
-    userSelect: "text" as const,
-  },
-  iconBtn: {
-    display: "flex",
-    alignItems: "center",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    color: "#666666",
-    padding: "3px 5px",
-    borderRadius: 3,
-    transition: "color 0.15s",
-  },
-};
-
-function pillStyle(active: boolean, crit?: boolean): React.CSSProperties {
-  return {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    padding: "3px 10px",
-    borderRadius: 12,
-    border: active
-      ? (crit ? "1px solid rgba(255,68,68,0.5)" : "1px solid rgba(255,107,53,0.5)")
-      : "1px solid #2a2a2a",
-    background: active
-      ? (crit ? "rgba(255,68,68,0.15)" : "rgba(255,107,53,0.15)")
-      : "#1a1a1a",
-    color: active ? (crit ? "#ff4444" : "#ff6b35") : "#666666",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  };
+/* ── Pill filter button ────────────────────────────────────────────────── */
+function Pill({
+  active,
+  critical,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  critical?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`mono text-[10px] font-bold tracking-[0.1em] uppercase px-2.5 py-0.5 rounded-full cursor-pointer transition-colors duration-150 border ${
+        active
+          ? critical
+            ? "border-[color:var(--color-status-critical)]/50 bg-[color:var(--color-status-critical)]/10 text-[color:var(--color-status-critical)]"
+            : "border-[color:var(--color-accent)]/50 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
+          : "border-[color:var(--color-border-subtle)] bg-transparent text-[color:var(--color-text-ghost)]"
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
+/* ── Icon action button ────────────────────────────────────────────────── */
+function IconBtn({ onClick, title, children }: { onClick: (e: React.MouseEvent) => void; title: string; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="flex items-center justify-center p-1 rounded-sm
+        text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)]
+        hover:bg-[color:var(--color-bg-hover)] transition-colors duration-150"
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ── Expanded field ───────────────────────────────────────────────────── */
+function ExpandField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mono text-[10px] font-bold tracking-[0.18em] uppercase text-[color:var(--color-text-ghost)] mb-1">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── FindingCard ──────────────────────────────────────────────────────── */
 interface FindingCardProps {
   finding: ScanFindingEvent;
   index: number;
@@ -220,81 +113,100 @@ function FindingCard({ finding, index, onSendToStudio }: FindingCardProps) {
 
   return (
     <div
-      style={{
-        ...S.card,
-        borderColor: expanded ? (critical ? "rgba(255,68,68,0.4)" : "rgba(255,107,53,0.3)") : "#2a2a2a",
-      }}
       onClick={() => setExpanded((v) => !v)}
+      className={`rounded-sm mb-1.5 overflow-hidden cursor-pointer transition-colors duration-150 border ${
+        expanded
+          ? critical
+            ? "border-[color:var(--color-status-critical)]/40 bg-[color:var(--color-bg-hover)]"
+            : "border-[color:var(--color-accent)]/30 bg-[color:var(--color-bg-hover)]"
+          : "border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-hover)]"
+      }`}
     >
-      <div style={S.cardHeader}>
-        <span style={S.cardNum}>#{index + 1}</span>
-        <span style={S.cardType}>{finding.vuln_type}</span>
-        <span style={S.cardUrl}>{finding.url}</span>
-        <span style={getSeverityStyle(critical)}>{critical ? "Critical" : "Medium"}</span>
-        <button style={S.iconBtn} onClick={handleCopy} title="Copy curl">
-          <Copy size={13} color={copied ? "#4caf50" : "#666"} />
-        </button>
-        <button
-          style={S.iconBtn}
+      {/* Card header */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="mono text-[10px] text-[color:var(--color-text-ghost)] min-w-[24px]">
+          #{index + 1}
+        </span>
+        <span className="mono text-[12px] font-bold text-[color:var(--color-text-primary)] flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+          {finding.vuln_type}
+        </span>
+        <span className="mono text-[11px] text-[color:var(--color-text-muted)] overflow-hidden text-ellipsis whitespace-nowrap max-w-[220px]">
+          {finding.url}
+        </span>
+        <SeverityBadge critical={critical} />
+        <IconBtn onClick={handleCopy} title="Copy curl">
+          <CopyIcon size={12} className={copied ? "text-[color:var(--color-status-success)]" : undefined} />
+        </IconBtn>
+        <IconBtn
           onClick={(e) => { e.stopPropagation(); onSendToStudio(finding); }}
           title="Send to Studio"
         >
-          <Zap size={13} />
-        </button>
-        {expanded ? <ChevronUp size={13} color="#666" /> : <ChevronDown size={13} color="#666" />}
+          <BoltIcon size={12} />
+        </IconBtn>
+        {expanded ? <ChevronUpIcon size={12} className="text-[color:var(--color-text-ghost)] shrink-0" /> : <ChevronDownIcon size={12} className="text-[color:var(--color-text-ghost)] shrink-0" />}
       </div>
 
+      {/* Expanded body */}
       {expanded && (
-        <div style={S.expandBody}>
-          <div>
-            <div style={S.fieldLabel}>Target URL</div>
-            <div style={S.codeBlock}>{finding.url}</div>
-          </div>
+        <div
+          className="px-3 py-2.5 flex flex-col gap-2 border-t border-[color:var(--color-border-subtle)]"
+          style={{ background: "var(--color-bg-panel)" }}
+        >
+          <ExpandField label="Target URL">
+            <div className="mono text-[11px] text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed">
+              {finding.url}
+            </div>
+          </ExpandField>
+
           {finding.payload && (
-            <div>
-              <div style={S.fieldLabel}>Payload</div>
-              <div style={S.codeBlock}>{finding.payload}</div>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 16 }}>
-            <div>
-              <div style={S.fieldLabel}>Status</div>
-              <div style={S.fieldValue}>{finding.status_code}</div>
-            </div>
-            <div>
-              <div style={S.fieldLabel}>Timing</div>
-              <div style={S.fieldValue}>{finding.timing_ms}ms</div>
-            </div>
-            {finding.server && (
-              <div>
-                <div style={S.fieldLabel}>Server</div>
-                <div style={S.fieldValue}>{finding.server}</div>
+            <ExpandField label="Payload">
+              <div className="mono text-[11px] text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed">
+                {finding.payload}
               </div>
+            </ExpandField>
+          )}
+
+          <div className="flex gap-4">
+            <ExpandField label="Status">
+              <span className="mono text-[11px] text-[color:var(--color-text-primary)]">{finding.status_code}</span>
+            </ExpandField>
+            <ExpandField label="Timing">
+              <span className="mono text-[11px] text-[color:var(--color-text-primary)]">{finding.timing_ms}ms</span>
+            </ExpandField>
+            {finding.server && (
+              <ExpandField label="Server">
+                <span className="mono text-[11px] text-[color:var(--color-text-primary)]">{finding.server}</span>
+              </ExpandField>
             )}
           </div>
-          <div>
-            <div style={S.fieldLabel}>Reproduce (cURL)</div>
-            <div style={S.codeBlock}>{finding.curl_cmd}</div>
-          </div>
+
+          <ExpandField label="Reproduce (cURL)">
+            <div className="mono text-[11px] text-[color:var(--color-text-muted)] bg-[color:var(--color-bg-root)] border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1.5 break-all leading-relaxed select-text">
+              {finding.curl_cmd}
+            </div>
+          </ExpandField>
+
           {finding.tech_stack?.length > 0 && (
-            <div>
-              <div style={S.fieldLabel}>Tech Stack</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+            <ExpandField label="Tech Stack">
+              <div className="flex flex-wrap gap-1 mt-0.5">
                 {finding.tech_stack.map((t) => (
-                  <span key={t} style={{
-                    fontSize: 10, fontWeight: 700, letterSpacing: 1, padding: "1px 7px",
-                    borderRadius: 3, background: "rgba(255,107,53,0.15)", color: "#ff6b35",
-                    border: "1px solid rgba(255,107,53,0.3)", textTransform: "uppercase" as const,
-                  }}>{t}</span>
+                  <span
+                    key={t}
+                    className="mono text-[10px] font-bold tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-sm border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
+                  >
+                    {t}
+                  </span>
                 ))}
               </div>
-            </div>
+            </ExpandField>
           )}
         </div>
       )}
     </div>
   );
 }
+
+/* ── Main component ───────────────────────────────────────────────────── */
 
 type SeverityFilter = "all" | "critical" | "medium";
 type SortMode = "newest" | "severity" | "url";
@@ -313,7 +225,12 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
     let result = findings.map((f, i) => ({ ...f, _idx: i, _crit: isCriticalVuln(f.vuln_type) }));
     if (query.trim()) {
       const q = query.toLowerCase();
-      result = result.filter((f) => f.url.toLowerCase().includes(q) || f.vuln_type.toLowerCase().includes(q) || f.payload?.toLowerCase().includes(q));
+      result = result.filter(
+        (f) =>
+          f.url.toLowerCase().includes(q) ||
+          f.vuln_type.toLowerCase().includes(q) ||
+          f.payload?.toLowerCase().includes(q)
+      );
     }
     if (severity === "critical") result = result.filter((f) => f._crit);
     if (severity === "medium") result = result.filter((f) => !f._crit);
@@ -335,36 +252,51 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
   };
 
   return (
-    <div style={S.root}>
-      <div style={S.toolbar}>
-        <div style={S.searchWrap}>
-          <Search size={12} color="#666" />
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: "var(--color-bg-panel)" }}>
+      {/* Toolbar */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 border-b border-[color:var(--color-border-subtle)] shrink-0"
+      >
+        {/* Search */}
+        <div
+          className="flex items-center gap-1.5 flex-1 min-w-0 h-6 px-2 rounded-sm
+            border border-[color:var(--color-border-subtle)] focus-within:border-[color:var(--color-accent)]
+            transition-colors duration-150"
+          style={{ background: "var(--color-bg-root)" }}
+        >
+          <SearchIcon size={11} className="text-[color:var(--color-text-ghost)] shrink-0" />
           <input
-            style={S.searchInput}
             type="text"
             placeholder="Search findings…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent mono text-[11px]
+              text-[color:var(--color-text-primary)] placeholder-[color:var(--color-text-ghost)]
+              outline-none"
           />
         </div>
 
-        <button style={pillStyle(severity === "all")} onClick={() => setSeverity("all")}>
+        {/* Severity pills */}
+        <Pill active={severity === "all"} onClick={() => setSeverity("all")}>
           All ({findings.length})
-        </button>
-        <button style={pillStyle(severity === "critical", true)} onClick={() => setSeverity("critical")}>
+        </Pill>
+        <Pill active={severity === "critical"} critical onClick={() => setSeverity("critical")}>
           Crit ({critCount})
-        </button>
-        <button style={pillStyle(severity === "medium")} onClick={() => setSeverity("medium")}>
+        </Pill>
+        <Pill active={severity === "medium"} onClick={() => setSeverity("medium")}>
           Med ({medCount})
-        </button>
+        </Pill>
 
+        {/* Sort select */}
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortMode)}
+          className="mono text-[10px] tracking-[0.1em] uppercase px-1.5 py-0.5 rounded-sm
+            cursor-pointer outline-none transition-colors duration-150"
           style={{
-            background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 4,
-            color: "#aaaaaa", fontSize: 10, fontFamily: "monospace", padding: "4px 6px",
-            cursor: "pointer", textTransform: "uppercase" as const, letterSpacing: 1,
+            background: "var(--color-bg-root)",
+            border: "1px solid var(--color-border-subtle)",
+            color: "var(--color-text-muted)",
           }}
         >
           <option value="newest">Newest</option>
@@ -372,20 +304,39 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
           <option value="url">URL A→Z</option>
         </select>
 
+        {/* Export */}
         {findings.length > 0 && (
-          <button style={S.btnSecondary} onClick={handleExport}>
-            <Download size={11} /> Export
+          <button
+            onClick={handleExport}
+            className="h-6 px-2 flex items-center gap-1 rounded-sm mono text-[10px] uppercase tracking-[0.1em]
+              border border-[color:var(--color-border-subtle)]
+              text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)]
+              hover:border-[color:var(--color-border-hover)] transition-colors duration-150"
+          >
+            <DownloadIcon size={10} />
+            Export
           </button>
         )}
       </div>
 
+      {/* Content */}
       {processed.length === 0 ? (
-        <div style={S.empty}>
-          <ExternalLink size={28} color="#333" />
-          <span>{findings.length === 0 ? "No findings yet — launch a scan." : "No matches for current filter."}</span>
+        <div
+          className="flex-1 flex flex-col items-center justify-center gap-2
+            mono text-[12px] text-[color:var(--color-text-ghost)]"
+        >
+          <ExternalLinkIcon size={28} className="opacity-20" />
+          <span>
+            {findings.length === 0
+              ? "No findings yet — launch a scan."
+              : "No matches for current filter."}
+          </span>
         </div>
       ) : (
-        <div style={{ ...S.list, scrollbarWidth: "thin", scrollbarColor: "#333 #0d0d0d" } as React.CSSProperties}>
+        <div
+          className="flex-1 overflow-y-auto p-2"
+          style={{ scrollbarWidth: "thin", scrollbarColor: "var(--color-border-hover) transparent" } as React.CSSProperties}
+        >
           {processed.map((f) => (
             <FindingCard key={f._idx} finding={f} index={f._idx} onSendToStudio={onSendToStudio} />
           ))}

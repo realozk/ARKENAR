@@ -18,39 +18,47 @@ interface ScannerWorkspaceProps {
   webhookUrl?: string;
 }
 
-
-const tabBarStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 2,
-  padding: "6px 12px 0",
-  borderBottom: "1px solid #2a2a2a",
-  background: "#141414",
-  flexShrink: 0,
-};
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "5px 14px",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    fontFamily: "monospace",
-    cursor: "pointer",
-    border: "none",
-    borderBottom: active ? "2px solid #ff6b35" : "2px solid transparent",
-    background: "transparent",
-    color: active ? "#e0e0e0" : "#666666",
-    transition: "color 0.15s",
-    marginBottom: -1,
-  };
+/* ── Tab bar button ────────────────────────────────────────────────────── */
+function TabBtn({
+  active,
+  onClick,
+  badge,
+  badgeCritical,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  badge?: number;
+  badgeCritical?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex items-center gap-1.5 px-3.5 h-8 mono text-[11px] font-bold tracking-[0.14em] uppercase cursor-pointer border-none transition-colors duration-150 border-b-2 ${
+        active
+          ? "bg-[color:var(--color-accent)]/5 text-[color:var(--color-accent-hover)] border-b-[color:var(--color-accent)]"
+          : "bg-transparent text-[color:var(--color-text-ghost)] border-b-transparent"
+      }`}
+      style={{ marginBottom: -1 }}
+    >
+      {children}
+      {!!badge && badge > 0 && (
+        <span
+          className={`mono text-[10px] px-1 py-px rounded-sm ${
+            badgeCritical
+              ? "bg-[color:var(--color-status-critical)]/10 text-[color:var(--color-status-critical)]"
+              : "bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent-hover)]"
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
 }
 
+/* ── Main component ───────────────────────────────────────────────────── */
 export default function ScannerWorkspace({
   config,
   onUpdate,
@@ -88,7 +96,11 @@ export default function ScannerWorkspace({
   const effectiveStatus: ScanStatus = isComplete && scanStatus === "running" ? "finished" : scanStatus;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: "#111111", overflow: "hidden" }}>
+    <div
+      className="flex flex-col h-full w-full overflow-hidden"
+      style={{ background: "var(--color-bg-root)" }}
+    >
+      {/* Top bar with target + stats */}
       <ScannerTopBar
         config={config}
         onUpdate={onUpdate}
@@ -102,38 +114,40 @@ export default function ScannerWorkspace({
         logs={logs.length}
       />
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+      {/* Body: config sidebar + main panel */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
         <ScannerConfig config={config} onUpdate={onUpdate} />
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-          <div style={tabBarStyle}>
-            <button
-              style={tabStyle(activeTab === "terminal")}
+        {/* Main panel */}
+        <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+          {/* Tab bar */}
+          <div
+            className="flex items-end px-3 border-b border-[color:var(--color-border-subtle)] shrink-0"
+            style={{ background: "var(--color-bg-panel)" }}
+          >
+            <TabBtn
+              active={activeTab === "terminal"}
               onClick={() => setActiveTab("terminal")}
+              badge={logs.length}
             >
               Terminal
-              {logs.length > 0 && (
-                <span style={{ fontSize: 10, background: "rgba(255,107,53,0.2)", color: "#ff6b35", padding: "0 5px", borderRadius: 8, fontFamily: "monospace" }}>
-                  {logs.length}
-                </span>
-              )}
-            </button>
-            <button
-              style={tabStyle(activeTab === "findings")}
+            </TabBtn>
+            <TabBtn
+              active={activeTab === "findings"}
               onClick={() => setActiveTab("findings")}
+              badge={findings.length}
+              badgeCritical
             >
               Findings
-              {findings.length > 0 && (
-                <span style={{ fontSize: 10, background: "rgba(255,68,68,0.2)", color: "#ff4444", padding: "0 5px", borderRadius: 8, fontFamily: "monospace" }}>
-                  {findings.length}
-                </span>
-              )}
-            </button>
+            </TabBtn>
           </div>
 
-          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden flex flex-col">
             {activeTab === "terminal" && <ScannerTerminal logs={logs} />}
-            {activeTab === "findings" && <ScannerFindings findings={findings} onSendToStudio={onSendToStudio} />}
+            {activeTab === "findings" && (
+              <ScannerFindings findings={findings} onSendToStudio={onSendToStudio} />
+            )}
           </div>
         </div>
       </div>

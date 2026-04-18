@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Zap, ArrowRight, Plus, KeyRound, Trash2 } from "lucide-react";
+import {
+  PlusIcon, TrashIcon, BoltIcon, ArrowRightIcon, KeyIcon,
+} from "../icons";
 import type {
   RequestTab, QueryParam, HttpMethod,
 } from "./useStudio";
@@ -38,6 +40,45 @@ const parseHeaders = (raw: string) => {
   });
 };
 
+// Shared small chip button (matches mockup SmallChip)
+function SmallChip({ label, accent, onClick, icon }: {
+  label: string; accent?: boolean; onClick?: () => void; icon?: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="h-6 px-2 border border-[color:var(--color-border-subtle)] rounded-sm font-mono text-[10.5px] flex items-center gap-1 hover:border-[color:var(--color-accent)] transition-colors"
+      style={accent
+        ? { color: "var(--color-accent-hover, var(--color-accent))", borderColor: "rgba(249,115,22,0.3)" }
+        : { color: "var(--color-text-muted)" }
+      }
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// Shared inline checkbox for params toggle
+function Checkbox({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      className="w-3 h-3 rounded-[2px] border flex items-center justify-center shrink-0 transition-colors"
+      style={checked
+        ? { background: "var(--color-accent)", borderColor: "var(--color-accent)" }
+        : { borderColor: "var(--color-border-subtle)", background: "transparent" }
+      }
+    >
+      {checked && (
+        <svg width="7" height="7" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.5">
+          <path d="M1 4l2 2 4-4" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function StudioRequestEditor({
   requestTab, headersInput, body, queryParams, isBodyDisabled, method,
   bodyRef, onTabChange, onHeadersChange, onBodyChange,
@@ -70,8 +111,6 @@ export default function StudioRequestEditor({
   const toggleParam = (id: string) => onQueryParamsChange(queryParams.map(p => p.id === id ? { ...p, enabled: !p.enabled } : p));
   const deleteParam = (id: string) => onQueryParamsChange(queryParams.filter(p => p.id !== id));
 
-
-
   // Env Vars
   const addEnvVar = () => onEnvVarsChange([...envVars, { id: crypto.randomUUID(), key: "", value: "" }]);
   const updateEnvVar = (id: string, field: "key" | "value", val: string) => {
@@ -87,73 +126,131 @@ export default function StudioRequestEditor({
 
   const bodySize = new Blob([body]).size;
 
-  return (
-    <div className="flex flex-col h-full flex-1 min-w-0 bg-bg-root">
+  // Tab badge helper
+  const getTabBadge = (tabId: RequestTab): React.ReactNode => {
+    if (tabId === "params" && queryParams.length > 0) {
+      return <span className="px-1 text-[9.5px] rounded-sm ml-1" style={{ background: "var(--color-bg-panel)", color: "var(--color-text-ghost)" }}>{queryParams.filter(p => p.enabled).length}</span>;
+    }
+    if (tabId === "headers" && headerRows.filter(h => h.k).length > 0) {
+      return <span className="px-1 text-[9.5px] rounded-sm ml-1" style={{ background: "var(--color-bg-panel)", color: "var(--color-text-ghost)" }}>{headerRows.filter(h => h.k).length}</span>;
+    }
+    if (tabId === "env" && envVars.length > 0) {
+      return <span className="px-1 text-[9.5px] rounded-sm ml-1" style={{ background: "var(--color-bg-panel)", color: "var(--color-text-ghost)" }}>{envVars.length}</span>;
+    }
+    if (tabId === "body") {
+      return <span className="px-1 text-[9.5px] rounded-sm ml-1" style={{ background: "var(--color-bg-panel)", color: "var(--color-text-ghost)" }}>raw</span>;
+    }
+    return null;
+  };
 
-      {/* TAB BAR */}
-      <div className="flex items-end gap-[2px] px-3 pt-2 bg-bg-panel border-b border-border-subtle shrink-0">
+  return (
+    <div className="flex flex-col h-full flex-1 min-w-0" style={{ background: "var(--color-bg-root)" }}>
+
+      {/* PANEL HEADER */}
+      <div
+        className="h-7 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center justify-between px-2 font-mono text-[10px] tracking-[0.18em] text-[color:var(--color-text-muted)]"
+        style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-accent)" }} />
+          <span className="uppercase">REQUEST</span>
+        </div>
+      </div>
+
+      {/* SUB-TABS */}
+      <div
+        className="h-7 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center px-1 font-mono text-[10.5px] tracking-[0.14em]"
+        style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+      >
         {REQUEST_TABS.map(t => {
           const active = requestTab === t.id;
           return (
             <button
               key={t.id}
               onClick={() => onTabChange(t.id)}
-              className={active
-                ? "px-3 py-2 text-xs font-semibold text-text-primary bg-bg-card border border-border-subtle border-b-0 rounded-t-md -mb-px z-10"
-                : "px-3 py-2 text-xs font-semibold text-text-ghost rounded-t-md hover:text-text-muted transition-colors cursor-pointer border border-transparent border-b-0"
-              }
+              className="relative h-7 px-3 flex items-center gap-0.5 transition-colors"
+              style={{ color: active ? "var(--color-text-primary)" : "var(--color-text-muted)" }}
             >
-              {t.label.toUpperCase()}
-              {t.id === "params" && queryParams.length > 0 && (
-                <span className="ml-1.5 px-1.5 rounded-full bg-accent10 text-accent text-[10px] py-0.5">
-                  {queryParams.filter(p => p.enabled).length}
-                </span>
+              <span>{t.label.toUpperCase()}</span>
+              {getTabBadge(t.id)}
+              {active && (
+                <span
+                  className="absolute left-2 right-2 -bottom-px h-[1px]"
+                  style={{ background: "var(--color-accent)" }}
+                />
               )}
             </button>
           );
         })}
-        <div className="flex-1" />
       </div>
 
       {/* TAB PANELS */}
-      <div className="flex-1 overflow-y-auto bg-bg-card flex flex-col min-h-0">
+      <div className="flex-1 overflow-y-auto flex flex-col min-h-0" style={{ background: "var(--color-bg-root)" }}>
 
+        {/* HEADERS */}
         {requestTab === "headers" && (
-          <div className="p-3 gap-2 flex flex-col">
-            {headerRows.map(r => (
-              <div key={r.id} className="grid grid-cols-[1fr_1fr_26px] gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="Key (e.g. Content-Type)"
-                  value={r.k}
-                  onChange={e => updateHeaderRow(r.id, "k", e.target.value)}
-                  className="h-7 w-full bg-bg-input border border-border-subtle rounded px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none transition-colors placeholder:text-text-ghost"
-                />
-                <input
-                  type="text"
-                  placeholder="Value"
-                  value={r.v}
-                  onChange={e => updateHeaderRow(r.id, "v", e.target.value)}
-                  className="h-7 w-full bg-bg-input border border-border-subtle rounded px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none transition-colors placeholder:text-text-ghost"
-                />
-                <button
-                  onClick={() => deleteHeaderRow(r.id)}
-                  className="w-[26px] h-[26px] flex items-center justify-center rounded text-text-ghost hover:text-status-critical hover:bg-status-critical10 transition-all duration-150"
-                  title="Remove Header"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addHeaderRow}
-              className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border-subtle text-text-ghost text-xs hover:text-accent-text hover:border-accent transition-all duration-150 mt-1 justify-center"
-            >
-              <Plus size={14} /> Add header
-            </button>
+          <div className="flex-1 min-h-0 overflow-auto" style={{ background: "var(--color-bg-root)" }}>
+            <table className="w-full font-mono text-[11.5px] border-collapse">
+              <thead className="sticky top-0 z-10" style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}>
+                <tr className="text-[9.5px] uppercase tracking-wider text-[color:var(--color-text-muted)] text-left">
+                  <th className="py-1 px-1 font-normal border-b border-[color:var(--color-border-subtle)] w-[40%]">key</th>
+                  <th className="py-1 px-2 font-normal border-b border-[color:var(--color-border-subtle)]">value</th>
+                  <th className="w-6 py-1 font-normal border-b border-[color:var(--color-border-subtle)]" />
+                </tr>
+              </thead>
+              <tbody>
+                {headerRows.map((r) => (
+                  <tr
+                    key={r.id}
+                    className="border-b border-[color:var(--color-border-subtle)] hover:bg-[color:var(--color-bg-panel)] group"
+                  >
+                    <td className="px-2 py-0.5">
+                      <input
+                        type="text"
+                        placeholder="Header name"
+                        value={r.k}
+                        onChange={e => updateHeaderRow(r.id, "k", e.target.value)}
+                        className="w-full bg-transparent outline-none placeholder:text-[color:var(--color-text-ghost)]"
+                        style={{ color: "#fdba74" }}
+                      />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        type="text"
+                        placeholder="Value"
+                        value={r.v}
+                        onChange={e => updateHeaderRow(r.id, "v", e.target.value)}
+                        className="w-full bg-transparent text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-ghost)] outline-none"
+                      />
+                    </td>
+                    <td className="pr-1 py-0.5">
+                      <button
+                        onClick={() => deleteHeaderRow(r.id)}
+                        className="w-4 h-4 opacity-0 group-hover:opacity-100 text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-status-critical)] flex items-center justify-center transition-all"
+                        title="Remove Header"
+                      >
+                        <TrashIcon size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={3} className="p-1.5">
+                    <button
+                      onClick={addHeaderRow}
+                      className="h-5 px-1.5 flex items-center gap-1 text-[10.5px] text-[color:var(--color-text-muted)] hover:text-[color:var(--color-accent-hover,var(--color-accent))] transition-colors font-mono"
+                    >
+                      <PlusIcon size={9} />
+                      <span>add row</span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
 
+        {/* BODY */}
         {requestTab === "body" && (
           <textarea
             ref={bodyRef as React.RefObject<HTMLTextAreaElement>}
@@ -162,144 +259,173 @@ export default function StudioRequestEditor({
             onChange={e => onBodyChange(e.target.value)}
             disabled={isBodyDisabled}
             spellCheck={false}
-            className={`flex-1 w-full resize-none bg-transparent border-none outline-none font-mono text-xs text-text-primary p-4 leading-7 placeholder:text-text-ghost ${isBodyDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+            className={`flex-1 w-full resize-none bg-transparent border-none outline-none font-mono text-[11.5px] text-[color:var(--color-text-primary)] p-3 leading-relaxed placeholder:text-[color:var(--color-text-ghost)] ${isBodyDisabled ? 'opacity-40 cursor-not-allowed' : ''}`}
           />
         )}
 
+        {/* PARAMS */}
         {requestTab === "params" && (
-          <div className="p-3 gap-2 flex flex-col">
-            {queryParams.length > 0 && (
-              <div className="grid grid-cols-[1fr_1fr_26px_26px] gap-2 items-center px-2 mb-1">
-                <span className="text-[10px] font-bold uppercase text-text-ghost tracking-wider">Key</span>
-                <span className="text-[10px] font-bold uppercase text-text-ghost tracking-wider">Value</span>
-                <span className="text-[10px] font-bold uppercase text-text-ghost tracking-wider text-center">On</span>
-                <span />
-              </div>
-            )}
-            {queryParams.map(p => (
-              <div key={p.id} className="grid grid-cols-[1fr_1fr_26px_26px] gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="key"
-                  value={p.key}
-                  onChange={e => updateParam(p.id, "key", e.target.value)}
-                  className={`h-7 w-full bg-bg-input border border-border-subtle rounded px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none transition-colors placeholder:text-text-ghost ${!p.enabled && 'opacity-50'}`}
-                />
-                <input
-                  type="text"
-                  placeholder="value"
-                  value={p.value}
-                  onChange={e => updateParam(p.id, "value", e.target.value)}
-                  className={`h-7 w-full bg-bg-input border border-border-subtle rounded px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none transition-colors placeholder:text-text-ghost ${!p.enabled && 'opacity-50'}`}
-                />
-                <button
-                  onClick={() => toggleParam(p.id)}
-                  className="w-[26px] h-[26px] flex items-center justify-center rounded transition-all duration-150"
-                  title="Toggle Parameter"
-                >
-                  <div className={`w-3.5 h-3.5 rounded-sm flex items-center justify-center border ${p.enabled ? 'bg-accent border-accent text-black' : 'border-text-ghost'}`}>
-                    {p.enabled && <Zap size={10} fill="currentColor" />}
-                  </div>
-                </button>
-                <button
-                  onClick={() => deleteParam(p.id)}
-                  className="w-[26px] h-[26px] flex items-center justify-center rounded text-text-ghost hover:text-status-critical hover:bg-status-critical10 transition-all duration-150"
-                  title="Remove Parameter"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addParam}
-              className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border-subtle text-text-ghost text-xs hover:text-accent-text hover:border-accent transition-all duration-150 mt-1 justify-center"
-            >
-              <Plus size={14} /> Add parameter
-            </button>
+          <div className="flex-1 min-h-0 overflow-auto" style={{ background: "var(--color-bg-root)" }}>
+            <table className="w-full font-mono text-[11.5px] border-collapse">
+              <thead className="sticky top-0 z-10" style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}>
+                <tr className="text-[9.5px] uppercase tracking-wider text-[color:var(--color-text-muted)] text-left">
+                  <th className="w-6 py-1 px-1 font-normal border-b border-[color:var(--color-border-subtle)]" />
+                  <th className="py-1 px-2 font-normal border-b border-[color:var(--color-border-subtle)] w-[40%]">key</th>
+                  <th className="py-1 px-2 font-normal border-b border-[color:var(--color-border-subtle)]">value</th>
+                  <th className="w-6 py-1 font-normal border-b border-[color:var(--color-border-subtle)]" />
+                </tr>
+              </thead>
+              <tbody>
+                {queryParams.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="border-b border-[color:var(--color-border-subtle)] hover:bg-[color:var(--color-bg-panel)] group"
+                  >
+                    <td className="pl-1.5 py-0.5">
+                      <Checkbox checked={p.enabled} onChange={() => toggleParam(p.id)} />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        type="text"
+                        placeholder="param"
+                        value={p.key}
+                        onChange={e => updateParam(p.id, "key", e.target.value)}
+                        className={`w-full bg-transparent outline-none placeholder:text-[color:var(--color-text-ghost)] ${!p.enabled ? "opacity-50" : ""}`}
+                        style={{ color: "#fdba74" }}
+                      />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        type="text"
+                        placeholder="value"
+                        value={p.value}
+                        onChange={e => updateParam(p.id, "value", e.target.value)}
+                        className={`w-full bg-transparent text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-ghost)] outline-none ${!p.enabled ? "opacity-50" : ""}`}
+                      />
+                    </td>
+                    <td className="pr-1 py-0.5">
+                      <button
+                        onClick={() => deleteParam(p.id)}
+                        className="w-4 h-4 opacity-0 group-hover:opacity-100 text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-status-critical)] flex items-center justify-center transition-all"
+                        title="Remove Parameter"
+                      >
+                        <TrashIcon size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={4} className="p-1.5">
+                    <button
+                      onClick={addParam}
+                      className="h-5 px-1.5 flex items-center gap-1 text-[10.5px] text-[color:var(--color-text-muted)] hover:text-[color:var(--color-accent-hover,var(--color-accent))] transition-colors font-mono"
+                    >
+                      <PlusIcon size={9} />
+                      <span>add row</span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
 
+        {/* ENV VARS */}
         {requestTab === "env" && (
-          <div className="p-3 gap-2 flex flex-col">
-            {envVars.length > 0 && (
-              <div className="grid grid-cols-[1fr_1fr_26px] gap-2 items-center px-2 mb-1">
-                <span className="text-[10px] font-bold uppercase text-text-ghost tracking-wider">Variable</span>
-                <span className="text-[10px] font-bold uppercase text-text-ghost tracking-wider">Value</span>
-                <span />
-              </div>
-            )}
-            {envVars.map(v => (
-              <div key={v.id} className="grid grid-cols-[1fr_1fr_26px] gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="KEY (e.g. JWT_TOKEN)"
-                  value={v.key}
-                  onChange={e => updateEnvVar(v.id, "key", e.target.value)}
-                  className="h-7 w-full bg-bg-input border border-border-subtle rounded px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none transition-colors placeholder:text-text-ghost text-status-warning"
-                />
-                <input
-                  type="text"
-                  placeholder="Value"
-                  value={v.value}
-                  onChange={e => updateEnvVar(v.id, "value", e.target.value)}
-                  className="h-7 w-full bg-bg-input border border-border-subtle rounded px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none transition-colors placeholder:text-text-ghost"
-                />
-                <button
-                  onClick={() => deleteEnvVar(v.id)}
-                  className="w-[26px] h-[26px] flex items-center justify-center rounded text-text-ghost hover:text-status-critical hover:bg-status-critical10 transition-all duration-150"
-                  title="Remove Variable"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addEnvVar}
-              className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border-subtle text-text-ghost text-xs hover:text-accent-text hover:border-accent transition-all duration-150 mt-1 justify-center"
-            >
-              <Plus size={14} /> Add variable
-            </button>
-            <div className="mt-2 text-center text-[10px] text-text-ghost font-mono">
+          <div className="flex-1 min-h-0 overflow-auto" style={{ background: "var(--color-bg-root)" }}>
+            <table className="w-full font-mono text-[11.5px] border-collapse">
+              <thead className="sticky top-0 z-10" style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}>
+                <tr className="text-[9.5px] uppercase tracking-wider text-[color:var(--color-text-muted)] text-left">
+                  <th className="py-1 px-2 font-normal border-b border-[color:var(--color-border-subtle)] w-[40%]">variable</th>
+                  <th className="py-1 px-2 font-normal border-b border-[color:var(--color-border-subtle)]">value</th>
+                  <th className="w-6 py-1 font-normal border-b border-[color:var(--color-border-subtle)]" />
+                </tr>
+              </thead>
+              <tbody>
+                {envVars.map((v) => (
+                  <tr
+                    key={v.id}
+                    className="border-b border-[color:var(--color-border-subtle)] hover:bg-[color:var(--color-bg-panel)] group"
+                  >
+                    <td className="px-2 py-0.5">
+                      <input
+                        type="text"
+                        placeholder="§KEY§"
+                        value={v.key}
+                        onChange={e => updateEnvVar(v.id, "key", e.target.value)}
+                        className="w-full bg-transparent outline-none placeholder:text-[color:var(--color-text-ghost)]"
+                        style={{ color: "var(--color-status-warning)" }}
+                      />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <input
+                        type="text"
+                        placeholder="Value"
+                        value={v.value}
+                        onChange={e => updateEnvVar(v.id, "value", e.target.value)}
+                        className="w-full bg-transparent text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-ghost)] outline-none"
+                      />
+                    </td>
+                    <td className="pr-1 py-0.5">
+                      <button
+                        onClick={() => deleteEnvVar(v.id)}
+                        className="w-4 h-4 opacity-0 group-hover:opacity-100 text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-status-critical)] flex items-center justify-center transition-all"
+                        title="Remove Variable"
+                      >
+                        <TrashIcon size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={3} className="p-1.5">
+                    <button
+                      onClick={addEnvVar}
+                      className="h-5 px-1.5 flex items-center gap-1 text-[10.5px] text-[color:var(--color-text-muted)] hover:text-[color:var(--color-accent-hover,var(--color-accent))] transition-colors font-mono"
+                    >
+                      <PlusIcon size={9} />
+                      <span>add row</span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div className="px-3 py-2 text-center text-[10px] text-[color:var(--color-text-ghost)] font-mono border-t border-[color:var(--color-border-subtle)]">
               Use {"{{VAR}}"} in URL, Headers, or Body for injection.
             </div>
           </div>
         )}
-
       </div>
 
-      {/* BOTTOM TOOLBAR */}
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-border-subtle bg-bg-panel shrink-0 flex-wrap">
-        <button
-          onClick={onSmartLogin}
-          className="flex items-center gap-[5px] px-3 py-1 rounded-md border border-border-subtle bg-bg-card text-xs font-semibold text-text-muted hover:text-accent-text hover:bg-accent10 hover:border-accent transition-all duration-150"
-        >
-          <KeyRound size={12} />
-          Smart Login
-        </button>
-        <button
-          onClick={onQuickFuzz}
-          className="flex items-center gap-[5px] px-3 py-1 rounded-md border border-border-subtle bg-bg-card text-xs font-semibold text-status-warning hover:bg-status-warning20 hover:border-status-warning/30 transition-all duration-150"
-        >
-          <Zap size={12} />
-          Quick Fuzz
-        </button>
-        {onSendToBasic && (
-          <button
-            onClick={() => onSendToBasic(url, headersInput)}
-            className="flex items-center gap-[5px] px-3 py-1 rounded-md border border-border-subtle bg-bg-card text-xs font-semibold text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-150"
-          >
-            <ArrowRight size={12} />
-            Send to Basic
-          </button>
-        )}
-
-        <div className="flex-1" />
-
-        <span className="font-mono text-[10px] text-text-ghost">
+      {/* BOTTOM ACTION ROW */}
+      <div
+        className="h-8 shrink-0 border-t border-[color:var(--color-border-subtle)] flex items-center justify-between px-2"
+        style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+      >
+        <div className="flex items-center gap-1">
+          <SmallChip
+            label="Smart Login"
+            onClick={onSmartLogin}
+            icon={<KeyIcon size={9} />}
+          />
+          <SmallChip
+            label="Quick Fuzz"
+            accent
+            onClick={onQuickFuzz}
+            icon={<BoltIcon size={9} />}
+          />
+          {onSendToBasic && (
+            <SmallChip
+              label="Send to Basic"
+              onClick={() => onSendToBasic(url, headersInput)}
+              icon={<ArrowRightIcon size={9} />}
+            />
+          )}
+        </div>
+        <div className="font-mono text-[9.5px] text-[color:var(--color-text-muted)]">
           Body · {bodySize}B
-        </span>
+        </div>
       </div>
-
     </div>
   );
 }

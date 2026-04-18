@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { X, RefreshCw, Zap, KeyRound, ChevronDown, CheckCircle, Copy } from "lucide-react";
+import {
+  CloseIcon, RefreshIcon, BoltIcon, KeyIcon, ChevronIcon, CheckCircleIcon, CopyIcon,
+} from "../icons";
 import type { StudioHistoryItem, PocTab } from "./useStudio";
 import { useStudio, POC_TABS } from "./useStudio";
 import StudioTopBar from "./StudioTopBar";
@@ -49,52 +51,112 @@ function SmartLoginModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-[420px] bg-bg-panel border border-border-subtle rounded-md font-mono">
-        <div className="flex items-center justify-between p-3 border-b border-border-subtle">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-[420px] border border-[color:var(--color-border-subtle)] rounded-sm font-mono"
+        style={{ background: "var(--color-bg-panel)" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-[color:var(--color-border-subtle)]">
           <div className="flex items-center gap-2">
-            <KeyRound size={13} className="text-accent" />
-            <span className="text-xs font-bold tracking-widest uppercase text-text-primary">Smart Auto-Login</span>
+            <KeyIcon size={13} className="text-[color:var(--color-accent)]" />
+            <span className="text-xs font-bold tracking-widest uppercase text-[color:var(--color-text-primary)]">Smart Auto-Login</span>
           </div>
-          <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-text-ghost hover:text-text-primary transition-colors"><X size={14} /></button>
+          <button onClick={onClose} className="text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] transition-colors">
+            <CloseIcon size={14} />
+          </button>
         </div>
+
+        {/* Body */}
         <div className="p-4 flex flex-col gap-2.5">
-          <p className="text-[11px] text-text-ghost leading-relaxed m-0">Performs GET → parse → POST handshake. CSRF tokens auto-detected.</p>
+          <p className="text-[11px] text-[color:var(--color-text-ghost)] leading-relaxed m-0">
+            Performs GET → parse → POST handshake. CSRF tokens auto-detected.
+          </p>
           <div>
-            <div className="text-[10px] font-bold tracking-widest uppercase text-text-ghost mb-1">Login URL</div>
-            <input className="w-full bg-bg-root border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-text-primary outline-none font-mono focus:border-accent transition-colors" type="text" value={loginUrl} onChange={e => setLoginUrl(e.target.value)} placeholder="http://target/login.php" autoFocus />
+            <div className="text-[10px] font-bold tracking-widest uppercase text-[color:var(--color-text-ghost)] mb-1">Login URL</div>
+            <input
+              className="w-full border border-[color:var(--color-border-subtle)] rounded-sm px-2.5 py-1.5 text-[11px] text-[color:var(--color-text-primary)] outline-none font-mono focus:border-[color:var(--color-accent)] transition-colors"
+              style={{ background: "var(--color-bg-root)" }}
+              type="text" value={loginUrl} onChange={e => setLoginUrl(e.target.value)}
+              placeholder="http://target/login.php" autoFocus
+            />
           </div>
           <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <div className="text-[10px] font-bold tracking-widest uppercase text-text-ghost mb-1">Username</div>
-              <input className="w-full bg-bg-root border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-text-primary outline-none font-mono focus:border-accent transition-colors" type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="admin" />
+              <div className="text-[10px] font-bold tracking-widest uppercase text-[color:var(--color-text-ghost)] mb-1">Username</div>
+              <input
+                className="w-full border border-[color:var(--color-border-subtle)] rounded-sm px-2.5 py-1.5 text-[11px] text-[color:var(--color-text-primary)] outline-none font-mono focus:border-[color:var(--color-accent)] transition-colors"
+                style={{ background: "var(--color-bg-root)" }}
+                type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="admin"
+              />
             </div>
             <div>
-              <div className="text-[10px] font-bold tracking-widest uppercase text-text-ghost mb-1">Password</div>
-              <input className="w-full bg-bg-root border border-border-subtle rounded-md px-2.5 py-1.5 text-xs text-text-primary outline-none font-mono focus:border-accent transition-colors" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+              <div className="text-[10px] font-bold tracking-widest uppercase text-[color:var(--color-text-ghost)] mb-1">Password</div>
+              <input
+                className="w-full border border-[color:var(--color-border-subtle)] rounded-sm px-2.5 py-1.5 text-[11px] text-[color:var(--color-text-primary)] outline-none font-mono focus:border-[color:var(--color-accent)] transition-colors"
+                style={{ background: "var(--color-bg-root)" }}
+                type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"
+              />
             </div>
           </div>
-          <button className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-[11px] text-text-ghost hover:text-text-primary transition-colors p-0 mt-1 font-mono" onClick={() => setShowAdv(v => !v)}>
-            <ChevronDown size={11} className={`transition-transform duration-200 ${showAdv ? "rotate-180" : ""}`} />
+          <button
+            className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer text-[11px] text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] transition-colors p-0 mt-1 font-mono"
+            onClick={() => setShowAdv(v => !v)}
+          >
+            <ChevronIcon size={11} className={`transition-transform duration-200 ${showAdv ? "rotate-180" : ""}`} />
             Advanced field overrides
           </button>
           {showAdv && (
             <div className="grid grid-cols-3 gap-2">
               {[["Username field", usernameField, setUsernameField, "username"], ["Password field", passwordField, setPasswordField, "password"], ["CSRF field", tokenField, setTokenField, "auto-detect"]].map(([lbl, val, setter, ph]) => (
                 <div key={lbl as string}>
-                  <div className="text-[10px] font-bold tracking-widest uppercase text-text-ghost mb-1 truncate" title={lbl as string}>{lbl as string}</div>
-                  <input className="w-full bg-bg-root border border-border-subtle rounded-md px-2 py-1 text-[11px] text-text-primary outline-none font-mono focus:border-accent transition-colors" value={val as string} onChange={e => (setter as (v: string) => void)(e.target.value)} placeholder={ph as string} />
+                  <div className="text-[10px] font-bold tracking-widest uppercase text-[color:var(--color-text-ghost)] mb-1 truncate" title={lbl as string}>{lbl as string}</div>
+                  <input
+                    className="w-full border border-[color:var(--color-border-subtle)] rounded-sm px-2 py-1 text-[11px] text-[color:var(--color-text-primary)] outline-none font-mono focus:border-[color:var(--color-accent)] transition-colors"
+                    style={{ background: "var(--color-bg-root)" }}
+                    value={val as string}
+                    onChange={e => (setter as (v: string) => void)(e.target.value)}
+                    placeholder={ph as string}
+                  />
                 </div>
               ))}
             </div>
           )}
-          {error && <div className="bg-status-critical10 border border-status-critical/30 rounded-md p-2 text-[11px] text-status-critical leading-relaxed mt-1 break-words">{error}</div>}
-          {successMsg && <div className="flex items-center gap-1.5 bg-status-success10 border border-status-success/30 rounded-md p-2 text-[11px] text-status-success leading-relaxed mt-1"><CheckCircle size={13} />{successMsg}</div>}
+          {error && (
+            <div className="border border-[color:var(--color-status-critical)]/30 rounded-sm p-2 text-[11px] text-[color:var(--color-status-critical)] leading-relaxed mt-1 break-words" style={{ background: "rgba(239,68,68,0.07)" }}>
+              {error}
+            </div>
+          )}
+          {successMsg && (
+            <div className="flex items-center gap-1.5 border border-[color:var(--color-status-success)]/30 rounded-sm p-2 text-[11px] text-[color:var(--color-status-success)] leading-relaxed mt-1" style={{ background: "rgba(34,197,94,0.07)" }}>
+              <CheckCircleIcon size={13} />{successMsg}
+            </div>
+          )}
         </div>
-        <div className="flex justify-end gap-2 p-3 border-t border-border-subtle bg-bg-card rounded-b-md">
-          <button className="bg-bg-root border border-border-subtle rounded-md px-3.5 py-1.5 text-[11px] text-text-ghost hover:text-text-primary font-mono transition-colors" onClick={onClose}>Cancel</button>
-          <button className="flex items-center gap-1.5 bg-accent border-none rounded-md px-4 py-1.5 text-[11px] font-bold text-black font-mono cursor-pointer disabled:opacity-50 hover:brightness-110 active:scale-95 transition-all" onClick={handleSubmit} disabled={isLoading || !loginUrl.trim() || !username.trim() || !password}>
-            {isLoading ? <RefreshCw size={13} className="animate-spin" /> : <KeyRound size={13} />}
+
+        {/* Footer */}
+        <div
+          className="flex justify-end gap-2 p-3 border-t border-[color:var(--color-border-subtle)] rounded-b-sm"
+          style={{ background: "var(--color-bg-root-2, var(--color-bg-card, var(--color-bg-panel)))" }}
+        >
+          <button
+            className="border border-[color:var(--color-border-subtle)] rounded-sm px-3.5 py-1.5 text-[11px] text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] font-mono transition-colors"
+            style={{ background: "var(--color-bg-root)" }}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            className="flex items-center gap-1.5 border-none rounded-sm px-4 py-1.5 text-[11px] font-bold text-white font-mono cursor-pointer disabled:opacity-50 hover:brightness-110 active:scale-95 transition-all"
+            style={{ background: "var(--color-accent)" }}
+            onClick={handleSubmit}
+            disabled={isLoading || !loginUrl.trim() || !username.trim() || !password}
+          >
+            {isLoading ? <RefreshIcon size={13} className="animate-spin" /> : <KeyIcon size={13} />}
             {isLoading ? "Authenticating…" : "Execute Login"}
           </button>
         </div>
@@ -108,21 +170,52 @@ function PocModal({ activePocSnippet, pocTab, pocCopied, onTabChange, onCopy, on
   onTabChange: (t: PocTab) => void; onCopy: () => void; onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-[760px] bg-bg-panel border border-border-subtle rounded-md font-mono flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between p-3 border-b border-border-subtle shrink-0">
-          <div className="text-xs font-bold tracking-widest uppercase text-text-primary">Export PoC</div>
-          <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-text-ghost hover:text-text-primary transition-colors"><X size={14} /></button>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-[760px] border border-[color:var(--color-border-subtle)] rounded-sm font-mono flex flex-col max-h-[80vh]"
+        style={{ background: "var(--color-bg-panel)" }}
+      >
+        <div className="flex items-center justify-between p-3 border-b border-[color:var(--color-border-subtle)] shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-accent)" }} />
+            <div className="text-[11px] font-bold tracking-widest uppercase text-[color:var(--color-text-primary)]">Export PoC</div>
+          </div>
+          <button onClick={onClose} className="text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] transition-colors">
+            <CloseIcon size={14} />
+          </button>
         </div>
-        <div className="flex items-center gap-1.5 px-4 py-2 border-b border-border-subtle shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[color:var(--color-border-subtle)] shrink-0 overflow-x-auto">
           {POC_TABS.map(t => (
-            <button key={t.id} onClick={() => onTabChange(t.id)} className={`px-3 py-1 text-[10px] font-bold tracking-widest uppercase rounded-md border whitespace-nowrap transition-colors ${pocTab === t.id ? "bg-bg-hover border-accent/40 text-text-primary" : "bg-transparent border-border-subtle text-text-ghost hover:text-text-muted hover:border-text-ghost"}`}>{t.label}</button>
+            <button
+              key={t.id}
+              onClick={() => onTabChange(t.id)}
+              className="px-3 py-1 text-[10px] font-bold tracking-widest uppercase rounded-sm border whitespace-nowrap transition-colors font-mono"
+              style={pocTab === t.id
+                ? { background: "var(--color-bg-hover, rgba(249,115,22,0.1))", borderColor: "rgba(249,115,22,0.4)", color: "var(--color-text-primary)" }
+                : { background: "transparent", borderColor: "var(--color-border-subtle)", color: "var(--color-text-muted)" }
+              }
+            >
+              {t.label}
+            </button>
           ))}
         </div>
-        <pre className="sw-scroll flex-1 p-3.5 m-0 text-xs text-text-primary whitespace-pre-wrap break-words bg-bg-root leading-relaxed overflow-y-auto">{activePocSnippet}</pre>
-        <div className="flex justify-end p-3 border-t border-border-subtle shrink-0 bg-bg-card rounded-b-md">
-          <button className="flex items-center gap-1.5 bg-accent border-none rounded-md px-4 py-1.5 text-[11px] font-bold text-black cursor-pointer hover:brightness-110 active:scale-95 transition-all" onClick={onCopy}>
-            <Copy size={13} />{pocCopied ? "Copied!" : "Copy"}
+        <pre className="sw-scroll flex-1 p-3.5 m-0 text-[11px] text-[color:var(--color-text-primary)] whitespace-pre-wrap break-words leading-relaxed overflow-y-auto" style={{ background: "var(--color-bg-root)" }}>
+          {activePocSnippet}
+        </pre>
+        <div
+          className="flex justify-end p-3 border-t border-[color:var(--color-border-subtle)] shrink-0 rounded-b-sm"
+          style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+        >
+          <button
+            className="flex items-center gap-1.5 border-none rounded-sm px-4 py-1.5 text-[11px] font-bold text-white cursor-pointer hover:brightness-110 active:scale-95 transition-all"
+            style={{ background: "var(--color-accent)" }}
+            onClick={onCopy}
+          >
+            <CopyIcon size={13} />{pocCopied ? "Copied!" : "Copy"}
           </button>
         </div>
       </div>
@@ -139,56 +232,89 @@ function FuzzModal({
   isFuzzing: boolean; fuzzProgress: number;
   onPayloadsChange: (v: string) => void; onStart: () => void; onCancel: () => void;
 }) {
-  const statusColor = (s: number) => s >= 200 && s < 300 ? "text-status-success" : s >= 300 && s < 400 ? "text-blue-400" : s >= 400 && s < 500 ? "text-status-warning" : "text-status-critical";
+  const statusColor = (s: number) =>
+    s >= 200 && s < 300 ? "var(--color-status-success)"
+      : s >= 300 && s < 400 ? "#3b82f6"
+        : s >= 400 && s < 500 ? "var(--color-status-warning)"
+          : "var(--color-status-critical)";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="w-full max-w-[760px] bg-bg-panel border border-border-subtle rounded-md font-mono flex flex-col max-h-[88vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-        
-        <div className="flex items-center justify-between p-4 pb-2 shrink-0">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="w-full max-w-[760px] border border-[color:var(--color-border-subtle)] rounded-sm font-mono flex flex-col max-h-[88vh] overflow-hidden"
+        style={{ background: "var(--color-bg-panel)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[color:var(--color-border-subtle)] shrink-0">
           <div className="flex items-center gap-2">
-            <Zap size={14} className="text-accent" />
-            <span className="text-xs font-bold tracking-widest uppercase text-text-primary">Quick Fuzz</span>
+            <BoltIcon size={13} className="text-[color:var(--color-accent)]" />
+            <span className="text-[11px] font-bold tracking-widest uppercase text-[color:var(--color-text-primary)]">Quick Fuzz</span>
           </div>
-          <button onClick={onCancel} className="bg-transparent border-none cursor-pointer text-text-ghost hover:text-text-primary transition-colors"><X size={14} /></button>
+          <button onClick={onCancel} className="text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] transition-colors">
+            <CloseIcon size={14} />
+          </button>
         </div>
-        
-        <div className="px-4 pb-3 shrink-0">
-          <div className="text-[11px] text-text-muted bg-bg-hover border border-border-subtle rounded-md px-2.5 py-1.5 flex items-center gap-1.5">
-            Targeting <strong className="text-text-primary">{fuzzAnchor?.field}</strong>: <code className="text-accent-text bg-bg-panel px-1 py-0.5 rounded border border-border-subtle truncate max-w-[400px]">{fuzzAnchor?.anchor}</code>
+
+        {/* Anchor info */}
+        <div className="px-4 pb-3 pt-2 shrink-0">
+          <div
+            className="text-[11px] text-[color:var(--color-text-muted)] border border-[color:var(--color-border-subtle)] rounded-sm px-2.5 py-1.5 flex items-center gap-1.5"
+            style={{ background: "var(--color-bg-hover, rgba(255,255,255,0.03))" }}
+          >
+            Targeting <strong className="text-[color:var(--color-text-primary)]">{fuzzAnchor?.field}</strong>:
+            <code className="border border-[color:var(--color-border-subtle)] px-1 py-0.5 rounded-sm truncate max-w-[400px] text-[color:var(--color-accent)]" style={{ background: "var(--color-bg-panel)" }}>
+              {fuzzAnchor?.anchor}
+            </code>
           </div>
         </div>
 
+        {/* Content */}
         <div className="flex flex-1 gap-3 px-4 min-h-[300px] overflow-hidden max-[600px]:flex-col">
           <div className="flex flex-col w-[200px] max-[600px]:w-full shrink-0 gap-1.5">
-            <div className="text-[10px] font-bold tracking-widest uppercase text-text-ghost">Payloads (one per line)</div>
-            <textarea 
-              className="sw-scroll flex-1 resize-none bg-bg-root border border-border-subtle rounded-md p-2 text-xs text-text-primary outline-none focus:border-accent font-mono transition-colors disabled:opacity-50" 
-              value={fuzzPayloads} 
-              onChange={e => onPayloadsChange(e.target.value)} 
-              disabled={isFuzzing} 
-              placeholder={"admin\ntest\n' OR 1=1--"} 
-              spellCheck={false} 
+            <div className="text-[10px] font-bold tracking-widest uppercase text-[color:var(--color-text-ghost)]">Payloads (one per line)</div>
+            <textarea
+              className="sw-scroll flex-1 resize-none border border-[color:var(--color-border-subtle)] rounded-sm p-2 text-[11px] text-[color:var(--color-text-primary)] outline-none font-mono transition-colors disabled:opacity-50"
+              style={{ background: "var(--color-bg-root)" }}
+              value={fuzzPayloads}
+              onChange={e => onPayloadsChange(e.target.value)}
+              disabled={isFuzzing}
+              placeholder={"admin\ntest\n' OR 1=1--"}
+              spellCheck={false}
             />
           </div>
           <div className="flex flex-col flex-1 min-w-0 gap-1.5">
             <div className="flex items-center justify-between">
-              <div className="text-[10px] font-bold tracking-widest uppercase text-text-ghost">Live Results</div>
-              {isFuzzing && <span className="text-[10px] text-accent font-bold">{fuzzProgress}%</span>}
+              <div className="text-[10px] font-bold tracking-widest uppercase text-[color:var(--color-text-ghost)]">Live Results</div>
+              {isFuzzing && <span className="text-[10px] text-[color:var(--color-accent)] font-bold">{fuzzProgress}%</span>}
             </div>
-            <div className="flex flex-col flex-1 border border-border-subtle rounded-md overflow-hidden bg-bg-root">
-              <div className="grid grid-cols-[2fr_60px_70px_70px] gap-0 px-2.5 py-1.5 bg-bg-panel border-b border-border-subtle text-[10px] font-bold tracking-wider text-text-ghost shrink-0">
+            <div className="flex flex-col flex-1 border border-[color:var(--color-border-subtle)] rounded-sm overflow-hidden" style={{ background: "var(--color-bg-root)" }}>
+              <div
+                className="grid grid-cols-[2fr_60px_70px_70px] gap-0 px-2.5 py-1.5 border-b border-[color:var(--color-border-subtle)] text-[10px] font-bold tracking-wider text-[color:var(--color-text-ghost)] shrink-0"
+                style={{ background: "var(--color-bg-panel)" }}
+              >
                 <span>Payload</span><span>Status</span><span>Length</span><span>Time</span>
               </div>
               <div className="flex-1 overflow-y-auto sw-scroll p-1">
                 {fuzzResults.length === 0 ? (
-                  <div className="p-4 text-center text-[11px] text-text-ghost">{isFuzzing ? "Waiting…" : "Enter payloads and click Run."}</div>
+                  <div className="p-4 text-center text-[11px] text-[color:var(--color-text-ghost)]">
+                    {isFuzzing ? "Waiting…" : "Enter payloads and click Run."}
+                  </div>
                 ) : fuzzResults.map(r => (
-                  <div key={r.id} className="grid grid-cols-[2fr_60px_70px_70px] gap-0 px-1.5 py-1 border-b border-border-subtle/50 text-[11px] items-center hover:bg-bg-hover rounded-sm transition-colors cursor-default">
-                    <span className="text-text-primary overflow-hidden text-ellipsis whitespace-nowrap pr-2" title={r.payload}>{r.payload}</span>
-                    <span className={`font-bold ${r.error ? "text-status-critical" : statusColor(r.status)}`}>{r.error ? "ERR" : r.status}</span>
-                    <span className="text-text-muted">{r.responseLength}</span>
-                    <span className="text-text-ghost">{r.responseTime}ms</span>
+                  <div
+                    key={r.id}
+                    className="grid grid-cols-[2fr_60px_70px_70px] gap-0 px-1.5 py-1 border-b border-[color:var(--color-border-subtle)]/50 text-[11px] items-center hover:bg-[color:var(--color-bg-panel)] rounded-sm transition-colors cursor-default"
+                  >
+                    <span className="text-[color:var(--color-text-primary)] overflow-hidden text-ellipsis whitespace-nowrap pr-2" title={r.payload}>{r.payload}</span>
+                    <span className="font-bold" style={{ color: r.error ? "var(--color-status-critical)" : statusColor(r.status) }}>
+                      {r.error ? "ERR" : r.status}
+                    </span>
+                    <span className="text-[color:var(--color-text-muted)]">{r.responseLength}</span>
+                    <span className="text-[color:var(--color-text-ghost)]">{r.responseTime}ms</span>
                   </div>
                 ))}
               </div>
@@ -196,17 +322,33 @@ function FuzzModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-3 mt-3 border-t border-border-subtle bg-bg-card shrink-0">
-          <span className="text-[11px] text-text-ghost">{isFuzzing ? "Running…" : `${fuzzResults.length} completed`}</span>
+        {/* Footer */}
+        <div
+          className="flex items-center justify-between p-3 mt-3 border-t border-[color:var(--color-border-subtle)] shrink-0"
+          style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+        >
+          <span className="text-[11px] text-[color:var(--color-text-ghost)]">
+            {isFuzzing ? "Running…" : `${fuzzResults.length} completed`}
+          </span>
           <div className="flex gap-2">
-            <button onClick={onCancel} className="bg-bg-root border border-border-subtle rounded-md px-3.5 py-1.5 text-[11px] text-text-ghost hover:text-text-primary font-mono transition-colors">{isFuzzing ? "Stop" : "Close"}</button>
-            <button onClick={onStart} disabled={isFuzzing || !fuzzPayloads.trim()} className="flex items-center gap-1.5 bg-accent border-none rounded-md px-4 py-1.5 text-[11px] font-bold text-black font-mono cursor-pointer disabled:opacity-30 hover:brightness-110 active:scale-95 transition-all">
-              {isFuzzing ? <RefreshCw size={13} className="animate-spin" /> : <Zap size={13} />}
+            <button
+              onClick={onCancel}
+              className="border border-[color:var(--color-border-subtle)] rounded-sm px-3.5 py-1.5 text-[11px] text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-text-primary)] font-mono transition-colors"
+              style={{ background: "var(--color-bg-root)" }}
+            >
+              {isFuzzing ? "Stop" : "Close"}
+            </button>
+            <button
+              onClick={onStart}
+              disabled={isFuzzing || !fuzzPayloads.trim()}
+              className="flex items-center gap-1.5 border-none rounded-sm px-4 py-1.5 text-[11px] font-bold text-white font-mono cursor-pointer disabled:opacity-30 hover:brightness-110 active:scale-95 transition-all"
+              style={{ background: "var(--color-accent)" }}
+            >
+              {isFuzzing ? <RefreshIcon size={13} className="animate-spin" /> : <BoltIcon size={13} />}
               {isFuzzing ? "Running…" : "Run"}
             </button>
           </div>
         </div>
-        
       </div>
     </div>
   );
@@ -225,6 +367,20 @@ export default function StudioWorkspace(props: {
   const studio = useStudio(props);
   const { state, setters, handlers, refs } = studio;
 
+  // Reset workspace to a blank request (new request)
+  const handleNewRequest = () => {
+    setters.setUrl("");
+    setters.setMethod("GET");
+    setters.setHeadersInput("");
+    setters.setBody("");
+    setters.setResponse(null);
+    setters.setError(null);
+    setters.setCompareMode(false);
+    setters.setDiffLines([]);
+    setters.setPipeline("draft");
+    props.setSelectedHistoryId(null);
+  };
+
   const [reqPaneWidth, setReqPaneWidth] = useState(42);
   const reqPaneRef = useRef<HTMLDivElement>(null);
 
@@ -237,7 +393,6 @@ export default function StudioWorkspace(props: {
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
       const newWidthPx = startWidth + delta;
-      
       const newWidthPct = (newWidthPx / containerWidth) * 100;
       const minPct = (240 / containerWidth) * 100;
       const clampedPct = Math.min(Math.max(newWidthPct, minPct), 60);
@@ -260,7 +415,10 @@ export default function StudioWorkspace(props: {
   }, [props.onCompareWithHistoryRef, handlers.onCompareWithHistory]);
 
   return (
-    <div className="flex flex-col h-full w-full bg-bg-root font-mono text-text-primary overflow-hidden">
+    <div
+      className="flex flex-col h-full w-full font-mono text-[color:var(--color-text-primary)] overflow-hidden"
+      style={{ background: "var(--color-bg-root)" }}
+    >
       <style>{SCROLLBAR_CSS}</style>
 
       <StudioTopBar
@@ -282,9 +440,12 @@ export default function StudioWorkspace(props: {
           studioHistory={props.history}
           selectedStudioHistoryId={props.selectedHistoryId}
           onSelectStudioHistoryItem={props.setSelectedHistoryId}
-          onNewStudioRequest={handlers.onNewRequest}
+          onNewStudioRequest={handleNewRequest}
           onCompareWithHistory={handlers.onCompareWithHistory}
         />
+
+        {/* Hairline divider (history | request) */}
+        <div className="w-px shrink-0 bg-[color:var(--color-border-subtle)] max-[700px]:hidden" />
 
         <div ref={reqPaneRef} style={{ width: `${reqPaneWidth}%` }} className="flex flex-col max-[700px]:!w-full max-[700px]:flex-1 flex-shrink-0 relative">
           <StudioRequestEditor
@@ -310,9 +471,11 @@ export default function StudioWorkspace(props: {
           />
         </div>
 
-        <div 
+        {/* Draggable resize handle */}
+        <div
           onMouseDown={startResize}
-          className="w-1 shrink-0 bg-border-subtle cursor-col-resize hover:bg-accent transition-colors duration-150 max-[700px]:hidden z-10"
+          className="w-1 shrink-0 cursor-col-resize hover:bg-[color:var(--color-accent)] transition-colors duration-150 max-[700px]:hidden z-10"
+          style={{ background: "var(--color-border-subtle)" }}
         />
 
         <div className="flex flex-col flex-1 min-h-0 max-[700px]:min-h-[40vh]">

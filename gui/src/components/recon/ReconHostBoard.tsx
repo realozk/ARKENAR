@@ -8,16 +8,16 @@ interface FeedItem {
 }
 
 const FEED_COLORS: Record<string, string> = {
-  "subdomain-found": "#ff6b35",
-  "port-open": "#4caf50",
-  "dns-record": "#2196f3",
-  "secret-found": "#ff9800",
+  "subdomain-found": "var(--color-accent)",
+  "port-open": "var(--color-status-success)",
+  "dns-record": "var(--color-text-muted)",
+  "secret-found": "var(--color-status-warning)",
 };
 
-const PRIORITY_STYLE: Record<string, { border: string }> = {
-  high: { border: "#ff4444" },
-  medium: { border: "#ff9800" },
-  standard: { border: "#555" },
+const PRIORITY_STYLE: Record<string, { accentColor: string; borderLeft: string }> = {
+  high: { accentColor: "var(--color-status-critical)", borderLeft: "var(--color-status-critical)" },
+  medium: { accentColor: "var(--color-status-warning)", borderLeft: "var(--color-status-warning)" },
+  standard: { accentColor: "var(--color-text-ghost)", borderLeft: "var(--color-border-hover)" },
 };
 
 function getPriority(host: string): "high" | "medium" | "standard" {
@@ -34,6 +34,9 @@ function getPriority(host: string): "high" | "medium" | "standard" {
     return "medium";
   return "standard";
 }
+
+const FILTER_MODES = ["all", "high", "alive", "secrets"] as const;
+type FilterMode = typeof FILTER_MODES[number];
 
 interface ReconHostBoardProps {
   hosts: Map<string, ReconHost>;
@@ -82,74 +85,71 @@ export default function ReconHostBoard({
   });
 
   return (
-    <div style={{ flex: 1, minWidth: 0, background: "#111111", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-      <div style={{
-        display: "flex",
-        gap: 1,
-        flexShrink: 0,
-        borderBottom: "1px solid #2a2a2a",
-        background: "#141414",
-      }}>
+    <div
+      className="flex flex-col min-w-0 overflow-hidden"
+      style={{ flex: 1, background: "var(--color-bg-root)" }}
+    >
+      {/* Stats bar */}
+      <div
+        className="flex shrink-0 border-b border-[color:var(--color-border-subtle)]"
+        style={{ background: "var(--color-bg-panel)" }}
+      >
         {[
-          { label: "HOSTS", val: totalHosts, color: "#ff6b35" },
-          { label: "ALIVE", val: totalAlive, color: "#4caf50" },
-          { label: "PORTS", val: totalPorts, color: "#e0e0e0" },
-          { label: "SECRETS", val: totalSecrets, color: totalSecrets > 0 ? "#ff9800" : "#444" },
-          { label: "DNS", val: totalDns, color: "#2196f3" },
+          { label: "HOSTS", val: totalHosts, color: "var(--color-accent)" },
+          { label: "ALIVE", val: totalAlive, color: "var(--color-status-success)" },
+          { label: "PORTS", val: totalPorts, color: "var(--color-text-primary)" },
+          { label: "SECRETS", val: totalSecrets, color: totalSecrets > 0 ? "var(--color-status-warning)" : "var(--color-text-ghost)" },
+          { label: "DNS", val: totalDns, color: "var(--color-accent-hover)" },
         ].map(({ label, val, color }) => (
-          <div key={label} style={{
-            flex: 1,
-            padding: "6px 12px",
-            borderRight: "1px solid #2a2a2a",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}>
-            <span style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.12em" }}>{label}</span>
-            <span style={{ fontSize: 16, color, fontWeight: 700, lineHeight: 1.2 }}>{val}</span>
+          <div
+            key={label}
+            className="flex flex-col items-center justify-center py-1.5 px-3 border-r border-[color:var(--color-border-subtle)]"
+            style={{ flex: 1 }}
+          >
+            <span className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-[color:var(--color-text-muted)]">
+              {label}
+            </span>
+            <span
+              className="font-mono text-[15px] font-bold leading-tight mt-0.5"
+              style={{ color }}
+            >
+              {val}
+            </span>
           </div>
         ))}
       </div>
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", borderBottom: "1px solid #2a2a2a" }}>
-        <div style={{ padding: "8px 12px", borderBottom: "1px solid #2a2a2a", display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-          <input
-            value={hostFilter}
-            onChange={(e) => onFilterChange(e.target.value)}
-            placeholder="Filter hosts..."
-            style={{
-              flex: 1,
-              background: "#0d0d0d",
-              border: "1px solid #2a2a2a",
-              color: "#e0e0e0",
-              borderRadius: 4,
-              padding: "3px 8px",
-              fontSize: 11,
-              fontFamily: "monospace",
-              outline: "none",
-              height: 26,
-            }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = "#ff6b35")}
-            onBlur={(e) => (e.currentTarget.style.borderColor = "#2a2a2a")}
-          />
-          {(["all", "high", "alive", "secrets"] as const).map((mode) => (
+      {/* Host list area */}
+      <div
+        className="flex flex-col min-h-0 overflow-hidden border-b border-[color:var(--color-border-subtle)]"
+        style={{ flex: 1 }}
+      >
+        {/* Filter bar */}
+        <div
+          className="flex items-center gap-1.5 px-2 py-1.5 shrink-0 border-b border-[color:var(--color-border-subtle)]"
+          style={{ background: "var(--color-bg-root-2)" }}
+        >
+          <div
+            className="flex-1 h-6 flex items-stretch rounded-sm border border-[color:var(--color-border-subtle)] focus-within:border-[color:var(--color-accent)]"
+            style={{ background: "var(--color-bg-panel)", transition: "border-color 0.15s" }}
+          >
+            <input
+              value={hostFilter}
+              onChange={(e) => onFilterChange(e.target.value)}
+              placeholder="Filter hosts..."
+              className="flex-1 min-w-0 bg-transparent font-mono text-[11px] px-2 outline-none placeholder-[color:var(--color-text-ghost)] text-[color:var(--color-text-primary)]"
+            />
+          </div>
+          {FILTER_MODES.map((mode) => (
             <button
               key={mode}
-              onClick={() => onFilterModeChange(mode)}
+              onClick={() => onFilterModeChange(mode as FilterMode)}
+              className="h-6 px-2 rounded-sm font-mono text-[9.5px] font-bold tracking-[0.1em] uppercase border transition-colors"
               style={{
-                background: filterMode === mode ? "rgba(255,107,53,0.15)" : "#1a1a1a",
-                border: `1px solid ${filterMode === mode ? "#ff6b35" : "#2a2a2a"}`,
-                color: filterMode === mode ? "#ff6b35" : "#666",
-                borderRadius: 4,
-                padding: "2px 8px",
-                fontSize: 10,
-                fontFamily: "monospace",
+                background: filterMode === mode ? "var(--color-bg-hover)" : "var(--color-bg-panel)",
+                borderColor: filterMode === mode ? "var(--color-accent)" : "var(--color-border-subtle)",
+                color: filterMode === mode ? "var(--color-accent-hover)" : "var(--color-text-ghost)",
                 cursor: "pointer",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                fontWeight: 700,
-                height: 26,
               }}
             >
               {mode === "secrets" ? "🔑" : mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -157,23 +157,28 @@ export default function ReconHostBoard({
           ))}
         </div>
 
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 36px 80px 36px 28px",
-          padding: "4px 12px",
-          borderBottom: "1px solid #2a2a2a",
-          flexShrink: 0,
-        }}>
+        {/* Column headers */}
+        <div
+          className="grid shrink-0 px-3 py-1 border-b border-[color:var(--color-border-subtle)]"
+          style={{ gridTemplateColumns: "1fr 32px 80px 32px 28px", background: "var(--color-bg-root-2)" }}
+        >
           {["HOST", "ST", "PORTS", "SEC", "Q"].map((h) => (
-            <span key={h} style={{ fontSize: 10, color: "#ff6b35", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>{h}</span>
+            <span
+              key={h}
+              className="font-mono text-[9.5px] font-bold tracking-[0.12em] uppercase"
+              style={{ color: "var(--color-accent)" }}
+            >
+              {h}
+            </span>
           ))}
         </div>
 
-        <div className="rw-scroll" style={{ flex: 1, overflowY: "auto" }}>
+        {/* Host rows */}
+        <div className="rw-scroll flex-1 overflow-y-auto">
           {filteredHosts.length === 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "#444", gap: 8 }}>
-              <span style={{ fontSize: 24, opacity: 0.3 }}>◎</span>
-              <span style={{ fontSize: 11 }}>
+            <div className="flex flex-col items-center justify-center h-full gap-2" style={{ color: "var(--color-text-ghost)" }}>
+              <span style={{ fontSize: 22, opacity: 0.3 }}>◎</span>
+              <span className="font-mono text-[11px]">
                 {totalHosts === 0 ? "Run recon above to populate hosts" : "No hosts match filter"}
               </span>
             </div>
@@ -187,39 +192,56 @@ export default function ReconHostBoard({
                 <div
                   key={h.host}
                   onClick={() => onSelectHost(isSelected ? null : h.host)}
+                  className="grid items-center px-3 py-1.5 border-b border-[color:var(--color-border-subtle)] cursor-pointer transition-colors"
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 36px 80px 36px 28px",
-                    padding: "5px 12px",
-                    borderBottom: "1px solid #1a1a1a",
-                    cursor: "pointer",
-                    background: isSelected ? "#1a1a1a" : "transparent",
-                    borderLeft: isSelected ? `2px solid ${PRIORITY_STYLE[priority].border}` : "2px solid transparent",
+                    gridTemplateColumns: "1fr 32px 80px 32px 28px",
+                    background: isSelected ? "var(--color-bg-hover)" : "transparent",
+                    borderLeft: `2px solid ${isSelected ? PRIORITY_STYLE[priority].borderLeft : "transparent"}`,
                     transition: "background 0.1s",
-                    alignItems: "center",
                   }}
-                  onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "#141414"; }}
-                  onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--color-bg-panel)";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) (e.currentTarget as HTMLElement).style.background = "transparent";
+                  }}
                 >
-                  <span style={{ fontSize: 11, color: isSelected ? "#e0e0e0" : "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 4 }}>{h.host}</span>
-                  <span style={{ fontSize: 11, color: isAlive ? "#4caf50" : "#f44336" }}>●</span>
-                  <span style={{ fontSize: 10, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span
+                    className="font-mono text-[11px] overflow-hidden text-ellipsis whitespace-nowrap pr-1"
+                    style={{ color: isSelected ? "var(--color-text-primary)" : "var(--color-text-muted)" }}
+                  >
+                    {h.host}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 8,
+                      color: isAlive ? "var(--color-status-success)" : "var(--color-status-critical)",
+                    }}
+                  >
+                    ●
+                  </span>
+                  <span
+                    className="font-mono text-[10px] overflow-hidden text-ellipsis whitespace-nowrap"
+                    style={{ color: "var(--color-text-muted)" }}
+                  >
                     {h.ports.length > 0 ? h.ports.slice(0, 3).join(",") + (h.ports.length > 3 ? "…" : "") : "—"}
                   </span>
-                  <span style={{ fontSize: 10, color: h.jsSecrets.length > 0 ? "#ff9800" : "#444" }}>
+                  <span
+                    className="font-mono text-[10px]"
+                    style={{ color: h.jsSecrets.length > 0 ? "var(--color-status-warning)" : "var(--color-text-ghost)" }}
+                  >
                     {h.jsSecrets.length > 0 ? h.jsSecrets.length : "—"}
                   </span>
                   <span
-                    onClick={(e) => { e.stopPropagation(); onToggleQueue(h.host); }}
-                    title={isQueued ? "Remove from queue" : "Add to queue"}
-                    style={{
-                      fontSize: 11,
-                      cursor: "pointer",
-                      color: isQueued ? "#ff6b35" : "#444",
-                      userSelect: "none",
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleQueue(h.host);
                     }}
-                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "#ff6b35")}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = isQueued ? "#ff6b35" : "#444")}
+                    title={isQueued ? "Remove from queue" : "Add to queue"}
+                    className="font-mono text-[11px] cursor-pointer select-none transition-colors"
+                    style={{ color: isQueued ? "var(--color-accent)" : "var(--color-text-ghost)" }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "var(--color-accent)")}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = isQueued ? "var(--color-accent)" : "var(--color-text-ghost)")}
                   >
                     {isQueued ? "✓" : "+"}
                   </span>
@@ -230,33 +252,44 @@ export default function ReconHostBoard({
         </div>
       </div>
 
-      <div style={{ height: 160, minHeight: 160, flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ padding: "5px 12px", borderBottom: "1px solid #2a2a2a", flexShrink: 0 }}>
-          <span style={{ fontSize: 10, color: "#ff6b35", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700 }}>Latest Events</span>
+      {/* Event feed */}
+      <div
+        className="flex flex-col overflow-hidden shrink-0"
+        style={{ height: 160, minHeight: 160 }}
+      >
+        <div
+          className="px-2 py-1.5 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center gap-1.5"
+          style={{ background: "var(--color-bg-root-2)" }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ background: "var(--color-accent)" }}
+          />
+          <span className="font-mono text-[9.5px] font-bold tracking-[0.18em] uppercase text-[color:var(--color-text-muted)]">
+            Latest Events
+          </span>
         </div>
-        <div className="rw-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
+        <div className="rw-scroll flex-1 overflow-y-auto" style={{ background: "var(--color-bg-root)" }}>
           {eventFeed.length === 0 ? (
-            <div style={{ padding: "12px", fontSize: 10, color: "#444", fontStyle: "italic" }}>
+            <div className="px-3 py-2 font-mono text-[10px] italic text-[color:var(--color-text-ghost)]">
               Events stream here during scan…
             </div>
           ) : (
             eventFeed.map((item) => (
-              <div key={item.id} style={{
-                display: "flex",
-                gap: 8,
-                padding: "2px 12px",
-                alignItems: "flex-start",
-                borderBottom: "1px solid #161616",
-              }}>
-                <span style={{ fontSize: 10, color: "#444", whiteSpace: "nowrap", paddingTop: 1 }}>{item.time}</span>
-                <span style={{
-                  fontSize: 10,
-                  color: FEED_COLORS[item.type],
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  flex: 1,
-                }}>{item.message}</span>
+              <div
+                key={item.id}
+                className="flex items-start gap-2 px-3 py-0.5 border-b"
+                style={{ borderColor: "var(--color-bg-panel)" }}
+              >
+                <span className="font-mono text-[9.5px] text-[color:var(--color-text-ghost)] whitespace-nowrap pt-px">
+                  {item.time}
+                </span>
+                <span
+                  className="font-mono text-[10px] overflow-hidden text-ellipsis whitespace-nowrap flex-1"
+                  style={{ color: FEED_COLORS[item.type] }}
+                >
+                  {item.message}
+                </span>
               </div>
             ))
           )}

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { Copy, Wand2, GitCompare, Code2, ArrowLeftRight, Trash2, Send } from "lucide-react";
+import {
+  CopyIcon, WandIcon, GitCompareIcon, Code2Icon, ArrowLeftRightIcon, TrashIcon, SendIcon, SaveIcon,
+} from "../icons";
 import type { StudioResponse, ResponseTab } from "./useStudio";
 import { RESPONSE_TABS } from "./useStudio";
 import { getStatusClass } from "./StudioHistorySidebar";
@@ -28,29 +30,29 @@ function CodeLine({ line }: { line: string }) {
   const keyMatch = line.match(/^(\s*)"([^"]*?)"(\s*:)(.*)$/);
   if (keyMatch) {
     const [_, indent, key, colon, rest] = keyMatch;
-    
+
     let restNode: React.ReactNode = rest;
-    
+
     const strMatch = rest.match(/^(\s*)"([^"]*?)"(.*)$/);
     if (strMatch) {
-       restNode = <>{strMatch[1]}<span className="text-[#a8ff78]">"{strMatch[2]}"</span>{strMatch[3]}</>;
+      restNode = <>{strMatch[1]}<span style={{ color: "#86efac" }}>"{strMatch[2]}"</span>{strMatch[3]}</>;
     } else if (rest.match(/\b(true|false)\b/)) {
-       const boolMatch = rest.match(/^(.*?\b)(true|false)(\b.*)$/);
-       if (boolMatch) restNode = <>{boolMatch[1]}<span className="text-accent-text">{boolMatch[2]}</span>{boolMatch[3]}</>;
+      const boolMatch = rest.match(/^(.*?\b)(true|false)(\b.*)$/);
+      if (boolMatch) restNode = <>{boolMatch[1]}<span style={{ color: "#fbbf24" }}>{boolMatch[2]}</span>{boolMatch[3]}</>;
     } else if (rest.match(/\bnull\b/)) {
-       const nullMatch = rest.match(/^(.*?\b)(null)(\b.*)$/);
-       if (nullMatch) restNode = <>{nullMatch[1]}<span className="text-text-ghost">{nullMatch[2]}</span>{nullMatch[3]}</>;
+      const nullMatch = rest.match(/^(.*?\b)(null)(\b.*)$/);
+      if (nullMatch) restNode = <>{nullMatch[1]}<span className="text-[color:var(--color-text-ghost)]">{nullMatch[2]}</span>{nullMatch[3]}</>;
     } else if (rest.match(/-?[\d.]+/)) {
-       const numMatch = rest.match(/^(.*?)(-?[\d.]+)(.*)$/);
-       if (numMatch) restNode = <>{numMatch[1]}<span className="text-status-warning">{numMatch[2]}</span>{numMatch[3]}</>;
+      const numMatch = rest.match(/^(.*?)(-?[\d.]+)(.*)$/);
+      if (numMatch) restNode = <>{numMatch[1]}<span style={{ color: "#c4b5fd" }}>{numMatch[2]}</span>{numMatch[3]}</>;
     }
 
-    return <>{indent}<span className="text-[#9ecbff]">"{key}"</span>{colon}{restNode}</>;
+    return <>{indent}<span style={{ color: "#93c5fd" }}>"{key}"</span>{colon}{restNode}</>;
   }
 
   const strMatchOnly = line.match(/^(\s*)"([^"]*?)"(.*)$/);
   if (strMatchOnly && !line.includes(':')) {
-    return <>{strMatchOnly[1]}<span className="text-[#a8ff78]">"{strMatchOnly[2]}"</span>{strMatchOnly[3]}</>;
+    return <>{strMatchOnly[1]}<span style={{ color: "#86efac" }}>"{strMatchOnly[2]}"</span>{strMatchOnly[3]}</>;
   }
 
   return <>{line}</>;
@@ -72,7 +74,6 @@ export default function StudioResponseViewer({
 
   const hasBody = !!response?.body;
 
-  // Derive status text mapping via standard HTTP codes if needed
   const getStatusText = (status: number) => {
     if (status === 200) return "OK";
     if (status === 201) return "Created";
@@ -95,159 +96,198 @@ export default function StudioResponseViewer({
     return item ? item[1] : null;
   };
 
+  // Status badge color for the panel header pill
+  const getStatusBadgeStyle = (status: number): React.CSSProperties => {
+    if (status >= 200 && status < 300) return { color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.06)" };
+    if (status >= 300 && status < 400) return { color: "#3b82f6", border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.06)" };
+    if (status >= 400 && status < 500) return { color: "#eab308", border: "1px solid rgba(234,179,8,0.3)", background: "rgba(234,179,8,0.06)" };
+    return { color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.06)" };
+  };
+
   return (
-    <div className="flex flex-col h-full flex-1 min-w-0 bg-bg-root">
-      
-      {/* TAB BAR */}
-      <div className="flex items-end px-3 pt-2 bg-bg-panel border-b border-border-subtle shrink-0">
-        <div className="flex items-end gap-[2px]">
-          {RESPONSE_TABS.map(t => {
-            const active = responseTab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => onTabChange(t.id)}
-                className={active 
-                  ? "px-3 py-2 text-xs font-semibold text-text-primary bg-bg-card border border-border-subtle border-b-0 rounded-t-md -mb-px z-10" 
-                  : "px-3 py-2 text-xs font-semibold text-text-ghost rounded-t-md hover:text-text-muted transition-colors cursor-pointer border border-transparent border-b-0"
-                }
-              >
-                {t.label.toUpperCase()}
-                {t.id === "cookies" && responseCookies.length > 0 && (
-                  <span className="ml-1.5 px-1.5 rounded-full bg-accent10 text-accent text-[10px] py-0.5">
-                    {responseCookies.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+    <div className="flex flex-col h-full flex-1 min-w-0" style={{ background: "var(--color-bg-root)" }}>
+
+      {/* PANEL HEADER */}
+      <div
+        className="h-7 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center justify-between px-2 font-mono text-[10px] tracking-[0.18em]"
+        style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+      >
+        <div className="flex items-center gap-1.5 text-[color:var(--color-text-muted)]">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-accent)" }} />
+          <span className="uppercase">RESPONSE</span>
         </div>
-
-        <div className="flex-1" />
-
-        {/* Action Buttons in Tab Bar */}
-        <div className="flex items-center gap-1.5 pb-1">
-          <button onClick={onBeautify} disabled={!hasBody} title="Beautify JSON" className="flex items-center justify-center w-[26px] h-[26px] rounded-md border border-border-subtle bg-bg-card text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-            <Wand2 size={13} />
-          </button>
-          
-          <button onClick={onMirrorToRequest} disabled={!hasBody} title="Mirror body to request" className="flex items-center justify-center w-[26px] h-[26px] rounded-md border border-border-subtle bg-bg-card text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-            <ArrowLeftRight size={13} />
-          </button>
-
-          <button onClick={onShowPoc} disabled={!hasBody} title="Export PoC snippet" className="flex items-center justify-center w-[26px] h-[26px] rounded-md border border-border-subtle bg-bg-card text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-            <Code2 size={13} />
-          </button>
-
-          <button onClick={onToggleCompare} disabled={!hasBody} title="Diff / Compare" className={`flex items-center justify-center w-[26px] h-[26px] rounded-md border border-border-subtle bg-bg-card transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${compareMode ? 'text-accent border-accent bg-accent10' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'}`}>
-            <GitCompare size={13} />
-          </button>
-
-          <button onClick={handleCopy} disabled={!hasBody} title="Copy response body" className="flex items-center justify-center w-[26px] h-[26px] rounded-md border border-border-subtle bg-bg-card text-text-muted hover:text-text-primary hover:bg-bg-hover transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-            <Copy size={13} />
-          </button>
-          
-          <div className="w-px h-4 bg-border-subtle mx-1" />
-
-          <button onClick={onClear} title="Clear response" className="flex items-center justify-center w-[26px] h-[26px] rounded-md border border-border-subtle bg-bg-card text-text-muted hover:text-status-critical hover:bg-status-critical10 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed">
-            <Trash2 size={13} />
-          </button>
+        {/* Inline status + action buttons */}
+        <div className="flex items-center gap-1">
+          {response && (
+            <>
+              <span
+                className="font-mono text-[10px] px-1.5 py-0.5 rounded-sm"
+                style={getStatusBadgeStyle(response.status)}
+              >
+                {response.status} {getStatusText(response.status)}
+              </span>
+              <span className="font-mono text-[10px] text-[color:var(--color-text-muted)] mx-1">
+                {response.timing_ms ?? 0}ms · {(new Blob([response.body || ""]).size / 1024).toFixed(2)} KB
+              </span>
+            </>
+          )}
+          <TBtn title="Save" onClick={() => { }}>
+            <SaveIcon size={10} />
+          </TBtn>
+          <TBtn title="Copy response body" onClick={handleCopy} disabled={!hasBody}>
+            <CopyIcon size={10} />
+          </TBtn>
         </div>
       </div>
 
-      {/* STATUS BAR */}
-      {response && !error && (
-        <div className="flex items-center gap-3 px-4 py-2 bg-bg-panel border-b border-border-subtle flex-wrap min-h-[36px] shrink-0">
-          <div className="flex items-center gap-2">
-            <span className={`font-mono text-sm font-bold ${getStatusClass(response.status)}`}>{response.status}</span>
-            <span className="text-xs text-text-ghost uppercase tracking-wider font-semibold">{getStatusText(response.status)}</span>
-          </div>
-
-          <div className="w-px h-3 bg-border-subtle" />
-
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-text-ghost">Time</span>
-            <span className="font-mono text-xs text-text-muted pl-1">{response.timing_ms ?? 0} ms</span>
-          </div>
-
-          <div className="w-px h-3 bg-border-subtle" />
-
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-text-ghost">Size</span>
-            <span className="font-mono text-xs text-text-muted pl-1">{new Blob([response.body || ""]).size} B</span>
-          </div>
-
-          {getContentType() && (
-            <>
-              <div className="w-px h-3 bg-border-subtle" />
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-text-ghost">Format</span>
-                <span className="font-mono text-xs text-text-muted pl-1 truncate max-w-[150px]">{getContentType()}</span>
-              </div>
-            </>
-          )}
+      {/* SUB-TABS */}
+      <div
+        className="h-7 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center px-1 font-mono text-[10.5px] tracking-[0.14em]"
+        style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+      >
+        {RESPONSE_TABS.map(t => {
+          const active = responseTab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => onTabChange(t.id)}
+              className="relative h-7 px-3 flex items-center gap-1.5 transition-colors"
+              style={{ color: active ? "var(--color-text-primary)" : "var(--color-text-muted)" }}
+            >
+              <span>{t.label.toUpperCase()}</span>
+              {t.id === "cookies" && responseCookies.length > 0 && (
+                <span className="px-1 text-[9.5px] rounded-sm" style={{ background: "var(--color-bg-panel)", color: "var(--color-text-ghost)" }}>
+                  {responseCookies.length}
+                </span>
+              )}
+              {t.id === "headers" && response && response.headers.length > 0 && (
+                <span className="px-1 text-[9.5px] rounded-sm" style={{ background: "var(--color-bg-panel)", color: "var(--color-text-ghost)" }}>
+                  {response.headers.length}
+                </span>
+              )}
+              {active && (
+                <span
+                  className="absolute left-2 right-2 -bottom-px h-[1px]"
+                  style={{ background: "var(--color-accent)" }}
+                />
+              )}
+            </button>
+          );
+        })}
+        <div className="flex-1" />
+        {/* Tool buttons: beautify, mirror, poc, diff */}
+        <div className="flex items-center gap-0.5 pr-1">
+          <TBtn title="Beautify JSON" onClick={onBeautify} disabled={!hasBody}>
+            <WandIcon size={11} />
+          </TBtn>
+          <TBtn title="Mirror body to request" onClick={onMirrorToRequest} disabled={!hasBody}>
+            <ArrowLeftRightIcon size={11} />
+          </TBtn>
+          <TBtn title="Export PoC snippet" onClick={onShowPoc} disabled={!hasBody}>
+            <Code2Icon size={11} />
+          </TBtn>
+          <TBtn
+            title="Diff / Compare"
+            onClick={onToggleCompare}
+            disabled={!hasBody}
+            active={compareMode}
+          >
+            <GitCompareIcon size={11} />
+          </TBtn>
+          <div className="w-px h-3 bg-[color:var(--color-border-subtle)] mx-1" />
+          <TBtn title="Clear response" onClick={onClear}>
+            <TrashIcon size={11} />
+          </TBtn>
         </div>
-      )}
+      </div>
 
       {/* BODY SECTIONS */}
       <div className="flex flex-1 overflow-hidden">
-        
+
         {responseTab === "body" && (
           <div className="flex flex-col flex-1 min-w-0">
             {response?.body_truncated && (
-              <div className="bg-status-warning20 border-b border-status-warning/30 px-4 py-1.5 text-[10px] text-status-warning font-mono shrink-0">
+              <div className="border-b border-[color:var(--color-status-warning)]/30 px-4 py-1.5 text-[10px] text-[color:var(--color-status-warning)] font-mono shrink-0" style={{ background: "rgba(234,179,8,0.08)" }}>
                 ⚠ Response truncated — showing first portion only.
               </div>
             )}
-            
+
             {!response && !error && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-text-ghost">
-                <Send size={24} className="opacity-20" />
-                <span className="font-mono text-xs opacity-50 text-center px-6">Send a request to see the response</span>
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[color:var(--color-text-ghost)]">
+                <SendIcon size={24} className="opacity-20" />
+                <span className="font-mono text-[11px] opacity-50 text-center px-6">
+                  Send a request to see the response
+                </span>
               </div>
             )}
-            
+
             {error && !response && (
-              <div className="flex-1 p-4 font-mono text-xs text-status-critical bg-bg-root overflow-auto break-words">
+              <div className="flex-1 p-4 font-mono text-[11.5px] text-[color:var(--color-status-critical)] overflow-auto break-words" style={{ background: "var(--color-bg-root)" }}>
                 {error}
               </div>
             )}
-            
+
             {response && !compareMode && (
-              <div className="flex flex-1 overflow-hidden bg-bg-root">
-                <div className="shrink-0 min-w-[40px] text-right px-3 py-4 font-mono text-[10px] text-text-ghost leading-7 border-r border-border-subtle bg-bg-card select-none">
+              <div className="flex flex-1 overflow-hidden" style={{ background: "var(--color-bg-root)" }}>
+                {/* Gutter */}
+                <div
+                  className="shrink-0 pt-1.5 pb-2 font-mono text-[11.5px] text-right select-none sticky left-0 border-r border-[color:var(--color-border-subtle)]"
+                  style={{ background: "var(--color-bg-root)", color: "var(--color-border-hover)" }}
+                >
                   {codeLines.map((_, i) => (
-                    <div key={i}>{i + 1}</div>
+                    <div key={i} className="px-2 leading-relaxed">{i + 1}</div>
                   ))}
                 </div>
-                <div className="flex-1 overflow-auto px-4 py-4 font-mono text-xs text-text-primary leading-7 whitespace-pre bg-bg-root">
+                {/* Code */}
+                <div className="flex-1 overflow-auto px-3 py-1.5 font-mono text-[11.5px] text-[color:var(--color-text-primary)] leading-relaxed whitespace-pre" style={{ background: "var(--color-bg-root)" }}>
                   {codeLines.map((line, i) => (
                     <div key={i}><CodeLine line={line} /></div>
                   ))}
                 </div>
               </div>
             )}
-            
+
             {compareMode && diffLines.length > 0 && (
-              <div className="flex flex-1 overflow-hidden bg-bg-root">
-                {/* Diff Gutter */}
-                <div className="shrink-0 min-w-[40px] text-right px-3 py-4 font-mono text-[10px] text-text-ghost leading-7 border-r border-border-subtle bg-bg-card select-none">
+              <div className="flex flex-1 overflow-hidden" style={{ background: "var(--color-bg-root)" }}>
+                {/* Diff gutter */}
+                <div
+                  className="shrink-0 pt-1.5 pb-2 font-mono text-[11.5px] text-right select-none sticky left-0 border-r border-[color:var(--color-border-subtle)]"
+                  style={{ background: "var(--color-bg-root)", color: "var(--color-text-muted)" }}
+                >
                   {diffLines.map((line, i) => (
-                    <div key={i} className={line.type === "added" ? "text-status-success" : line.type === "removed" ? "text-status-critical" : "text-text-muted"}>
+                    <div
+                      key={i}
+                      className="px-2 leading-relaxed"
+                      style={{
+                        color: line.type === "added"
+                          ? "var(--color-status-success)"
+                          : line.type === "removed"
+                            ? "var(--color-status-critical)"
+                            : undefined,
+                      }}
+                    >
                       {line.type === "added" ? "+" : line.type === "removed" ? "−" : i + 1}
                     </div>
                   ))}
                 </div>
-                {/* Diff Content */}
-                <div className="flex-1 overflow-auto py-4 font-mono text-xs leading-7 whitespace-pre bg-bg-root">
+                {/* Diff content */}
+                <div className="flex-1 overflow-auto py-1.5 font-mono text-[11.5px] leading-relaxed whitespace-pre" style={{ background: "var(--color-bg-root)" }}>
                   {diffLines.map((line, i) => (
-                    <div 
-                      key={i} 
-                      className={`px-4 flex min-w-max ${
-                        line.type === "added" ? "bg-status-success10 text-status-success" : 
-                        line.type === "removed" ? "bg-status-critical10 text-status-critical" : 
-                        "text-text-muted"
-                      }`}
+                    <div
+                      key={i}
+                      className="px-4 flex min-w-max"
+                      style={{
+                        background: line.type === "added"
+                          ? "rgba(34,197,94,0.07)"
+                          : line.type === "removed"
+                            ? "rgba(239,68,68,0.07)"
+                            : undefined,
+                        color: line.type === "added"
+                          ? "var(--color-status-success)"
+                          : line.type === "removed"
+                            ? "var(--color-status-critical)"
+                            : "var(--color-text-muted)",
+                      }}
                     >
                       {line.text}
                     </div>
@@ -259,58 +299,100 @@ export default function StudioResponseViewer({
         )}
 
         {responseTab === "headers" && (
-          <div className="flex-1 overflow-y-auto bg-bg-root p-4">
+          <div className="flex-1 overflow-y-auto" style={{ background: "var(--color-bg-root)" }}>
             {!response ? (
-              <div className="flex flex-col items-center justify-center h-full text-text-ghost font-mono text-xs">No response yet.</div>
+              <div className="flex flex-col items-center justify-center h-full text-[color:var(--color-text-ghost)] font-mono text-[11px]">No response yet.</div>
             ) : response.headers.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-text-ghost font-mono text-xs">No headers.</div>
+              <div className="flex flex-col items-center justify-center h-full text-[color:var(--color-text-ghost)] font-mono text-[11px]">No headers.</div>
             ) : (
-              <div className="grid grid-cols-[minmax(120px,200px)_1fr] divide-y divide-border-subtle border border-border-subtle rounded-md">
-                {response.headers.map(([k, v], i) => (
-                  <React.Fragment key={i}>
-                    <div className="font-mono text-xs text-[#9ecbff] py-2 px-3 break-words bg-bg-panel">{k}</div>
-                    <div className="font-mono text-xs text-text-muted py-2 px-3 break-words bg-bg-card">{v}</div>
-                  </React.Fragment>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {responseTab === "cookies" && (
-          <div className="flex-1 overflow-y-auto bg-bg-root p-4">
-            {responseCookies.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-text-ghost font-mono text-xs">No Set-Cookie headers.</div>
-            ) : (
-              <table className="w-full border-collapse border border-border-subtle rounded-md overflow-hidden bg-bg-card inline-table">
-                <thead>
-                  <tr>
-                    <th className="text-[10px] font-bold uppercase tracking-[0.06em] text-text-ghost px-3 py-2 text-left bg-bg-panel border-b border-border-subtle w-1/3">Name</th>
-                    <th className="text-[10px] font-bold uppercase tracking-[0.06em] text-text-ghost px-3 py-2 text-left bg-bg-panel border-b border-border-subtle">Value</th>
-                  </tr>
-                </thead>
+              <table className="w-full font-mono text-[11px]">
                 <tbody>
-                  {responseCookies.map(([k, v], i) => {
-                    const parts = v.split(';');
-                    const rawName = parts[0].split('=')[0];
-                    return (
-                       <tr key={i} className="hover:bg-bg-hover transition-colors">
-                        <td className="font-mono text-xs text-[#9ecbff] px-3 py-2 border-b border-border-subtle align-top break-words">
-                          {rawName || k}
-                        </td>
-                        <td className="font-mono text-xs text-text-muted px-3 py-2 border-b border-border-subtle break-words">
-                          {v}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {response.headers.map(([k, v], i) => (
+                    <tr key={i} className="border-b border-[color:var(--color-border-subtle)]">
+                      <td className="py-1 pl-3 pr-3 align-top w-[34%]" style={{ color: "#fdba74" }}>{k}</td>
+                      <td className="py-1 pr-3 text-[color:var(--color-text-primary)] break-all">{v}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}
           </div>
         )}
 
+        {responseTab === "cookies" && (
+          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px]" style={{ background: "var(--color-bg-root)" }}>
+            {responseCookies.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-[color:var(--color-text-ghost)]">No Set-Cookie headers.</div>
+            ) : (
+              <>
+                <div className="text-[color:var(--color-text-muted)] mb-1 text-[9.5px] uppercase tracking-wider">Set-Cookie</div>
+                <div className="border border-[color:var(--color-border-subtle)] p-2 space-y-1">
+                  {responseCookies.map(([k, v], i) => {
+                    const parts = v.split(';');
+                    const rawName = parts[0].split('=')[0];
+                    const attrs = parts.slice(1).join(';').trim();
+                    return (
+                      <div key={i}>
+                        <span style={{ color: "#fdba74" }}>{rawName || k}</span>
+                        {v.includes('=') && <span className="text-[color:var(--color-text-primary)]">={parts[0].split('=').slice(1).join('=')}</span>}
+                        {attrs && <span className="text-[color:var(--color-text-ghost)] ml-1">{attrs}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* STATUS FOOTER — only when response exists */}
+      {response && !error && (
+        <div
+          className="h-6 shrink-0 border-t border-[color:var(--color-border-subtle)] px-2 flex items-center justify-between font-mono text-[9.5px] text-[color:var(--color-text-muted)]"
+          style={{ background: "var(--color-bg-root-2, var(--color-bg-panel))" }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <span
+                className="w-1 h-1 rounded-full"
+                style={{ background: "var(--color-status-success)" }}
+              />
+              connected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`font-bold ${getStatusClass(response.status)}`}>{response.status}</span>
+            <span>{response.timing_ms ?? 0}ms</span>
+            <span className="text-[color:var(--color-text-primary)]">{new Blob([response.body || ""]).size}B</span>
+            {getContentType() && <span className="truncate max-w-[120px]">{getContentType()}</span>}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+// Shared tool-button in response panel header
+function TBtn({
+  title, onClick, disabled, active, children,
+}: {
+  title: string; onClick?: () => void; disabled?: boolean; active?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="w-5 h-5 flex items-center justify-center rounded-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{
+        color: active ? "var(--color-accent)" : "var(--color-text-ghost)",
+        background: active ? "rgba(249,115,22,0.1)" : undefined,
+      }}
+      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-primary)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = active ? "var(--color-accent)" : "var(--color-text-ghost)"; }}
+    >
+      {children}
+    </button>
   );
 }

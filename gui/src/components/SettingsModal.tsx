@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SectionLabel, TextInput, Toggle, ConfirmationModal } from "./primitives";
 import {
-    X, Sliders, KeyRound, RotateCcw, Radar,
-    ZoomIn, Volume2, LayoutTemplate,
-    Cpu, BellRing, Link, Send
-} from "lucide-react";
+    CloseIcon, CogIcon, RotateCcwIcon, SendIcon,
+    CpuIcon, BellIcon, LayoutIcon, RadarIcon,
+    LinkIcon, VolumeIcon, ZoomInIcon, KeyIcon
+} from "./icons";
 import { playSound } from "../utils/audio";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -95,20 +95,20 @@ export function saveSettings(s: AppSettings) {
 
 function SettingsToggleRow({ label, desc, checked, onChange, onTest, testLabel }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void; onTest?: () => void; testLabel?: string; }) {
     return (
-        <div className="flex items-center justify-between p-4 rounded-xl border border-border-subtle bg-bg-card hover:border-border-hover transition-all duration-200 group/row">
+        <div className="flex items-center justify-between px-4 py-3 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-panel)] hover:border-[color:var(--color-border-hover)] transition-colors duration-150 group/row">
             <div className="flex-1 pr-4">
                 <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-text-primary">{label}</span>
+                    <span className="text-xs text-[color:var(--color-text-primary)]">{label}</span>
                     {onTest && checked && (
                         <button
                             onClick={onTest}
-                            className="opacity-0 group-hover/row:opacity-100 px-2 py-0.5 rounded-md bg-accent/10 border border-accent/20 text-[10px] font-bold uppercase tracking-wider text-accent-text hover:bg-accent/20 transition-all duration-200"
+                            className="opacity-0 group-hover/row:opacity-100 px-2 py-0.5 border border-[color:var(--color-border-subtle)] text-[10px] font-mono uppercase tracking-[0.12em] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] transition-all duration-150"
                         >
                             {testLabel || "Test"}
                         </button>
                     )}
                 </div>
-                {desc && <p className="text-[11px] text-text-muted mt-1">{desc}</p>}
+                {desc && <p className="text-[11px] text-[color:var(--color-text-muted)] mt-0.5 leading-snug">{desc}</p>}
             </div>
             <Toggle checked={checked} onChange={onChange} />
         </div>
@@ -117,8 +117,8 @@ function SettingsToggleRow({ label, desc, checked, onChange, onTest, testLabel }
 
 function SettingsNumberInput({ label, value, onChange, min, max, suffix }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; suffix?: string; }) {
     return (
-        <div className="flex flex-col gap-2">
-            {label && <label className="text-[11px] text-text-muted font-bold uppercase tracking-wider">{label}</label>}
+        <div className="flex flex-col gap-1.5">
+            {label && <label className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-muted)]">{label}</label>}
             <div className="relative w-32">
                 <input
                     type="number"
@@ -134,9 +134,9 @@ function SettingsNumberInput({ label, value, onChange, min, max, suffix }: { lab
                         finalVal = Math.max(min, Math.min(max, finalVal));
                         onChange(finalVal);
                     }}
-                    className="w-full bg-bg-root border border-border-subtle rounded-lg pl-3 pr-8 py-2.5 text-sm text-text-primary font-mono focus:border-accent focus:ring-1 focus:ring-accent/50 outline-none transition-all"
+                    className="w-full bg-[color:var(--color-bg-input)] border border-[color:var(--color-border-subtle)] pl-3 pr-8 py-2 text-xs text-[color:var(--color-text-primary)] font-mono focus:border-[color:var(--color-accent)] focus:outline-none transition-colors duration-150"
                 />
-                {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-text-muted select-none pointer-events-none">{suffix}</span>}
+                {suffix && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[color:var(--color-text-muted)] select-none pointer-events-none">{suffix}</span>}
             </div>
         </div>
     );
@@ -227,9 +227,9 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
     };
 
     const tabs = [
-        { id: "engine", label: "Engine Config", icon: Cpu, desc: "Scanner & Crawler limits" },
-        { id: "alerts", label: "Alerts & Audio", icon: BellRing, desc: "Webhooks & Sounds" },
-        { id: "workspace", label: "Workspace", icon: LayoutTemplate, desc: "UI, Paths & Scaling" }
+        { id: "engine",    label: "Engine Config",   icon: CpuIcon,    desc: "Scanner & Crawler limits" },
+        { id: "alerts",    label: "Alerts & Audio",  icon: BellIcon,   desc: "Webhooks & Sounds" },
+        { id: "workspace", label: "Workspace",        icon: LayoutIcon, desc: "UI, Paths & Scaling" }
     ] as const;
 
     return (
@@ -238,52 +238,47 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
             onClick={handleOverlayClick}
             className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
         >
-            <div className={`relative w-full max-w-4xl h-[75vh] flex flex-col overflow-hidden rounded-2xl border border-border-subtle bg-bg-panel shadow-2xl ${isClosing ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
+            <div className={`relative w-full max-w-4xl h-[75vh] flex flex-col overflow-hidden border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-panel)] ${isClosing ? "animate-fade-slide-out" : "animate-fade-slide-in"}`}>
                 
                 {/* Global Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle shrink-0 bg-gradient-surface">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-accent/10 border border-accent/20 text-accent-text">
-                            <Sliders size={18} strokeWidth={2.5} />
-                        </div>
-                        <div>
-                            <h2 className="text-base font-bold text-text-primary tracking-wide">Settings</h2>
-                            <p className="text-[11px] text-text-muted uppercase tracking-widest mt-0.5">Application Preferences</p>
-                        </div>
+                <div className="flex items-center justify-between px-5 py-3 border-b border-[color:var(--color-border-subtle)] shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <CogIcon size={14} className="text-[color:var(--color-accent)]" />
+                        <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:var(--color-accent)]">Settings</span>
+                        <span className="text-[color:var(--color-border-hover)] mx-1 text-[10px]">/</span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[color:var(--color-text-muted)]">Application Preferences</span>
                     </div>
                     <button
                         onClick={handleFinalClose}
-                        className="rounded-lg p-2 text-text-ghost hover:text-text-primary hover:bg-bg-hover transition-all duration-300 hover:rotate-90 hover:scale-110 active:scale-90"
+                        className="w-6 h-6 flex items-center justify-center text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text-primary)] transition-colors duration-150"
                     >
-                        <X size={20} strokeWidth={2.5} />
+                        <CloseIcon size={14} />
                     </button>
                 </div>
 
                 <div className="flex flex-1 overflow-hidden min-h-0">
                     
                     {/* Sidebar Navigation */}
-                    <div className="w-64 shrink-0 border-r border-border-subtle bg-bg-root/50 p-4 flex flex-col gap-2">
+                    <div className="w-52 shrink-0 border-r border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] flex flex-col gap-px p-2">
                         {tabs.map((tab) => {
-                            const Icon = tab.icon;
+                            const TabIcon = tab.icon;
                             const isActive = activeTab === tab.id;
                             return (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as TabID)}
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-left ${
-                                        isActive 
-                                            ? "bg-accent/10 border border-accent/20 shadow-[0_0_15px_rgba(var(--color-accent),0.05)]" 
-                                            : "border border-transparent hover:bg-bg-hover hover:border-border-subtle"
+                                    className={`flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 ${
+                                        isActive
+                                            ? "bg-[color:var(--color-bg-hover)] border-l-2 border-[color:var(--color-accent)] text-[color:var(--color-text-primary)]"
+                                            : "border-l-2 border-transparent text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-bg-hover)] hover:text-[color:var(--color-text-primary)]"
                                     }`}
                                 >
-                                    <Icon size={18} className={isActive ? "text-accent-text" : "text-text-ghost"} strokeWidth={2} />
+                                    <TabIcon size={13} className={isActive ? "text-[color:var(--color-accent)]" : "text-[color:var(--color-text-ghost)]"} />
                                     <div>
-                                        <div className={`text-sm font-bold ${isActive ? "text-text-primary" : "text-text-secondary"}`}>
+                                        <div className={`text-[11px] font-mono uppercase tracking-[0.12em] ${isActive ? "text-[color:var(--color-text-primary)]" : "text-[color:var(--color-text-muted)]"}`}>
                                             {tab.label}
                                         </div>
-                                        <div className={`text-[10px] mt-0.5 ${isActive ? "text-accent-text/70" : "text-text-muted"}`}>
-                                            {tab.desc}
-                                        </div>
+                                        <div className="text-[10px] text-[color:var(--color-text-ghost)] mt-0.5 leading-none">{tab.desc}</div>
                                     </div>
                                 </button>
                             );
@@ -291,14 +286,14 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                     </div>
 
                     {/* Content Area */}
-                    <div className="flex-1 overflow-y-auto px-10 py-8 custom-scrollbar bg-bg-panel">
+                    <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar bg-[color:var(--color-bg-panel)]">
                         
                         {/* ── TAB 1: ENGINE CONFIG ── */}
                         {activeTab === "engine" && (
                             <div className="space-y-8 animate-fade-slide-in">
                                 <section>
-                                    <SectionLabel icon={Cpu}>Scanner Defaults</SectionLabel>
-                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm flex gap-10">
+                                    <SectionLabel icon={CpuIcon}>Scanner Defaults</SectionLabel>
+                                    <div className="mt-3 p-5 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] flex gap-8">
                                         <SettingsNumberInput label="Threads" value={draft.defaultThreads} onChange={(v) => set("defaultThreads", v)} min={1} max={500} />
                                         <SettingsNumberInput label="Timeout" value={draft.defaultTimeout} onChange={(v) => set("defaultTimeout", v)} min={1} max={120} suffix="s" />
                                         <SettingsNumberInput label="Rate Limit" value={draft.defaultRateLimit} onChange={(v) => set("defaultRateLimit", v)} min={1} max={5000} suffix="req/s" />
@@ -306,8 +301,8 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                 </section>
 
                                 <section>
-                                    <SectionLabel icon={Radar}>Crawler Defaults</SectionLabel>
-                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm flex gap-10">
+                                    <SectionLabel icon={RadarIcon}>Crawler Defaults</SectionLabel>
+                                    <div className="mt-3 p-5 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] flex gap-8">
                                         <SettingsNumberInput label="Max Depth" value={draft.defaultCrawlerDepth} onChange={(v) => set("defaultCrawlerDepth", v)} min={1} max={10} />
                                         <SettingsNumberInput label="Max URLs" value={draft.defaultCrawlerMaxUrls} onChange={(v) => set("defaultCrawlerMaxUrls", v)} min={5} max={500} />
                                         <SettingsNumberInput label="Timeout" value={draft.defaultCrawlerTimeout} onChange={(v) => set("defaultCrawlerTimeout", v)} min={1} max={300} suffix="s" />
@@ -320,9 +315,9 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                         {activeTab === "alerts" && (
                             <div className="space-y-8 animate-fade-slide-in">
                                 <section>
-                                    <SectionLabel icon={Link}>Integrations</SectionLabel>
-                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm">
-                                        <label className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider block">
+                                    <SectionLabel icon={LinkIcon}>Integrations</SectionLabel>
+                                    <div className="mt-3 p-5 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)]">
+                                        <label className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-muted)] mb-2 block">
                                             Global Webhook URL
                                         </label>
                                         <div className="flex gap-3 items-start">
@@ -337,25 +332,25 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                             <button
                                                 onClick={handleTestWebhook}
                                                 disabled={!currentUrl || !isWebhookValid || isTestingWebhook}
-                                                className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                                                    (!currentUrl || !isWebhookValid) 
-                                                        ? 'bg-bg-hover text-text-ghost cursor-not-allowed' 
-                                                        : 'bg-accent/10 text-accent-text border border-accent/20 hover:bg-accent/20'
+                                                className={`flex shrink-0 items-center gap-2 px-3 py-2 text-[10px] font-mono uppercase tracking-[0.15em] border transition-colors duration-150 ${
+                                                    (!currentUrl || !isWebhookValid)
+                                                        ? "border-[color:var(--color-border-subtle)] text-[color:var(--color-text-ghost)] cursor-not-allowed"
+                                                        : "border-[color:var(--color-accent)] text-[color:var(--color-accent)] hover:bg-[color:var(--color-accent)] hover:text-white"
                                                 }`}
                                             >
-                                                <Send size={14} />
+                                                <SendIcon size={12} />
                                                 {isTestingWebhook ? "Sending..." : "Test Webhook"}
                                             </button>
                                         </div>
-                                        <p className="mt-2 text-xs text-text-ghost">Automatically sends scan alerts to this webhook (supports Discord/Slack/n8n).</p>
-                                        {webhookError && <p className="mt-2 text-xs font-semibold text-status-critical bg-status-critical/10 px-3 py-2 rounded-lg border border-status-critical/20 inline-block">{webhookError}</p>}
+                                        <p className="mt-2 text-[11px] text-[color:var(--color-text-ghost)]">Automatically sends scan alerts to this webhook (supports Discord/Slack/n8n).</p>
+                                        {webhookError && <p className="mt-2 text-xs font-mono text-[color:var(--color-status-critical)] border border-[color:var(--color-status-critical)]/30 px-3 py-1.5 inline-block">{webhookError}</p>}
                                         {webhookTestSuccess && (
-                                            <span className="mt-2 text-xs font-semibold text-status-success animate-fade-slide-in block">
+                                            <span className="mt-2 text-xs font-mono text-[color:var(--color-status-success)] animate-fade-slide-in block">
                                                 ✓ Connected
                                             </span>
                                         )}
                                         {webhookTestError && (
-                                            <p className="mt-2 text-xs font-semibold text-status-critical block">
+                                            <p className="mt-2 text-xs font-mono text-[color:var(--color-status-critical)] block">
                                                 {webhookTestError}
                                             </p>
                                         )}
@@ -363,8 +358,8 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                 </section>
 
                                 <section>
-                                    <SectionLabel icon={Volume2}>Audio Notifications</SectionLabel>
-                                    <div className="mt-4 space-y-3">
+                                    <SectionLabel icon={VolumeIcon}>Audio Notifications</SectionLabel>
+                                    <div className="mt-3 space-y-px">
                                         <SettingsToggleRow
                                             label="Enable Master Sound"
                                             desc="Play sound effects for important scan events"
@@ -373,11 +368,10 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                         />
 
                                         <div className={`transition-all duration-300 overflow-hidden ${draft.soundEnabled ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}>
-                                            <div className="p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm mt-3 space-y-6">
-                                                
+                                            <div className="p-5 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] mt-px space-y-4">
                                                 <SettingsNumberInput label="Master Volume" value={draft.soundVolume} onChange={(v) => set("soundVolume", v)} min={0} max={100} suffix="%" />
 
-                                                <div className="grid grid-cols-2 gap-3 pt-6 border-t border-border-subtle/50">
+                                                <div className="grid grid-cols-2 gap-px pt-4 border-t border-[color:var(--color-border-subtle)]">
                                                     <SettingsToggleRow label="Scan Start" checked={draft.soundOnStart} onChange={(v) => set("soundOnStart", v)} onTest={() => playSound("start", true, draft.soundVolume)} />
                                                     <SettingsToggleRow label="Scan Complete" checked={draft.soundOnComplete} onChange={(v) => set("soundOnComplete", v)} onTest={() => playSound("complete", true, draft.soundVolume)} />
                                                     <SettingsToggleRow label="Finding Discovered" checked={draft.soundOnFinding} onChange={(v) => set("soundOnFinding", v)} onTest={() => playSound("finding", true, draft.soundVolume)} />
@@ -394,9 +388,9 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                         {activeTab === "workspace" && (
                             <div className="space-y-8 animate-fade-slide-in">
                                 <section>
-                                    <SectionLabel icon={KeyRound}>Paths</SectionLabel>
-                                    <div className="mt-4 p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm">
-                                        <label className="text-[11px] text-text-muted mb-2 font-bold uppercase tracking-wider block">
+                                    <SectionLabel icon={KeyIcon}>Paths</SectionLabel>
+                                    <div className="mt-3 p-5 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)]">
+                                        <label className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-muted)] mb-2 block">
                                             Default Output File
                                         </label>
                                         <TextInput
@@ -405,22 +399,21 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                             placeholder="scan_results.json"
                                             mono
                                         />
-                                        <p className="mt-2 text-xs text-text-ghost">Relative to the Arkenar installation directory.</p>
+                                        <p className="mt-2 text-[11px] text-[color:var(--color-text-ghost)]">Relative to the Arkenar installation directory.</p>
                                     </div>
                                 </section>
 
                                 <section>
-                                    <SectionLabel icon={LayoutTemplate}>Interface & Behaviour</SectionLabel>
-                                    <div className="mt-4 space-y-3">
-                                        <div className="p-6 rounded-xl border border-border-subtle bg-bg-card shadow-sm flex justify-between items-center gap-4">
+                                    <SectionLabel icon={LayoutIcon}>Interface & Behaviour</SectionLabel>
+                                    <div className="mt-3 space-y-px">
+                                        <div className="p-5 border border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] flex justify-between items-center gap-4">
                                             <div>
-                                                <div className="flex items-center gap-3 mb-1">
-                                                    <ZoomIn size={16} className="text-accent-text" />
-                                                    <span className="text-sm font-semibold text-text-primary">UI Scale</span>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <ZoomInIcon size={13} className="text-[color:var(--color-accent)]" />
+                                                    <span className="text-xs text-[color:var(--color-text-primary)]">UI Scale</span>
                                                 </div>
-                                                <p className="text-[11px] text-text-muted">Adjust the overall size of text and interface elements. Applies on save.</p>
+                                                <p className="text-[11px] text-[color:var(--color-text-muted)]">Adjust the overall size of text and interface elements. Applies on save.</p>
                                             </div>
-                                            
                                             <SettingsNumberInput label="" value={draft.uiScale} onChange={(v) => set("uiScale", v)} min={75} max={150} suffix="%" />
                                         </div>
 
@@ -445,26 +438,26 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                 </div>
 
                 {/* Global Footer */}
-                <div className="px-6 py-4 border-t border-border-subtle bg-bg-card flex items-center justify-between shrink-0">
+                <div className="px-5 py-3 border-t border-[color:var(--color-border-subtle)] bg-[color:var(--color-bg-root)] flex items-center justify-between shrink-0">
                     <button
                         onClick={handleResetToDefaults}
-                        className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-text-ghost hover:text-status-critical transition-all duration-300"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-status-critical)] transition-colors duration-150"
                     >
-                        <RotateCcw size={14} />
+                        <RotateCcwIcon size={12} />
                         Reset All Defaults
                     </button>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={handleFinalClose}
-                            className="px-5 py-2 text-xs font-bold text-text-secondary hover:text-text-primary transition-all duration-300"
+                            className="px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] text-[color:var(--color-text-muted)] border border-[color:var(--color-border-subtle)] hover:bg-[color:var(--color-bg-hover)] hover:text-[color:var(--color-text-primary)] transition-colors duration-150"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleSave}
                             disabled={!!webhookError || !hasUnsavedChanges()}
-                            className={`bg-accent text-bg-root px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-300 ${
-                                (webhookError || !hasUnsavedChanges()) ? 'opacity-50 cursor-not-allowed saturate-50' : 'hover:brightness-110 btn-glow active:scale-95'
+                            className={`px-5 py-1.5 text-[10px] font-mono uppercase tracking-[0.15em] bg-[color:var(--color-accent)] text-white border border-[color:var(--color-accent)] transition-all duration-150 ${
+                                (webhookError || !hasUnsavedChanges()) ? "opacity-40 cursor-not-allowed" : "hover:brightness-110 active:scale-95"
                             }`}
                         >
                             Save Changes

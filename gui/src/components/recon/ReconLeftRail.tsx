@@ -1,3 +1,5 @@
+import { CloseIcon } from "../icons";
+
 interface ReconLeftRailProps {
   enableSubdomains: boolean;
   enablePortScan: boolean;
@@ -17,7 +19,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   return (
     <span
       className="rw-toggle"
-      style={{ background: on ? "#ff6b35" : "#333" }}
+      style={{ background: on ? "var(--color-accent)" : "var(--color-border-hover)" }}
       onClick={() => onChange(!on)}
     >
       <span
@@ -25,6 +27,22 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
         style={{ transform: on ? "translateX(16px)" : "translateX(2px)" }}
       />
     </span>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5 mb-2">
+      <span
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ background: "var(--color-accent)" }}
+      />
+      <span
+        className="font-mono text-[9.5px] font-bold tracking-[0.18em] uppercase text-[color:var(--color-text-muted)]"
+      >
+        {children}
+      </span>
+    </div>
   );
 }
 
@@ -57,81 +75,97 @@ export default function ReconLeftRail({
   ];
 
   return (
-    <div style={{
-      width: 220,
-      minWidth: 220,
-      flexShrink: 0,
-      background: "#141414",
-      borderRight: "1px solid #2a2a2a",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-    }}>
-      <div className="rw-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      className="flex flex-col shrink-0 overflow-hidden border-r border-[color:var(--color-border-subtle)]"
+      style={{ width: 220, minWidth: 220, background: "var(--color-bg-panel)" }}
+    >
+      <div className="rw-scroll flex-1 overflow-y-auto p-3 flex flex-col gap-4">
 
+        {/* Modules */}
         <div>
-          <div style={{ fontSize: 10, color: "#ff6b35", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700, marginBottom: 8 }}>Modules</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <SectionLabel>Modules</SectionLabel>
+          <div className="flex flex-col gap-1.5">
             {modules.map(({ label, val, set }) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, color: val ? "#e0e0e0" : "#666" }}>{label}</span>
+              <div key={label} className="flex items-center justify-between">
+                <span
+                  className="font-mono text-[11px]"
+                  style={{ color: val ? "var(--color-text-primary)" : "var(--color-text-ghost)" }}
+                >
+                  {label}
+                </span>
                 <Toggle on={val} onChange={set} />
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ height: 1, background: "#2a2a2a", flexShrink: 0 }} />
+        <div className="h-px shrink-0 border-t border-[color:var(--color-border-subtle)]" />
 
+        {/* Pipeline */}
         <div>
-          <div style={{ fontSize: 10, color: "#ff6b35", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700, marginBottom: 8 }}>Pipeline</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <SectionLabel>Pipeline</SectionLabel>
+          <div className="flex flex-col gap-1.5">
             {pipelineSteps.map((step, i) => {
               const isActive = isRunning && step.enabled;
               const isEnabled = step.enabled;
               return (
-                <div key={step.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 10, color: "#444", width: 12 }}>{i + 1}</span>
+                <div key={step.label} className="flex items-center gap-2">
+                  <span className="font-mono text-[9.5px] text-[color:var(--color-text-ghost)] w-3 shrink-0">
+                    {i + 1}
+                  </span>
                   <span
+                    className={`w-2 h-2 rounded-full shrink-0 flex-shrink-0${isActive ? " rw-pulse" : ""}`}
                     style={{
-                      fontSize: 11,
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: isActive ? "#ff6b35" : isEnabled ? "transparent" : "#333",
-                      border: isEnabled && !isActive ? "1px solid #ff6b35" : isActive ? "none" : "1px solid #333",
-                      flexShrink: 0,
+                      background: isActive
+                        ? "var(--color-accent)"
+                        : isEnabled
+                        ? "transparent"
+                        : "var(--color-border-hover)",
+                      border: isEnabled && !isActive
+                        ? "1px solid var(--color-accent)"
+                        : isActive
+                        ? "none"
+                        : "1px solid var(--color-border-hover)",
                     }}
-                    className={isActive ? "rw-pulse" : ""}
                   />
-                  <span style={{ fontSize: 11, color: isEnabled ? "#aaa" : "#444" }}>{step.label}</span>
+                  <span
+                    className="font-mono text-[11px]"
+                    style={{ color: isEnabled ? "var(--color-text-muted)" : "var(--color-text-ghost)" }}
+                  >
+                    {step.label}
+                  </span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div style={{ height: 1, background: "#2a2a2a", flexShrink: 0 }} />
+        <div className="h-px shrink-0 border-t border-[color:var(--color-border-subtle)]" />
 
+        {/* Queue */}
         <div>
-          <div style={{ fontSize: 10, color: "#ff6b35", textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700, marginBottom: 8 }}>Queue</div>
+          <SectionLabel>Queue</SectionLabel>
           {queuedHosts.length === 0 ? (
-            <div style={{ fontSize: 10, color: "#444", fontStyle: "italic" }}>No hosts queued</div>
+            <div className="font-mono text-[10px] italic text-[color:var(--color-text-ghost)]">
+              No hosts queued
+            </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div className="flex flex-col gap-1">
               {queuedHosts.map((h) => (
-                <div key={h} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                  <span style={{ fontSize: 10, color: "#aaa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{h}</span>
+                <div
+                  key={h}
+                  className="flex items-center justify-between gap-1 px-2 py-1 rounded-sm border border-[color:var(--color-border-subtle)]"
+                  style={{ background: "var(--color-bg-root)" }}
+                >
+                  <span className="font-mono text-[10px] text-[color:var(--color-text-muted)] overflow-hidden text-ellipsis whitespace-nowrap flex-1">
+                    {h}
+                  </span>
                   <button
                     onClick={() => onRemoveFromQueue(h)}
-                    style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1, flexShrink: 0 }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "#f44336")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = "#666")}
+                    className="shrink-0 flex items-center justify-center text-[color:var(--color-text-ghost)] hover:text-[color:var(--color-status-critical)] transition-colors"
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
                   >
-                    ×
+                    <CloseIcon size={10} />
                   </button>
                 </div>
               ))}
@@ -140,23 +174,19 @@ export default function ReconLeftRail({
           {queuedHosts.length > 0 && (
             <button
               onClick={onScanQueue}
+              className="mt-2 w-full font-mono text-[10px] font-bold tracking-[0.12em] uppercase py-1.5 rounded-sm border transition-colors"
               style={{
-                marginTop: 8,
-                width: "100%",
-                background: "#1a1a1a",
-                border: "1px solid #ff6b35",
-                color: "#ff6b35",
-                borderRadius: 4,
-                padding: "5px 0",
-                fontSize: 10,
-                fontFamily: "monospace",
+                background: "transparent",
+                borderColor: "var(--color-accent)",
+                color: "var(--color-accent)",
                 cursor: "pointer",
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,107,53,0.1)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#1a1a1a"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--color-bg-hover)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
             >
               ▶ Scan Queue
             </button>
