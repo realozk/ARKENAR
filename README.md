@@ -3,17 +3,17 @@
 **Designed for pentesters and offensive security pros, Arkenar acts as a central orchestration layer. It combines Katana and Nuclei, while layering on its own custom mutation engine to catch complex logic flaws and injections that static templates might miss.**
 ​
 
-**i will update thr readme just give sometime <3 **
-
 ## • Core Capabilities
 
-• **Hybrid Engine**: Seamlessly chains external tools (Katana, Nuclei) with native scanning logic for full-spectrum reconnaissance.
+• **Hybrid Engine**: Seamlessly chains external tools (Katana, Nuclei, Subfinder) with native scanning logic for full-spectrum reconnaissance.
 
 • **Smart Payload Injection**: Uses a dynamic library of payloads for XSS, SQLi, and file exposure; actively mutates to bypass WAFs and filters.
 
+• **Reconnaissance Suite**: Fast asynchronous TCP port scanning, active DNS/WHOIS resolution, subdomain footprinting, and JS secrets pattern matching.
+
 • **Noise Reduction**: Built-in response filtering cuts false positives for actionable results only.
 
-•**Deep Configuration**: Full control over threading, timeouts, and scan flags for specific rules.
+• **Deep Configuration**: Full control over threading, timeouts, and scan flags for specific rules.
 
 • **Broad Coverage**: Targets OWASP Top 10 and infrastructure misconfigurations.
 ​
@@ -44,6 +44,7 @@
 - [Installation](#installation-recommended)
 - [Usage](#usage)
 - [Troubleshooting](#troubleshooting)
+- [Architecture & Docs](#architecture--docs)
 - [Contributing](#contributing)
 - [License](#license)
 - [Disclaimer](#disclaimer)
@@ -96,7 +97,7 @@ macOS & Linux
 
 ```bash
 # Basic single target scan
-arkenar [https://example.com](https://example.com)
+arkenar https://example.com
 
 # Advanced scan with a list and custom rate limit
 arkenar -l subdomains.txt -o output.json --rate-limit 150
@@ -106,7 +107,7 @@ Windows (PowerShell / CMD)
 
 ```bash 
 # Basic single target scan
-arkenar.exe [https://example.com](https://example.com)
+arkenar.exe https://example.com
 
 # Advanced scan with a list and output file
 arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
@@ -138,10 +139,6 @@ sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
 sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
 ```
 
-or for more advanced scan 
-
-
-
 On Linux, the paths are typically:
 
 ```bash
@@ -157,6 +154,11 @@ If `arkenar --update` fails with `Permission denied`, the binary is in a protect
 sudo arkenar --update
 ```
 
+## Architecture & Docs
+For developers and contributors looking to understand the inner workings of Arkenar's core modules:
+- [System Architecture (Data Flow & Golden Rules)](ARCHITECTURE.md)
+- [Project Documentation (Component Breakdown)](ARKENAR_DOCUMENTATION.md)
+
 ## Contributing
 Contributions are welcome Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
 
@@ -165,4 +167,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Disclaimer
 This tool is for educational and authorized testing purposes only. The developer is not responsible for any misuse or damage caused by this tool. Always obtain proper authorization before scanning any target.
-
