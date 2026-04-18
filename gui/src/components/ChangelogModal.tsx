@@ -10,6 +10,7 @@ interface ChangelogModalProps {
 
 export function ChangelogModal({ isOpen, onClose, availableUpdate }: ChangelogModalProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -19,7 +20,8 @@ export function ChangelogModal({ isOpen, onClose, availableUpdate }: ChangelogMo
     try {
       await installUpdateAndRestart(availableUpdate);
     } catch (e) {
-      alert("Update failed. Please try downloading manually from GitHub.");
+      setUpdateError("Update failed. Please try downloading manually from GitHub.");
+      setTimeout(() => setUpdateError(null), 3000);
       setIsUpdating(false);
     }
   };
@@ -43,6 +45,12 @@ export function ChangelogModal({ isOpen, onClose, availableUpdate }: ChangelogMo
             <p className="text-text-muted text-sm mb-6">
               Arkenar version <span className="text-accent font-bold">{availableUpdate.version}</span> is ready to install.
             </p>
+            
+            {updateError && (
+              <p className="mb-4 text-xs font-semibold text-status-critical">
+                {updateError}
+              </p>
+            )}
             
             <button 
               onClick={handleUpdate}

@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Crosshair, FileText, Layers, Radar, Telescope, Zap,
-   RotateCcw, Plus, X, ListOrdered, FolderSearch, ClipboardPaste, 
-   BookmarkPlus, Bookmark, GitCompare } from "lucide-react";
+   Plus, X, ListOrdered, FolderSearch,
+   BookmarkPlus, 
+   Bookmark,
+   ClipboardPaste, RotateCcw} from "lucide-react";
 
 import type { ScanConfig } from "../types";
 import { SectionLabel, TextInput, ToggleRow, NumberInput } from "./primitives";
 import { t } from "../utils/i18n";
 import type { StudioHistoryItem } from "./StudioPanel";
-import { getStatusClass, buildHistoryLabel } from "./StudioPanel";
-import { createPortal } from "react-dom";
 
 
 
@@ -20,12 +20,11 @@ interface SidebarProps {
   scanQueue?: string[];
   onAddToQueue?: (targets: string[]) => void;
   onRemoveFromQueue?: (index: number) => void;
-  language: "en" | "ar";
-  isStudioMode: boolean;
-  studioHistory: StudioHistoryItem[];
-  selectedStudioHistoryId: string | null;
-  onSelectStudioHistoryItem: (id: string | null) => void;
-  onNewStudioRequest: () => void;
+  isStudioMode?: boolean;
+  studioHistory?: StudioHistoryItem[];
+  selectedStudioHistoryId?: string | null;
+  onSelectStudioHistoryItem?: (id: string | null) => void;
+  onNewStudioRequest?: () => void;
   onCompareWithHistory?: (body: string) => void;
 }
 
@@ -45,11 +44,7 @@ function saveTemplates(tpls: ScanTemplate[]) {
 
 
 export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueue, 
-  onRemoveFromQueue, language, isStudioMode, studioHistory, selectedStudioHistoryId,
-   onSelectStudioHistoryItem, onNewStudioRequest,onCompareWithHistory, }: SidebarProps) {
-    const [contextMenu, setContextMenu] = useState<{
-  x: number; y: number; itemId: string;
-} | null>(null);
+  onRemoveFromQueue }: SidebarProps) {
   const [queueInput, setQueueInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   // S1: templates
@@ -65,7 +60,7 @@ const debounceRef = useRef<number | undefined>(undefined);
       const selected = await open({
         multiple: false,
         directory: false,
-        title: language === "ar" ? "اختر ملف قائمة الأهداف" : "Select Target List File"
+        title: "Select Target List File"
       });
       if (selected && typeof selected === "string") {
         onUpdate("listFile", selected);
@@ -152,77 +147,13 @@ useEffect(() => {
 
   return (
     <aside className="flex h-full w-[320px] shrink-0 flex-col border-r border-border-subtle bg-bg-panel overflow-y-auto">
-      {isStudioMode ? (
-        <div className="flex h-full flex-col min-h-0">
-          <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4 shrink-0">
-            <div className="text-[13px] font-semibold uppercase tracking-wider text-accent-text pt-0.5">Exploit Studio</div>
-            <button onClick={onNewStudioRequest} className="p-1 hover:bg-bg-hover rounded-md text-text-primary transition-colors hover:shadow-[0_0_10px_rgba(var(--color-accent),0.2)]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-text"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
-          </div>
-
-          <div className="px-5 py-4 border-b border-border-subtle shrink-0">
-            <SectionLabel icon={Bookmark} className="!mb-0">Saved Collections</SectionLabel>
-            <div className="text-[11px] text-text-muted mt-2 italic">Coming soon...</div>
-          </div>
-
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="px-5 py-4 shrink-0 border-b border-border-subtle">
-              <SectionLabel icon={RotateCcw} className="!mb-0">Request History</SectionLabel>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {studioHistory.length === 0 ? (
-                <div className="px-5 py-4 text-[11px] text-text-muted">No requests executed yet.</div>
-              ) : (
-                studioHistory.map((item, idx) => (
-                  <button
-                    key={item.id}
-                    onClick={() => onSelectStudioHistoryItem(item.id)}
-                     onContextMenu={(e) => {                                    
-                      e.preventDefault();                                        
-                      setContextMenu({ x: e.clientX, y: e.clientY, itemId: item.id }); 
-                    }}       
-                    className={`w-full flex flex-col gap-2 border-b border-border-subtle p-4 text-left transition-all duration-200 ${
-                      selectedStudioHistoryId === item.id ? "bg-accent/10 ring-1 ring-accent/50 shadow-[0_0_15px_rgba(var(--color-accent),0.1)]" : "hover:bg-bg-hover"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${item.request.method === 'GET' ? 'bg-status-success/20 text-status-success' : item.request.method === 'POST' ? 'bg-status-warning/20 text-status-warning' : 'bg-status-info/20 text-status-info'}`}>
-                        {item.request.method}
-                      </span>
-                      <span className="text-[11px] font-mono text-text-muted">
-                        {new Date(item.createdAt).toLocaleTimeString([], { hour12: false })}
-                      </span>
-                    </div>
-                    <div className="w-full truncate text-[13px] font-medium text-text-primary" title={buildHistoryLabel(item.request)}>
-                      {buildHistoryLabel(item.request)}
-                    </div>
-                    <div className="flex items-center justify-between w-full mt-1">
-                      <span className="text-[11px] font-semibold text-text-muted">#{studioHistory.length - idx}</span>
-                      <span className={`text-[11px] font-black flex items-center gap-1.5 ${item.error ? "text-status-critical shadow-[0_0_8px_rgba(239,68,68,0.3)]" : item.response ? getStatusClass(item.response.status) : "text-text-muted"}`}>
-                        {item.error ? "ERROR" : item.response ? (
-                          <>
-                            <span className={`w-1.5 h-1.5 rounded-full ${item.response.status < 300 ? 'bg-status-success' : item.response.status < 400 ? 'bg-status-warning' : 'bg-status-critical'} animate-pulse`}></span>
-                            {item.response.status}
-                          </>
-                        ) : "—"}
-                      </span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-      <>
       <div className="px-5 pt-6 pb-5 space-y-6 flex-1">
 
         {/* S1: Templates Section */}
         {(templates.length > 0 || savingTemplate) && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <SectionLabel icon={Bookmark} className="!mb-0">{language === "ar" ? "القوالب" : "Templates"}</SectionLabel>
+              <SectionLabel icon={Bookmark} className="!mb-0">Templates</SectionLabel>
             </div>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {templates.map(tpl => (
@@ -239,7 +170,7 @@ useEffect(() => {
 
         {/* Target Section */}
         <div>
-          <SectionLabel icon={Crosshair}>{t("target", language)}</SectionLabel>
+          <SectionLabel icon={Crosshair}>Target</SectionLabel>
           <div className="flex gap-2 items-center">
             <div className="flex-1">
               <TextInput id="target-input" value={config.target} onChange={(v) => onUpdate("target", v)} placeholder="https://example.com" mono />
@@ -250,7 +181,7 @@ useEffect(() => {
             )}
             <button
               onClick={handlePaste}
-              title={t("paste", language)}
+              title="Paste"
               className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95 h-9"
             >
               <ClipboardPaste size={16} strokeWidth={2.5} />
@@ -265,11 +196,11 @@ useEffect(() => {
                   value={templateNameInput}
                   onChange={e => setTemplateNameInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") handleSaveTemplate(); if (e.key === "Escape") setSavingTemplate(false); }}
-                  placeholder={language === "ar" ? "اسم القالب" : "Template name..."}
+                  placeholder="Template name..."
                   className="flex-1 bg-bg-input border border-border-subtle rounded-lg px-3 py-1 text-xs font-mono text-text-primary outline-none focus:border-accent/40 transition-all duration-200"
                 />
                 <button onClick={handleSaveTemplate} disabled={!templateNameInput.trim()} className="px-2.5 py-1 rounded-lg bg-accent/15 border border-accent/20 text-[11px] font-bold text-accent-text hover:bg-accent/25 transition-all duration-150 disabled:opacity-40">
-                  {language === "ar" ? "حفظ" : "Save"}
+                  Save
                 </button>
                 <button onClick={() => { setSavingTemplate(false); setTemplateNameInput(""); }} className="p-1 text-text-ghost hover:text-text-primary transition-colors">
                   <X size={13} strokeWidth={2.5} />
@@ -277,7 +208,7 @@ useEffect(() => {
               </div>
             ) : (
               <button onClick={() => setSavingTemplate(true)} className="flex items-center gap-1 text-[10px] text-text-ghost hover:text-accent-text transition-colors duration-150">
-                <BookmarkPlus size={11} strokeWidth={2.5} />{language === "ar" ? "حفظ كقالب" : "Save as template"}
+                <BookmarkPlus size={11} strokeWidth={2.5} />Save as template
               </button>
             )}
           </div>
@@ -290,34 +221,32 @@ useEffect(() => {
           onDrop={handleDrop}
           className={`transition-all duration-300 rounded-xl p-3 -mx-3 ${isDragging ? "bg-accent/10 border border-accent border-dashed scale-[1.02]" : "border border-transparent"}`}
         >
-          <SectionLabel icon={FileText}>{t("targetList", language)}</SectionLabel>
+          <SectionLabel icon={FileText}>Target List</SectionLabel>
           <div className="flex gap-2">
             <div className="flex-1">
-              <TextInput value={config.listFile} onChange={(v) => onUpdate("listFile", v)} placeholder={language === "ar" ? "اسحب الملف هنا أو تصفح..." : "Drop file or browse..."} mono />
+              <TextInput value={config.listFile} onChange={(v) => onUpdate("listFile", v)} placeholder="Drop file or browse..." mono />
             </div>
             <button
               onClick={handleBrowseList}
-              title={language === "ar" ? "تصفح لاختيار ملف" : "Browse for a target list file"}
+              title="Browse for a target list file"
               className="flex shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-card px-3 text-text-secondary hover:text-accent-text hover:bg-bg-hover hover:-translate-y-0.5 transition-all duration-200 active:scale-95"
             >
               <FolderSearch size={16} strokeWidth={2.5} />
             </button>
           </div>
           <p className="mt-2 text-xs text-text-ghost leading-snug">
-            {language === "ar" ? "اسحب وأفلت الملف، أو انقر فوق تصفح. يتجاوز الهدف الواحد." : "Drag & drop a file, or click browse. Overrides single target."}
+            Drag & drop a file, or click browse. Overrides single target.
           </p>
         </div>
 
         {/* Scan Mode Section */}
         <div>
-          <SectionLabel icon={Layers}>{t("scanMode", language)}</SectionLabel>
+          <SectionLabel icon={Layers}>{t("scanMode")}</SectionLabel>
           <div className="relative flex rounded-lg overflow-hidden bg-bg-input p-1">
             <div
-              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-accent transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${language === "ar" ? "right-1" : "left-1"}`}
+              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-md bg-accent transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] left-1`}
               style={{
-                transform: language === "ar"
-                  ? (config.mode === "simple" ? "translateX(0)" : "translateX(-100%)")
-                  : (config.mode === "simple" ? "translateX(0)" : "translateX(100%)"),
+                transform: (config.mode === "simple" ? "translateX(0)" : "translateX(100%)"),
               }}
             />
             {(["simple", "advanced"] as const).map((m) => (
@@ -327,7 +256,7 @@ useEffect(() => {
                 className={`relative z-10 flex-1 py-1.5 text-sm font-medium capitalize transition-colors duration-300 ${config.mode === m ? "text-bg-root" : "text-text-muted hover:text-text-secondary"
                   }`}
               >
-                {m === "simple" ? (language === "ar" ? "بسيط" : "simple") : (language === "ar" ? "متقدم" : "advanced")}
+                {m === "simple" ? "simple" : "advanced"}
               </button>
             ))}
           </div>
@@ -335,25 +264,25 @@ useEffect(() => {
           <div className={`grid transition-all duration-300 ease-in-out ${config.mode === "advanced" ? "grid-rows-[1fr] mt-4 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
             <div className="overflow-hidden space-y-3.5 pl-0.5">
               <div>
-                <p className="text-xs text-text-muted mb-1.5">{t("proxy", language)}</p>
-                <TextInput value={config.proxy} onChange={(v) => onUpdate("proxy", v)} placeholder={t("proxyPlaceholder", language)} mono />
+                <p className="text-xs text-text-muted mb-1.5">{t("proxy")}</p>
+                <TextInput value={config.proxy} onChange={(v) => onUpdate("proxy", v)} placeholder={t("proxyPlaceholder")} mono />
               </div>
               <div>
-                <p className="text-xs text-text-muted mb-1.5">{t("customHeaders", language)}</p>
-                <TextInput value={config.headers} onChange={(v) => onUpdate("headers", v)} placeholder={t("customHeadersPlaceholder", language)} mono />
-                <p className="mt-1.5 text-xs text-text-ghost">{t("customHeadersDesc", language)}</p>
+                <p className="text-xs text-text-muted mb-1.5">{t("customHeaders")}</p>
+                <TextInput value={config.headers} onChange={(v) => onUpdate("headers", v)} placeholder={t("customHeadersPlaceholder")} mono />
+                <p className="mt-1.5 text-xs text-text-ghost">{t("customHeadersDesc")}</p>
               </div>
               <div>
-                <p className="text-xs text-text-muted mb-1.5">{t("nucleiTags", language)}</p>
-                <TextInput value={config.tags} onChange={(v) => onUpdate("tags", v)} placeholder={t("nucleiTagsPlaceholder", language)} mono />
+                <p className="text-xs text-text-muted mb-1.5">{t("nucleiTags")}</p>
+                <TextInput value={config.tags} onChange={(v) => onUpdate("tags", v)} placeholder={t("nucleiTagsPlaceholder")} mono />
               </div>
               <div>
-                <p className="text-xs text-text-muted mb-1.5">{t("payloadsFile", language)}</p>
-                <TextInput value={config.payloads} onChange={(v) => onUpdate("payloads", v)} placeholder={t("payloadsFilePlaceholder", language)} mono />
+                <p className="text-xs text-text-muted mb-1.5">{t("payloadsFile")}</p>
+                <TextInput value={config.payloads} onChange={(v) => onUpdate("payloads", v)} placeholder={t("payloadsFilePlaceholder")} mono />
               </div>
               <div>
-                <p className="text-xs text-text-muted mb-1.5">{t("outputFile", language)}</p>
-                <TextInput value={config.output} onChange={(v) => onUpdate("output", v)} placeholder={t("outputFilePlaceholder", language)} mono />
+                <p className="text-xs text-text-muted mb-1.5">{t("outputFile")}</p>
+                <TextInput value={config.output} onChange={(v) => onUpdate("output", v)} placeholder={t("outputFilePlaceholder")} mono />
               </div>
             </div>
           </div>
@@ -373,9 +302,9 @@ useEffect(() => {
 
         {/* Integrations Section */}
         <div>
-          <SectionLabel icon={Radar}>{t("integrations", language)}</SectionLabel>
-          <ToggleRow label={t("katanaCrawler", language)} desc={t("katanaCrawlerDesc", language)} checked={config.enableCrawler} onChange={(v) => onUpdate("enableCrawler", v)} />
-          <ToggleRow label={t("nucleiScanner", language)} desc={t("nucleiScannerDesc", language)} checked={config.enableNuclei} onChange={(v) => onUpdate("enableNuclei", v)} />
+          <SectionLabel icon={Radar}>{t("integrations")}</SectionLabel>
+          <ToggleRow label={t("katanaCrawler")} desc={t("katanaCrawlerDesc")} checked={config.enableCrawler} onChange={(v) => onUpdate("enableCrawler", v)} />
+          <ToggleRow label={t("nucleiScanner")} desc={t("nucleiScannerDesc")} checked={config.enableNuclei} onChange={(v) => onUpdate("enableNuclei", v)} />
           {config.enableNuclei && (
             <div className="mt-2 pl-8">
               <p className="text-xs text-text-muted mb-1.5">Nuclei Templates Directory</p>
@@ -387,26 +316,26 @@ useEffect(() => {
 
         {/* Options Section */}
         <div>
-          <SectionLabel icon={Telescope}>{t("options", language)}</SectionLabel>
-          <ToggleRow label={t("sameDomainScope", language)} desc={t("sameDomainScopeDesc", language)} checked={config.scope} onChange={(v) => onUpdate("scope", v)} />
-          <ToggleRow label={t("verbose", language)} checked={config.verbose} onChange={(v) => onUpdate("verbose", v)} />
-          <ToggleRow label={t("dryRun", language)} desc={t("dryRunDesc", language)} checked={config.dryRun} onChange={(v) => onUpdate("dryRun", v)} />
+          <SectionLabel icon={Telescope}>{t("options")}</SectionLabel>
+          <ToggleRow label={t("sameDomainScope")} desc={t("sameDomainScopeDesc")} checked={config.scope} onChange={(v) => onUpdate("scope", v)} />
+          <ToggleRow label={t("verbose")} checked={config.verbose} onChange={(v) => onUpdate("verbose", v)} />
+          <ToggleRow label={t("dryRun")} desc={t("dryRunDesc")} checked={config.dryRun} onChange={(v) => onUpdate("dryRun", v)} />
         </div>
 
         {/* Performance Section */}
         <div className="space-y-4">
-          <SectionLabel icon={Zap}>{t("performance", language)}</SectionLabel>
+          <SectionLabel icon={Zap}>{t("performance")}</SectionLabel>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("threads", language)}</p>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("threads")}</p>
               <NumberInput value={config.threads} onChange={(v: number) => onUpdate("threads", v)} min={1} max={500} />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("timeout", language)} (s)</p>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("timeout")} (s)</p>
               <NumberInput value={config.timeout} onChange={(v: number) => onUpdate("timeout", v)} min={1} max={60} />
             </div>
             <div className="col-span-2">
-              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("rateLimit", language)} (req/s)</p>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("rateLimit")} (req/s)</p>
               <NumberInput value={config.rateLimit} onChange={(v: number) => onUpdate("rateLimit", v)} min={1} max={5000} />
             </div>
           </div>
@@ -422,18 +351,18 @@ useEffect(() => {
         <div className={`grid transition-all duration-300 ease-in-out ${config.enableCrawler ? "grid-rows-[1fr] mt-2 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
           <div className="overflow-hidden">
             <div className="pt-4 space-y-4">
-              <SectionLabel icon={Radar}>{t("crawler", language)}</SectionLabel>
+              <SectionLabel icon={Radar}>{t("crawler")}</SectionLabel>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("depth", language)}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("depth")}</p>
                   <NumberInput value={config.crawlerDepth} onChange={(v: number) => onUpdate("crawlerDepth", v)} min={1} max={10} />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("timeout", language)} (s)</p>
+                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("timeout")} (s)</p>
                   <NumberInput value={config.crawlerTimeout} onChange={(v: number) => onUpdate("crawlerTimeout", v)} min={10} max={300} />
                 </div>
                 <div className="col-span-2">
-                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("maxUrls", language)}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5 px-0.5">{t("maxUrls")}</p>
                   <NumberInput value={config.crawlerMaxUrls} onChange={(v: number) => onUpdate("crawlerMaxUrls", v)} min={5} max={1000} />
                 </div>
               </div>
@@ -444,9 +373,9 @@ useEffect(() => {
         {/* Scan Queue Section */}
         <div className="flex-1 flex flex-col min-h-0 pt-4 border-t border-border-subtle/50">
           <div className="flex items-center justify-between mb-4">
-            <SectionLabel icon={ListOrdered} className="!mb-0">{t("scanQueue", language)}</SectionLabel>
+            <SectionLabel icon={ListOrdered} className="!mb-0">{t("scanQueue")}</SectionLabel>
             <span className="text-[10px] font-bold bg-accent/10 text-accent px-2 py-0.5 rounded-full uppercase tracking-tighter">
-              {scanQueue.length} {t("tasks", language)}
+              {scanQueue.length} {t("tasks")}
             </span>
           </div>
 
@@ -454,7 +383,7 @@ useEffect(() => {
             <textarea
               value={queueInput}
               onChange={(e) => setQueueInput(e.target.value)}
-              placeholder={t("scanQueuePlaceholder", language)}
+              placeholder={t("scanQueuePlaceholder")}
               dir="ltr"
               className="w-full bg-bg-input border border-border-subtle rounded-lg px-3 py-2 text-xs font-mono text-text-primary outline-none focus:border-border-focus transition-all duration-200 placeholder:text-text-ghost/50 resize-none h-16"
             />
@@ -464,13 +393,13 @@ useEffect(() => {
               className={`flex items-center gap-1.5 w-full justify-center rounded-lg py-2 text-xs font-semibold transition-all duration-200 ${queueInput.trim() ? "bg-accent/15 text-accent-text border border-accent/20 hover:bg-accent/25" : "bg-bg-input text-text-ghost cursor-not-allowed border border-transparent"}`}
             >
               <Plus size={14} strokeWidth={2.5} />
-              {t("addToQueue", language)}
+              {t("addToQueue")}
             </button>
             {scanQueue.length > 0 && (
               <div className="space-y-1 mt-2">
-                <p className="text-[10px] text-text-ghost uppercase tracking-wider">{t("queuedTargets", language)} ({scanQueue.length})</p>
+                <p className="text-[10px] text-text-ghost uppercase tracking-wider">{t("queuedTargets")} ({scanQueue.length})</p>
                 {scanQueue.map((target, i) => (
-                  <div key={i} className={`flex items-center rounded-lg bg-bg-input px-3 py-1.5 group ${language === "ar" ? "flex-row-reverse gap-2" : "gap-2"}`}>
+                  <div key={i} className="flex items-center rounded-lg bg-bg-input px-3 py-1.5 group gap-2">
                     <span className="text-xs font-mono text-text-secondary truncate flex-1" dir="ltr">{target}</span>
                     <button
                       onClick={() => onRemoveFromQueue?.(i)}
@@ -493,63 +422,9 @@ useEffect(() => {
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-subtle bg-bg-card py-2.5 text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all duration-300 active:scale-95"
         >
           <RotateCcw size={16} strokeWidth={2.5} />
-          {t("resetDefaults", language)}
+          {t("resetDefaults")}
         </button>
       </div>
-      </>
-      )}
-
- {contextMenu && createPortal(
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setContextMenu(null)} />
-          <div
-            className="fixed z-[9999] min-w-[180px] rounded-xl border border-border-subtle bg-bg-panel shadow-2xl animate-fade-slide-in overflow-hidden"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-          >
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-bold text-accent hover:bg-bg-hover hover:text-accent-text transition-colors"
-              onClick={() => {
-                const item = studioHistory.find(h => h.id === contextMenu.itemId);
-                if (item?.response?.body) {
-                  onCompareWithHistory?.(item.response.body);
-                }
-                setContextMenu(null);
-              }}
-            >
-              <GitCompare size={14} />
-              Compare with current
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-bold text-text-primary hover:bg-bg-hover transition-colors"
-              onClick={() => {
-                onSelectStudioHistoryItem?.(contextMenu.itemId);
-                setContextMenu(null);
-              }}
-            >
-              <RotateCcw size={14} />
-              Reload Request
-            </button>
-
-            <div className="h-px bg-border-subtle w-full" />
-
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-              onClick={() => {
-                const item = studioHistory.find(h => h.id === contextMenu.itemId);
-                if (item) navigator.clipboard.writeText(item.request.url);
-                setContextMenu(null);
-              }}
-            >
-              <ClipboardPaste size={13} />
-              Copy URL
-            </button>
-          </div>
-        </>,
-        document.body 
-      )}
     </aside>
   );
 }

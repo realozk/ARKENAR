@@ -19,7 +19,7 @@ pub async fn run_subfinder(
 ) -> anyhow::Result<Vec<String>> {
     let binary = match utils::get_binary_path("subfinder") {
         Some(p) => p,
-        None => anyhow::bail!("'subfinder' binary not found. Run the scanner once to auto-install, or use the CLI to trigger auto-installation."),
+        None => anyhow::bail!("'subfinder' binary not found. Run the scanner once to auto install, or use the CLI to trigger auto installation."),
     };
 
     sink.on_log("info", &format!("[*] Starting subfinder on domain: {}", domain));

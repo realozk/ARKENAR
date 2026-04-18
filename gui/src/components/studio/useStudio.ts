@@ -85,14 +85,7 @@ export function getMethodColor(method: HttpMethod): string {
   }
 }
 
-export function buildHistoryLabel(request: StudioRequest): string {
-  try {
-    const parsed = new URL(request.url);
-    return `${request.method} ${parsed.pathname || "/"}`;
-  } catch {
-    return `${request.method} ${request.url || "<empty>"}`;
-  }
-}
+
 
 export function parseHeaderLines(headersInput: string): Array<[string, string]> {
   return headersInput

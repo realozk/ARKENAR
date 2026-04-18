@@ -5,10 +5,9 @@ import { t } from "../utils/i18n";
 
 interface InfoModalProps {
     onClose: () => void;
-    language: "en" | "ar";
 }
 
-export function InfoModal({ onClose, language }: InfoModalProps) {
+export function InfoModal({ onClose }: InfoModalProps) {
     const [isClosing, setIsClosing] = useState(false);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -47,7 +46,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                         <div className="p-1.5 rounded-lg bg-accent/10 text-accent-text">
                             <Info size={18} strokeWidth={2.5} />
                         </div>
-                        <h2 className="text-lg font-bold tracking-tight">{t("aboutArkenar", language)}</h2>
+                        <h2 className="text-lg font-bold tracking-tight">{t("aboutArkenar")}</h2>
                     </div>
                     <button
                         onClick={handleClose}
@@ -72,13 +71,13 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                             </span>
                         </div>
                         <p className="text-sm font-medium text-text-secondary max-w-[300px] leading-relaxed">
-                            {t("aboutDesc", language)}
+                            {t("aboutDesc")}
                         </p>
                     </div>
 
                     {/* What's New Section */}
                     <section>
-                        <SectionLabel icon={Sparkles}>{t("whatsNew", language)}</SectionLabel>
+                        <SectionLabel icon={Sparkles}>{t("whatsNew")}</SectionLabel>
 
                         <ul className="space-y-3.5 mt-4 text-sm text-text-secondary mb-5">
                            {[
@@ -109,16 +108,16 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
 
                     {/* Shortcuts Section */}
                     <section>
-                        <SectionLabel icon={Keyboard}>{t("shortcuts", language)}</SectionLabel>
+                        <SectionLabel icon={Keyboard}>{t("shortcuts")}</SectionLabel>
                         <div className="grid grid-cols-2 gap-3 mt-4">
                             {[
-                                { key: "Ctrl+K", desc: "Command Palette" }, // 🌟 أضفنا الاختصار الجديد هنا
-                                { key: "T", desc: t("t_terminal", language) },
-                                { key: "F", desc: t("t_findings", language) },
-                                { key: "H", desc: t("t_history", language) },
-                                { key: "C", desc: t("t_clear", language) },
-                                { key: "Ctrl+T", desc: t("t_focusTarget", language) },
-                                { key: "Ctrl+F", desc: t("t_focusSearch", language) },
+                                { key: "Ctrl+K", desc: "Command Palette" },
+                                { key: "T", desc: t("t_terminal") },
+                                { key: "F", desc: t("t_findings") },
+                                { key: "H", desc: t("t_history") },
+                                { key: "C", desc: t("t_clear") },
+                                { key: "Ctrl+T", desc: t("t_focusTarget") },
+                                { key: "Ctrl+F", desc: t("t_focusSearch") },
                             ].map((s) => (
                                 <div key={s.key} className="flex items-center justify-between p-2.5 rounded-lg bg-bg-card border border-border-subtle group hover:border-accent/30 transition-all duration-300">
                                     <span className="text-[11px] text-text-secondary font-medium">{s.desc}</span>
@@ -130,23 +129,23 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                             <div className="col-span-2 flex items-center justify-between p-3 rounded-lg bg-accent/5 border border-accent/20 group hover:bg-accent/10 transition-all duration-300">
                                 <div className="flex items-center gap-2">
                                     <Keyboard size={14} className="text-accent-text animate-pulse" />
-                                    <span className="text-[11px] text-accent-text font-bold uppercase tracking-tight">{t("spacebar", language)}</span>
+                                    <span className="text-[11px] text-accent-text font-bold uppercase tracking-tight">{t("spacebar")}</span>
                                 </div>
-                                <span className="text-[11px] text-text-muted font-medium italic">{t("scanActionDesc", language)}</span>
+                                <span className="text-[11px] text-text-muted font-medium italic">{t("scanActionDesc")}</span>
                             </div>
                         </div>
                     </section>
 
                     {/* Credits Section */}
                     <section>
-                        <SectionLabel icon={Users}>{t("credits", language)}</SectionLabel>
+                        <SectionLabel icon={Users}>{t("credits")}</SectionLabel>
                         <div className="grid grid-cols-2 gap-4 mt-4">
                             <div className="flex items-center gap-4 p-4 rounded-xl bg-bg-card border border-border-subtle group hover:border-accent/30 transition-all duration-300">
                                 <div className="h-10 w-10 rounded-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent-text border border-border-subtle group-hover:scale-105 transition-transform duration-300">
                                     <Terminal size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-text-muted uppercase tracking-widest font-black leading-none mb-1">{t("developer", language)}</p>
+                                    <p className="text-[10px] text-text-muted uppercase tracking-widest font-black leading-none mb-1">{t("developer")}</p>
                                     <p className="text-sm font-bold text-text-primary">realozk</p>
                                 </div>
                             </div>
@@ -155,7 +154,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                                     <Palette size={20} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-text-muted uppercase tracking-widest font-black leading-none mb-1">{t("uiEditor", language)}</p>
+                                    <p className="text-[10px] text-text-muted uppercase tracking-widest font-black leading-none mb-1">{t("uiEditor")}</p>
                                     <p className="text-sm font-bold text-text-primary">Meshy10, realozk</p>
                                 </div>
                             </div>
@@ -169,7 +168,7 @@ export function InfoModal({ onClose, language }: InfoModalProps) {
                         onClick={handleClose}
                         className="rounded-lg bg-accent px-6 py-2 text-xs font-bold text-bg-root hover:brightness-110 transition-all duration-300 btn-glow shadow-sm"
                     >
-                        {t("close", language)}
+                        {t("close")}
                     </button>
                 </div>
             </div>

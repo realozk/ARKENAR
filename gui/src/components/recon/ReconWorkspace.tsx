@@ -14,7 +14,6 @@ interface ReconWorkspaceProps {
   onStop: () => Promise<void>;
   onAddToQueue: (targets: string[]) => void;
   onSendToStudio: (host: string) => void;
-  language: "en" | "ar";
 }
 
 type FeedType = "subdomain-found" | "port-open" | "dns-record" | "secret-found";
@@ -93,8 +92,8 @@ export default function ReconWorkspace({
   const hostsArray = Array.from(hosts.values());
   const totalHosts = hosts.size;
   const totalAlive = hostsArray.filter((h) => h.ports.length > 0).length;
-  const totalPorts = hostsArray.reduce((s, h) => s + h.ports.length, 0);
-  const totalSecrets = hostsArray.reduce((s, h) => s + h.jsSecrets.length, 0);
+  const totalPorts = hostsArray.reduce((s: number, h: ReconHost) => s + h.ports.length, 0);
+  const totalSecrets = hostsArray.reduce((s: number, h: ReconHost) => s + h.jsSecrets.length, 0);
   const totalDns = hostsArray.filter((h) => h.dns !== null).length;
 
   const selectedHost = selectedHostId ? hosts.get(selectedHostId) ?? null : null;
@@ -105,7 +104,7 @@ export default function ReconWorkspace({
 
   const handleExportCsv = useCallback(() => {
     const header = "host,alive,ports,dns_a,secrets_count\n";
-    const rows = hostsArray.map((h) => {
+    const rows = hostsArray.map((h: ReconHost) => {
       const alive = h.ports.length > 0 ? "yes" : "no";
       const ports = h.ports.join("|");
       const dnsA = h.dns ? h.dns.a.join("|") : "";

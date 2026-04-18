@@ -10,7 +10,6 @@ export const translations = {
         localization: "Localization",
         language: "Language",
         english: "English",
-        arabic: "العربية",
         theme: "Theme",
         accentColor: "Accent Color",
         uiScale: "UI Scale",

@@ -21,7 +21,7 @@ export interface AppSettings {
     autoOpenReport: boolean;
     reduceMotion: boolean;
     uiScale: number;
-    language: "en" | "ar";
+    language: "en";
     soundEnabled: boolean;
     soundVolume: number;
     soundOnStart: boolean;
@@ -157,6 +157,8 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
     const [showConfirm, setShowConfirm] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+    const [webhookTestSuccess, setWebhookTestSuccess] = useState(false);
+    const [webhookTestError, setWebhookTestError] = useState<string | null>(null);
     const overlayRef = useRef<HTMLDivElement>(null);
 
     const handleFinalCloseRef = useRef<() => void>(() => {});
@@ -214,9 +216,11 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
         setIsTestingWebhook(true);
         try {
             await invoke("test_webhook", { url: currentUrl });
-            alert(" Webhook connected successfully!");
+            setWebhookTestSuccess(true);
+            setTimeout(() => setWebhookTestSuccess(false), 2000);
         } catch (err) {
-            alert(`Webhook test failed: ${err}`);
+            setWebhookTestError(`Webhook test failed: ${err}`);
+            setTimeout(() => setWebhookTestError(null), 3000);
         } finally {
             setTimeout(() => setIsTestingWebhook(false), 600);
         }
@@ -345,6 +349,16 @@ export function SettingsModal({ settings, onSave, onClose }: SettingsModalProps)
                                         </div>
                                         <p className="mt-2 text-xs text-text-ghost">Automatically sends scan alerts to this webhook (supports Discord/Slack/n8n).</p>
                                         {webhookError && <p className="mt-2 text-xs font-semibold text-status-critical bg-status-critical/10 px-3 py-2 rounded-lg border border-status-critical/20 inline-block">{webhookError}</p>}
+                                        {webhookTestSuccess && (
+                                            <span className="mt-2 text-xs font-semibold text-status-success animate-fade-slide-in block">
+                                                ✓ Connected
+                                            </span>
+                                        )}
+                                        {webhookTestError && (
+                                            <p className="mt-2 text-xs font-semibold text-status-critical block">
+                                                {webhookTestError}
+                                            </p>
+                                        )}
                                     </div>
                                 </section>
 

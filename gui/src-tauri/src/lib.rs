@@ -929,6 +929,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -947,6 +948,15 @@ pub fn run() {
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.maximize();
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::TitleBarStyle;
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_decorations(true).ok();
+                    window.set_title_bar_style(TitleBarStyle::Transparent).ok();
+                }
             }
 
             let handle: AppHandle = app.handle().clone();

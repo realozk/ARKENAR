@@ -1,4 +1,4 @@
-import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity, Zap, CheckCircle, Cpu, PenLine, Send, Clock as ClockIcon, HardDrive, Hash } from "lucide-react";
+import { Crosshair, Globe, Shield, Eye, Network, Timer, Activity, Zap, CheckCircle, Cpu } from "lucide-react";
 import { useState, useEffect, useRef, type ElementType } from "react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
 import { t } from "../utils/i18n";
@@ -120,28 +120,12 @@ const PHASES = [
   { label: "Complete", Icon: CheckCircle },
 ];
 
-const STUDIO_PHASES = [
-  { label: "Draft", Icon: PenLine },
-  { label: "Dispatch", Icon: Send },
-  { label: "Await", Icon: ClockIcon },
-  { label: "Render", Icon: CheckCircle },
-];
-
-function getPhaseIndex(progress: number): number {
-  if (progress < 20) return 0;
-  if (progress < 50) return 1;
-  if (progress < 75) return 2;
-  return 3;
-}
-
-function PhaseTimeline({ progress, scanning, activeTab, studioPhase }: { progress: number; scanning: boolean, activeTab?: string, studioPhase?: number }) {
-  const isStudio = activeTab === "studio";
-  const activePhase = isStudio ? (studioPhase ?? 0) : (scanning ? getPhaseIndex(progress) : -1);
-  const phases = isStudio ? STUDIO_PHASES : PHASES;
+function PhaseTimeline({ progress, scanning }: { progress: number; scanning: boolean }) {
+  const activePhase = scanning ? getPhaseIndex(progress) : -1;
 
   return (
-    <div className={`flex items-center justify-center py-3 transition-opacity duration-500 ${scanning || isStudio ? "opacity-100" : "opacity-25"}`}>
-      {phases.map((phase, idx) => {
+    <div className={`flex items-center justify-center py-3 transition-opacity duration-500 ${scanning ? "opacity-100" : "opacity-25"}`}>
+      {PHASES.map((phase, idx) => {
         const isActive = idx === activePhase;
         const isDone = idx < activePhase;
 
@@ -162,7 +146,7 @@ function PhaseTimeline({ progress, scanning, activeTab, studioPhase }: { progres
                 isActive ? "text-accent-text" : isDone ? "text-status-success" : "text-text-ghost"
               }`}>{phase.label}</span>
             </div>
-            {idx < phases.length - 1 && (
+            {idx < PHASES.length - 1 && (
               <div className={`h-px w-24 mb-5 mx-3 transition-colors duration-700 ${isDone ? "bg-status-success" : isActive ? "bg-accent/40" : "bg-border-subtle"}`} />
             )}
           </div>
@@ -218,7 +202,6 @@ export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = 
   scanStatus: ScanStatus;
   scanProgress: number;
   rps?: number;
-  language?: "en" | "ar";
   activeTab?: string;
 }) {
   // E1: Rolling RPS history buffer
@@ -247,38 +230,69 @@ export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language = 
   const isScanning = scanStatus === "running";
 
   return (
-    <div className="shrink-0 flex flex-col">
-      {/* Stat cards + phase timeline */}
-      <div className="px-6 pt-5 pb-3 space-y-3">
-        {activeTab === "studio" ? (
-          <div className="grid grid-cols-4 gap-3">
-            <StatCard label="Status" value={studioStats.status} icon={Hash} accent={studioStats.status === "Idle" ? "default" : studioStats.status.startsWith("2") ? "success" : studioStats.status.startsWith("4") || studioStats.status.startsWith("5") ? "critical" : "warning"} />
-            <StatCard label="Time" value={studioStats.time} icon={ClockIcon} accent="studio-info" />
-            <StatCard label="Req Size" value={studioStats.reqSize} icon={Send} accent="studio-info" />
-            <StatCard label="Res Size" value={studioStats.resSize} icon={HardDrive} accent="studio-info" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-3">
-            <StatCard label={t("targets", language)} value={stats.targets} icon={Crosshair} animate />
-            <StatCard label={t("urls", language)} value={stats.urls} icon={Globe} animate />
-            <StatCard label={t("critical", language)} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} animate />
-            <StatCard label={t("medium", language)} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} animate />
-            <StatCard label={t("safe", language)} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} animate />
-            <StatCard label={t("elapsed", language)} value={stats.elapsed} icon={Timer} />
-            <StatCard
-              label={language === "ar" ? "طلب/ث" : "req/s"}
-              value={scanStatus === "running" ? rps : "—"}
-              icon={Activity}
-              accent={rpsAccent}
-            >
-              <Sparkline values={rpsHistory} />
-            </StatCard>
-          </div>
-        )}
+    <>
+      {activeTab === 'studio' ? (
+        /* COMPACT STUDIO STATUS BAR — single row, ~36px tall */
+        <div className="shrink-0 flex items-center gap-0 px-4 border-b border-border-subtle bg-bg-panel h-9">
+          {/* Phase dots */}
+          {(['Draft', 'Dispatch', 'Await', 'Render'] as const).map((label, idx) => {
+            const isActive = idx === studioStats.phase;
+            const isDone = idx < studioStats.phase;
+            return (
+              <div key={label} className="flex items-center">
+                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all duration-300 ${
+                  isActive ? 'text-accent-text' : isDone ? 'text-status-success' : 'text-text-ghost'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                    isActive ? 'bg-accent shadow-[0_0_6px_var(--color-accent)] scale-125' : isDone ? 'bg-status-success' : 'bg-bg-hover'
+                  }`} />
+                  {label}
+                </div>
+                {idx < 3 && <span className="text-border-subtle text-text-ghost mx-0.5 text-xs select-none">›</span>}
+              </div>
+            );
+          })}
 
-        {/* E2: Phase Timeline — always shown, dimmed when idle */}
-        <PhaseTimeline progress={scanProgress} scanning={isScanning} activeTab={activeTab} studioPhase={studioStats.phase} />
-      </div>
-    </div>
+          {/* Divider */}
+          <div className="w-px h-4 bg-border-subtle mx-3 shrink-0" />
+
+          {/* Stat pills */}
+          {[
+            { label: 'STATUS', value: studioStats.status, accent: studioStats.status === 'Idle' ? 'var(--color-text-muted)' : studioStats.status.startsWith('2') ? 'var(--color-status-success)' : (studioStats.status.startsWith('4') || studioStats.status.startsWith('5')) ? 'var(--color-status-critical)' : 'var(--color-status-warning)' },
+            { label: 'TIME', value: studioStats.time || '—', accent: 'var(--color-accent)' },
+            { label: 'REQ', value: studioStats.reqSize, accent: 'var(--color-accent)' },
+            { label: 'RES', value: studioStats.resSize, accent: 'var(--color-accent)' },
+          ].map(({ label, value, accent }) => (
+            <div key={label} className="flex items-center gap-1.5 px-3">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-text-ghost">{label}</span>
+              <span className="font-mono text-xs font-bold tabular-nums" style={{ color: accent }} dir="ltr">{value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* SCANNER STATS — unchanged */
+        <div className="shrink-0 flex flex-col">
+          <div className="px-6 pt-5 pb-3 space-y-3">
+            <div className="grid grid-cols-7 gap-3">
+              <StatCard label={t("targets")} value={stats.targets} icon={Crosshair} animate />
+              <StatCard label={t("urls")} value={stats.urls} icon={Globe} animate />
+              <StatCard label={t("critical")} value={stats.critical} icon={Shield} accent={stats.critical > 0 ? "critical" : "default"} animate />
+              <StatCard label={t("medium")} value={stats.medium} icon={Eye} accent={stats.medium > 0 ? "warning" : "default"} animate />
+              <StatCard label={t("safe")} value={stats.safe} icon={Network} accent={stats.safe > 0 ? "success" : "default"} animate />
+              <StatCard label={t("elapsed")} value={stats.elapsed} icon={Timer} />
+              <StatCard
+                label="req/s"
+                value={scanStatus === "running" ? rps : "—"}
+                icon={Activity}
+                accent={rpsAccent}
+              >
+                <Sparkline values={rpsHistory} />
+              </StatCard>
+            </div>
+          </div>
+          <PhaseTimeline progress={scanProgress} scanning={isScanning} />
+        </div>
+      )}
+    </>
   );
 }
