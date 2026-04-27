@@ -255,7 +255,19 @@ gui/src-tauri/src/
 │                           Handles input validation, SSRF blocking, AtomicBool guards.
 │                           ⚠️  DELETE THIS → GUI has no backend; all IPC calls fail.
 │
-├── reporting.rs          # Generates HTML report from findings + config.
+├── event_sink.rs         # TauriSink: implements ScanEventSink for the GUI.
+│                           Bridges core events (on_log, on_finding, on_progress)
+│                           to Tauri IPC events emitted to the React frontend.
+│                           ⚠️  DELETE THIS → Scan output never reaches the UI.
+│
+├── studio.rs             # Smart Auto-Login engine (Exploit Studio feature).
+│                           CSRF-aware GET→parse→POST handshake that captures
+│                           session cookies. Validates credentials are never
+│                           logged; fresh cookie jar per request.
+│                           ⚠️  DELETE THIS → Studio auto-login command fails.
+│
+├── reporting.rs          # Generates self-contained HTML report from findings.
+│                           Embedded CSS/JS, severity chart, filterable table.
 │                           ⚠️  DELETE THIS → "Export Report" button fails.
 │
 └── notifications.rs      # send_webhook() — POSTs finding JSON to Discord/Slack.

@@ -21,9 +21,14 @@ All notable changes to Arkenar are documented here.
 - **Engine error visibility** — `basic_scan` errors are now logged via `tracing::warn!` instead of dropped.
 - **Clippy clean under `-D warnings`** — Addressed `lines_filter_map_ok`, `too_many_arguments`, `manual_map`, `collapsible_else_if`, `bool_assert_comparison`, `explicit_auto_deref`, `useless_vec`, `needless_borrow`, `empty_line_after_doc_comment`, `manual_unwrap_or_default`, `new_without_default`, and `single_match`. Inner-doc converted to `//!` in 4 modules where leading `///` blocks attached to the wrong item.
 
+### CI / Release
+- **No more bot commits** — `latest.json` is now uploaded directly as a GitHub release asset instead of committed back to `main`. `github-actions[bot]` no longer appears as a contributor.
+- **Automatic version sync** — Pushing a tag (e.g. `v1.2.0`) now patches `tauri.conf.json`, `gui/src-tauri/Cargo.toml`, `core/Cargo.toml`, and `cli/Cargo.toml` in CI before building, so the version shown inside the app always matches the release tag without any manual edits.
+- **Dependency alignment** — `reqwest` unified to `0.12` across all three crates (GUI was on `0.11`).
+
 ### Documentation
 - **README** — Replaced the small 7-flag options table with five comprehensive sub-tables (Targeting & I/O, Scan profile, Network & headers, Modules, Auth/OAST/alerts) covering ~30 flags including `--dry-run`, `-H`, `--proxy`, `--scope`, `--scope-regex`, `--allow-insecure-tls`, `--no-crawler`, `--no-nuclei`, `--enable-param-fuzz`, `--enable-js-analysis`, `--enable-waf-evasion`, `--no-fingerprint`, `--no-smart-payloads`, `--tags`, `--nuclei-templates`, `--auth-type`, `--auth-token`, `--auth-cookies`, `--oast-server`, `--webhook-url`.
-- **ARCHITECTURE.md** — Expanded the ScanConfig data-types table with `enable_param_fuzz`, `enable_js_analysis`, and CLI-flag mappings for `enable_crawler` (`--no-crawler`), `enable_nuclei` (`--no-nuclei`), and `webhook_url` (`--webhook-url`).
+- **ARCHITECTURE.md** — Expanded the ScanConfig data-types table with `enable_param_fuzz`, `enable_js_analysis`, and CLI-flag mappings for `enable_crawler` (`--no-crawler`), `enable_nuclei` (`--no-nuclei`), and `webhook_url` (`--webhook-url`). Added `studio.rs` and `event_sink.rs` to the GUI file breakdown.
 - **ARKENAR_DOCUMENTATION.md** — Updated `TargetManager` and `ScanEngine::run` entries to reflect the rename and new return type.
 
 ---
