@@ -4,35 +4,6 @@ All notable changes to Arkenar are documented here.
 
 ---
 
-## [Unreleased] — Review-Driven Hardening Pass
-
-### Fixed
-- **Payload loader infinite-loop risk** — Replaced `lines().filter_map(Result::ok)` with `lines().map_while(Result::ok)` in `core/src/utils/payload_loader.rs` so a transient I/O error stops the iterator instead of looping forever.
-- **GUI `total_safe` miscount** — `ScanEngine::run()` now returns `usize` (total processed). The Tauri layer awaits the engine handle and computes `total_safe = total_scanned - vulnerable_count` after the loop terminates, fixing a race where the count was read before the engine finished.
-- **CLI module toggles ignored** — Added `--no-crawler`, `--no-nuclei`, and `--enable-param-fuzz` flags in `cli/src/main.rs` and wired them into `ScanConfig`. Previously these GUI-side toggles had no CLI parity.
-- **CLI webhook never wired** — `--webhook-url` is now propagated into `ScanConfig.webhook_url` (was being parsed but discarded).
-- **CLI duplicate target** — When both a positional target and `-l`/`--list` are supplied, the positional target is now de-duplicated before scan kickoff.
-- **Installer rollback failure was silent** — `core/src/utils/installer.rs` now logs the backup path on rollback failure so users can recover the previous binary manually.
-- **JSONL writer error swallowed** — `core/src/core/result_aggregator.rs` surfaces write errors through the event sink and disables further writes for that scan instead of silently dropping findings.
-- **`TargetManager::next` shadowed `Iterator::next`** — Renamed to `pop_next` and added a `Default` impl. All callers updated.
-
-### Improved
-- **`ConsoleSink::on_log` level prefixes** — CLI logs now prefix `[+]` / `[!]` / `[~]` / `[*]` based on level, with detection so already-tagged messages aren't double-prefixed.
-- **Engine error visibility** — `basic_scan` errors are now logged via `tracing::warn!` instead of dropped.
-- **Clippy clean under `-D warnings`** — Addressed `lines_filter_map_ok`, `too_many_arguments`, `manual_map`, `collapsible_else_if`, `bool_assert_comparison`, `explicit_auto_deref`, `useless_vec`, `needless_borrow`, `empty_line_after_doc_comment`, `manual_unwrap_or_default`, `new_without_default`, and `single_match`. Inner-doc converted to `//!` in 4 modules where leading `///` blocks attached to the wrong item.
-
-### CI / Release
-- **No more bot commits** — `latest.json` is now uploaded directly as a GitHub release asset instead of committed back to `main`. `github-actions[bot]` no longer appears as a contributor.
-- **Automatic version sync** — Pushing a tag (e.g. `v1.2.0`) now patches `tauri.conf.json`, `gui/src-tauri/Cargo.toml`, `core/Cargo.toml`, and `cli/Cargo.toml` in CI before building, so the version shown inside the app always matches the release tag without any manual edits.
-- **Dependency alignment** — `reqwest` unified to `0.12` across all three crates (GUI was on `0.11`).
-
-### Documentation
-- **README** — Replaced the small 7-flag options table with five comprehensive sub-tables (Targeting & I/O, Scan profile, Network & headers, Modules, Auth/OAST/alerts) covering ~30 flags including `--dry-run`, `-H`, `--proxy`, `--scope`, `--scope-regex`, `--allow-insecure-tls`, `--no-crawler`, `--no-nuclei`, `--enable-param-fuzz`, `--enable-js-analysis`, `--enable-waf-evasion`, `--no-fingerprint`, `--no-smart-payloads`, `--tags`, `--nuclei-templates`, `--auth-type`, `--auth-token`, `--auth-cookies`, `--oast-server`, `--webhook-url`.
-- **ARCHITECTURE.md** — Expanded the ScanConfig data-types table with `enable_param_fuzz`, `enable_js_analysis`, and CLI-flag mappings for `enable_crawler` (`--no-crawler`), `enable_nuclei` (`--no-nuclei`), and `webhook_url` (`--webhook-url`). Added `studio.rs` and `event_sink.rs` to the GUI file breakdown.
-- **ARKENAR_DOCUMENTATION.md** — Updated `TargetManager` and `ScanEngine::run` entries to reflect the rename and new return type.
-
----
-
 ## [1.2.0] — Phase 2: Structural Migration & Reconnaissance Suite
 
 ### Added
@@ -59,6 +30,37 @@ All notable changes to Arkenar are documented here.
 ### Improved / Security
 - **Global Codebase Hardening** — Performed a full pre-release behavioral-correction pass on the Rust backend targeting dead-code removal, unifying debug routing channels, and streamlining error execution.
 - **Comment Auditing** — Systematically stripped all redundant, verbose, and "AI-generated" tracking markers from the codebase, preserving only essential security and architectural documentation for a clean public release.
+
+---
+
+## [1.2.1] — Hardening & CI Polish
+
+### Fixed
+- **Payload loader infinite-loop risk** — `lines().filter_map(Result::ok)` replaced with `lines().map_while(Result::ok)` so a transient I/O error stops the iterator instead of looping forever.
+- **GUI `total_safe` miscount** — `ScanEngine::run()` now returns `usize` (total processed). The Tauri layer reads the count after the engine finishes, fixing a race where safe totals were computed before the scan loop completed.
+- **CLI module toggles ignored** — `--no-crawler`, `--no-nuclei`, and `--enable-param-fuzz` are now wired into `ScanConfig`. Previously the GUI-side toggles had no CLI parity.
+- **CLI webhook never wired** — `--webhook-url` is now propagated into `ScanConfig.webhook_url` (was parsed but silently discarded).
+- **CLI duplicate target** — Positional target is de-duplicated against `-l`/`--list` before scan kickoff.
+- **Installer rollback failure was silent** — Rollback now logs the backup path so users can manually recover the previous binary if the rename fails.
+- **JSONL write errors swallowed** — `result_aggregator.rs` now surfaces write failures through the event sink and disables further writes for that scan instead of silently dropping findings.
+- **`TargetManager::next` shadowed `Iterator::next`** — Renamed to `pop_next`; added `Default` impl. All callers updated.
+- **`reqwest` version mismatch** — GUI was pinned to `0.11`, now aligned to `0.12` with all three crates.
+
+### Improved
+- **`ConsoleSink` log prefixes** — CLI output now prefixes `[+]` / `[!]` / `[~]` / `[*]` per log level. Already-tagged messages are not double-prefixed.
+- **Engine error visibility** — `basic_scan` errors are now logged via `warn!` instead of silently dropped.
+- **Clippy clean (`-D warnings`)** — Resolved `lines_filter_map_ok`, `too_many_arguments`, `manual_map`, `collapsible_else_if`, `bool_assert_comparison`, `explicit_auto_deref`, `useless_vec`, `needless_borrow`, `empty_line_after_doc_comment`, `manual_unwrap_or_default`, `new_without_default`, `single_match`. Module-level docs converted from `///` to `//!` in 4 files.
+
+### CI / Release
+- **No bot commits** — `latest.json` is now uploaded as a GitHub release asset instead of committed back to `main`. `github-actions[bot]` no longer appears as a contributor.
+- **Auto version sync from tag** — Pushing `v1.2.1` patches `tauri.conf.json`, `gui/src-tauri/Cargo.toml`, `core/Cargo.toml`, and `cli/Cargo.toml` in CI. The version shown inside the app always matches the release tag with no manual edits needed.
+
+### Documentation
+- **README** — Options expanded into five sub-tables covering ~30 flags with examples.
+- **ARCHITECTURE.md** — Added `studio.rs` and `event_sink.rs` to the GUI breakdown; expanded ScanConfig table with new CLI flags.
+- **ARKENAR_DOCUMENTATION.md** — Updated `TargetManager::pop_next` rename and `ScanEngine::run` return type.
+
+---
 
 ## [1.1.0] — Phase 1: Foundation Intelligence & Studio Refactor
 
