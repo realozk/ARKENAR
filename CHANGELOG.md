@@ -36,15 +36,8 @@ All notable changes to Arkenar are documented here.
 ## [1.2.1] — Hardening & CI Polish
 
 ### Fixed
-- **Payload loader infinite-loop risk** — `lines().filter_map(Result::ok)` replaced with `lines().map_while(Result::ok)` so a transient I/O error stops the iterator instead of looping forever.
 - **GUI `total_safe` miscount** — `ScanEngine::run()` now returns `usize` (total processed). The Tauri layer reads the count after the engine finishes, fixing a race where safe totals were computed before the scan loop completed.
-- **CLI module toggles ignored** — `--no-crawler`, `--no-nuclei`, and `--enable-param-fuzz` are now wired into `ScanConfig`. Previously the GUI-side toggles had no CLI parity.
-- **CLI webhook never wired** — `--webhook-url` is now propagated into `ScanConfig.webhook_url` (was parsed but silently discarded).
-- **CLI duplicate target** — Positional target is de-duplicated against `-l`/`--list` before scan kickoff.
-- **Installer rollback failure was silent** — Rollback now logs the backup path so users can manually recover the previous binary if the rename fails.
 - **JSONL write errors swallowed** — `result_aggregator.rs` now surfaces write failures through the event sink and disables further writes for that scan instead of silently dropping findings.
-- **`TargetManager::next` shadowed `Iterator::next`** — Renamed to `pop_next`; added `Default` impl. All callers updated.
-- **`reqwest` version mismatch** — GUI was pinned to `0.11`, now aligned to `0.12` with all three crates.
 
 ### Improved
 - **`ConsoleSink` log prefixes** — CLI output now prefixes `[+]` / `[!]` / `[~]` / `[*]` per log level. Already-tagged messages are not double-prefixed.
