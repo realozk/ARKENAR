@@ -14,8 +14,7 @@ pub struct DnsResult {
 }
 
 pub async fn resolve_domain(domain: &str) -> Result<DnsResult> {
-    let resolver =
-        TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+    let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
     let a_records = match resolver.lookup_ip(domain).await {
         Ok(resp) => resp.iter().map(|ip| ip.to_string()).collect(),
@@ -23,10 +22,7 @@ pub async fn resolve_domain(domain: &str) -> Result<DnsResult> {
     };
 
     let mx = match resolver.mx_lookup(domain).await {
-        Ok(resp) => resp
-            .iter()
-            .map(|r| r.exchange().to_string())
-            .collect(),
+        Ok(resp) => resp.iter().map(|r| r.exchange().to_string()).collect(),
         Err(_) => vec![],
     };
 
@@ -44,23 +40,15 @@ pub async fn resolve_domain(domain: &str) -> Result<DnsResult> {
     };
 
     let cname = match resolver.lookup_ip(domain).await {
-        Ok(resp) => resp
-            .as_lookup()
-            .records()
-            .iter()
-            .find_map(|r| {
-                if let Some(cname) = r.data().and_then(|d| {
-                    if let trust_dns_resolver::proto::rr::RData::CNAME(ref c) = d {
-                        Some(c.to_string())
-                    } else {
-                        None
-                    }
-                }) {
-                    Some(cname)
+        Ok(resp) => resp.as_lookup().records().iter().find_map(|r| {
+            r.data().and_then(|d| {
+                if let trust_dns_resolver::proto::rr::RData::CNAME(ref c) = d {
+                    Some(c.to_string())
                 } else {
                     None
                 }
-            }),
+            })
+        }),
         Err(_) => None,
     };
 

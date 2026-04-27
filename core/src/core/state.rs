@@ -1,14 +1,14 @@
-/// Scan state persistence for crash recovery and resume.
-///
-/// Saves scan progress (config, pending URLs, collected results) to a JSON file 
-/// after each target URL completes. Uses atomic write (tmp + rename) to prevent
-/// corruption if the process is killed mid-flush.
+//! Scan state persistence for crash recovery and resume.
+//!
+//! Saves scan progress (config, pending URLs, collected results) to a JSON file
+//! after each target URL completes. Uses atomic write (tmp + rename) to prevent
+//! corruption if the process is killed mid-flush.
 
-use tokio::fs;
 use serde::{Deserialize, Serialize};
+use tokio::fs;
 
-use crate::ScanConfig;
 use crate::core::result_aggregator::ScanResult;
+use crate::ScanConfig;
 
 const STATE_FILE: &str = ".arkenar-state.json";
 
@@ -40,14 +40,14 @@ impl ScanState {
     /// ASYNC Atomic write: serialize to .tmp, then rename over the real file without blocking the executor.
     pub async fn save(&self, path: &str) -> anyhow::Result<()> {
         let tmp = format!("{}.tmp", path);
-        
-        // Serialization is CPU-bound, which is fine for small/medium structs, 
+
+        // Serialization is CPU-bound, which is fine for small/medium structs,
         // but the actual disk write MUST be async.
         let json = serde_json::to_string_pretty(self)?;
-        
+
         fs::write(&tmp, &json).await?;
         fs::rename(&tmp, path).await?;
-        
+
         Ok(())
     }
 

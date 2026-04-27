@@ -116,15 +116,60 @@ arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
 
 ### Options
 
+Run `arkenar --help` for the authoritative list. The most common flags:
+
+#### Targeting & I/O
 | Flag | Description | Example |
 | :--- | :--- | :--- |
-| `-l`, `--list` | Path to a file containing a list of subdomains | `-l ~/Desktop/targets.txt` |
-| `-o`, `--output` | Save the scan results to a JSON file | `-o result.json` |
-| `-t`, `--threads` | Set the number of concurrent threads (Default: 50) | `-t 100` |
-| `--rate-limit` | Set the maximum requests per second | `--rate-limit 200` |
-| `--timeout` | Connection timeout in seconds | `--timeout 10` |
-| `-v`, `--verbose` | Enable verbose mode for detailed logs | `-v` |
-| `--update` | Update ARKENAR and external tools (Katana/Nuclei) | `--update` |
+| `-l`, `--list` | File containing target URLs (one per line) | `-l targets.txt` |
+| `-o`, `--output` | JSON output path (default: `scan_results.json`) | `-o result.json` |
+| `-p`, `--payloads` | Extra payload list to merge into the loader | `-p extra.txt` |
+| `--dry-run` | Print what would be scanned, send no real requests | `--dry-run` |
+| `--resume` | Resume an interrupted scan from `.arkenar-state.json` | `--resume` |
+| `--update` | Self-update ARKENAR + Katana + Nuclei | `--update` |
+
+#### Scan profile
+| Flag | Description | Example |
+| :--- | :--- | :--- |
+| `-m`, `--mode` | `simple` (fast) or `advanced` (comprehensive) | `-m advanced` |
+| `-t`, `--threads` | Concurrent worker count (default 50) | `-t 100` |
+| `--rate-limit` | Max requests per second (default 100) | `--rate-limit 200` |
+| `--timeout` | Per-request timeout in seconds (default 5) | `--timeout 10` |
+| `-v`, `--verbose` | Detailed logs | `-v` |
+
+#### Network & headers
+| Flag | Description | Example |
+| :--- | :--- | :--- |
+| `--proxy` | HTTP/SOCKS proxy URL | `--proxy http://127.0.0.1:8080` |
+| `-H`, `--header` | Custom header (repeatable) | `-H "Cookie: a=b"` |
+| `--allow-insecure-tls` | Accept invalid TLS certs (DANGEROUS — MITM-able) | `--allow-insecure-tls` |
+| `--scope` | Limit crawler to same domain | `--scope` |
+| `--scope-regex` | Regex restricting which URLs are scanned | `--scope-regex '^https://example\.com'` |
+
+#### Modules (parity with the GUI)
+| Flag | Description | Example |
+| :--- | :--- | :--- |
+| `--no-crawler` | Skip the Katana crawl phase | `--no-crawler` |
+| `--no-nuclei` | Skip the Nuclei scan phase | `--no-nuclei` |
+| `--enable-param-fuzz` | Add experimental parameter fuzzing | `--enable-param-fuzz` |
+| `--enable-js-analysis` | Static analysis of JS endpoints | `--enable-js-analysis` |
+| `--enable-waf-evasion` | Mutate payloads on 403 responses | `--enable-waf-evasion` |
+| `--no-fingerprint` | Disable tech-stack fingerprinting | `--no-fingerprint` |
+| `--no-smart-payloads` | Disable context-aware payload selection | `--no-smart-payloads` |
+| `--tags` | Custom Nuclei tags (overrides simple-mode logic) | `--tags cve,jira` |
+| `--nuclei-templates` | Custom Nuclei templates directory | `--nuclei-templates ./tpl` |
+| `--crawler-depth` | Katana crawl depth (default 3) | `--crawler-depth 5` |
+| `--crawler-max-urls` | Cap on URLs Katana discovers (default 50) | `--crawler-max-urls 200` |
+| `--crawler-timeout` | Per-target nuclei/crawl timeout in seconds | `--crawler-timeout 90` |
+
+#### Auth, OAST & alerts
+| Flag | Description | Example |
+| :--- | :--- | :--- |
+| `--auth-type` | `none` / `bearer` / `cookie` / `custom` | `--auth-type bearer` |
+| `--auth-token` | Bearer token (paired with `--auth-type bearer`) | `--auth-token eyJ...` |
+| `--auth-cookies` | Raw cookie string (paired with `--auth-type cookie`) | `--auth-cookies "sess=abc"` |
+| `--oast-server` | Interactsh OAST server | `--oast-server https://oast.pro` |
+| `--webhook-url` | HTTPS webhook for findings (private/loopback IPs blocked) | `--webhook-url https://hooks…` |
 
 ---
 

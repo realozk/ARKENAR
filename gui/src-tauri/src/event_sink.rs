@@ -1,20 +1,20 @@
-/// Batched IPC event sink for the Tauri ↔ React bridge.
-///
-/// Instead of calling `app.emit()` for every single HTTP finding (which causes
-/// massive JSON serialization pressure and floods the WebView IPC channel),
-/// this module buffers `ScanFindingEvent` items in a bounded async channel and
-/// flushes them to the frontend as a single `Vec<ScanFindingEvent>` every 250ms.
-///
-/// Design:
-///   - `FindingEmitter` is a cheap `Clone`-able handle to the channel tx side.
-///   - Call `FindingEmitter::push()` from any async context — it is non-blocking.
-///   - The flush task runs for the lifetime of a single scan and is cancelled
-///     automatically when the `FindingEmitter` and all its clones are dropped
-///     (the channel tx closes, causing the rx loop to exit cleanly).
+//! Batched IPC event sink for the Tauri ↔ React bridge.
+//!
+//! Instead of calling `app.emit()` for every single HTTP finding (which causes
+//! massive JSON serialization pressure and floods the WebView IPC channel),
+//! this module buffers `ScanFindingEvent` items in a bounded async channel and
+//! flushes them to the frontend as a single `Vec<ScanFindingEvent>` every 250ms.
+//!
+//! Design:
+//!   - `FindingEmitter` is a cheap `Clone`-able handle to the channel tx side.
+//!   - Call `FindingEmitter::push()` from any async context — it is non-blocking.
+//!   - The flush task runs for the lifetime of a single scan and is cancelled
+//!     automatically when the `FindingEmitter` and all its clones are dropped
+//!     (the channel tx closes, causing the rx loop to exit cleanly).
 
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, async_runtime};
+use tauri::{async_runtime, AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio::time::interval;
 
@@ -41,9 +41,7 @@ pub struct FindingEmitter {
 }
 
 impl FindingEmitter {
-  
     pub fn push(&self, finding: ScanFindingEvent) {
-      
         let _ = self.tx.try_send(finding);
     }
 }

@@ -7,10 +7,12 @@ use tempfile::NamedTempFile;
 #[test]
 fn test_single_target_dry_run() {
     cargo_bin_cmd!("arkenar")
-        .args(&["http://example.com", "--dry-run"])
+        .args(["http://example.com", "--dry-run"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[DRY RUN] Would scan target: http://example.com"));
+        .stdout(predicate::str::contains(
+            "[DRY RUN] Would scan target: http://example.com",
+        ));
 }
 
 /// List file with --dry-run should process every line and print dry-run for each.
@@ -24,18 +26,22 @@ fn test_list_file_dry_run() {
     let path = file.path().to_str().unwrap().to_string();
 
     cargo_bin_cmd!("arkenar")
-        .args(&["-l", &path, "--dry-run"])
+        .args(["-l", &path, "--dry-run"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[DRY RUN] Would scan target: http://target1.com"))
-        .stdout(predicate::str::contains("[DRY RUN] Would scan target: http://target2.com"))
-        .stdout(predicate::str::contains("[DRY RUN] Would scan target: http://target3.com"));
+        .stdout(predicate::str::contains(
+            "[DRY RUN] Would scan target: http://target1.com",
+        ))
+        .stdout(predicate::str::contains(
+            "[DRY RUN] Would scan target: http://target2.com",
+        ))
+        .stdout(predicate::str::contains(
+            "[DRY RUN] Would scan target: http://target3.com",
+        ));
 }
 
 /// Running with no arguments should fail (clap requires target or -l).
 #[test]
 fn test_no_args_shows_error() {
-    cargo_bin_cmd!("arkenar")
-        .assert()
-        .failure();
+    cargo_bin_cmd!("arkenar").assert().failure();
 }

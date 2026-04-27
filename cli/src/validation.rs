@@ -12,10 +12,16 @@ const FORBIDDEN: &[char] = &[
 /// Block shell metacharacters and path-traversal sequences.
 pub fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
     if val.chars().any(|c| FORBIDDEN.contains(&c)) {
-        return Err(format!("Argument `{}` contains a forbidden shell metacharacter.", name));
+        return Err(format!(
+            "Argument `{}` contains a forbidden shell metacharacter.",
+            name
+        ));
     }
     if val.contains("..") {
-        return Err(format!("Argument `{}` contains path-traversal sequence `..`.", name));
+        return Err(format!(
+            "Argument `{}` contains path-traversal sequence `..`.",
+            name
+        ));
     }
     Ok(())
 }
@@ -25,14 +31,25 @@ pub fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
 pub fn validate_tags_field(name: &str, val: &str) -> Result<(), String> {
     for tag in val.split(',') {
         let tag = tag.trim();
-        if tag.is_empty() { continue; }
-
-        if tag.starts_with('-') {
-            return Err(format!("Argument `{}`: tag `{}` looks like a CLI flag (flag injection blocked).", name, tag));
+        if tag.is_empty() {
+            continue;
         }
 
-        if !tag.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-            return Err(format!("Argument `{}`: tag `{}` contains invalid characters.", name, tag));
+        if tag.starts_with('-') {
+            return Err(format!(
+                "Argument `{}`: tag `{}` looks like a CLI flag (flag injection blocked).",
+                name, tag
+            ));
+        }
+
+        if !tag
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(format!(
+                "Argument `{}`: tag `{}` contains invalid characters.",
+                name, tag
+            ));
         }
     }
     Ok(())
@@ -46,15 +63,23 @@ pub fn validate_webhook_url(raw: &str) -> Result<(), String> {
         return Err("Webhook URL must use HTTPS.".to_string());
     }
 
-    let host = url.host_str().ok_or_else(|| "Webhook URL has no host.".to_string())?;
-    
+    let host = url
+        .host_str()
+        .ok_or_else(|| "Webhook URL has no host.".to_string())?;
+
     if host == "localhost" || host.ends_with(".local") || host.ends_with(".internal") {
-        return Err(format!("Webhook URL host `{}` is a private/loopback hostname (SSRF blocked).", host));
+        return Err(format!(
+            "Webhook URL host `{}` is a private/loopback hostname (SSRF blocked).",
+            host
+        ));
     }
 
     if let Ok(ip) = host.parse::<IpAddr>() {
         if is_private_ip(ip) {
-            return Err(format!("Webhook URL `{}` resolves to a private IP (SSRF blocked).", ip));
+            return Err(format!(
+                "Webhook URL `{}` resolves to a private IP (SSRF blocked).",
+                ip
+            ));
         }
     }
 

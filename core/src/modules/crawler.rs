@@ -1,14 +1,14 @@
-use std::collections::HashSet;
-use std::process::Stdio;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
-use serde::Deserialize;
-use url::Url;
 use crate::utils;
 use crate::ScanConfig;
 use crate::SinkRef;
+use serde::Deserialize;
+use std::collections::HashSet;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+use url::Url;
 
 #[derive(Deserialize, Debug)]
 struct KatanaRequest {
@@ -25,11 +25,19 @@ struct KatanaOutput {
 
 impl KatanaOutput {
     fn extract_url(&self) -> Option<String> {
-        if let Some(ref e) = self.endpoint { return Some(e.clone()); }
-        if let Some(ref u) = self.url { return Some(u.clone()); }
+        if let Some(ref e) = self.endpoint {
+            return Some(e.clone());
+        }
+        if let Some(ref u) = self.url {
+            return Some(u.clone());
+        }
         if let Some(ref req) = self.request {
-            if let Some(ref e) = req.endpoint { return Some(e.clone()); }
-            if let Some(ref u) = req.url { return Some(u.clone()); }
+            if let Some(ref e) = req.endpoint {
+                return Some(e.clone());
+            }
+            if let Some(ref u) = req.url {
+                return Some(u.clone());
+            }
         }
         None
     }
@@ -52,21 +60,43 @@ pub async fn run_katana_crawler(
 ) -> anyhow::Result<Vec<String>> {
     let binary = katana_binary()?;
     let depth_str = config.crawler_depth.to_string();
-    let timeout_str = format!("{}s", config.crawler_timeout); 
+    let timeout_str = format!("{}s", config.crawler_timeout);
     let max_urls = config.crawler_max_urls;
 
     if config.verbose {
-        sink.on_log("info", &format!("[*] Starting Katana on target: {} (depth: {}, timeout: {}, max: {})", target, depth_str, timeout_str, max_urls));
+        sink.on_log(
+            "info",
+            &format!(
+                "[*] Starting Katana on target: {} (depth: {}, timeout: {}, max: {})",
+                target, depth_str, timeout_str, max_urls
+            ),
+        );
     } else {
-        sink.on_log("info", &format!("[*] Starting Katana on target: {}", target));
+        sink.on_log(
+            "info",
+            &format!("[*] Starting Katana on target: {}", target),
+        );
     }
 
-    let args = vec!["-u", target, "-jsonl", "-silent", "-d", &depth_str, "-crawl-duration", &timeout_str, "-timeout", "15", "-duc"];
+    let args = vec![
+        "-u",
+        target,
+        "-jsonl",
+        "-silent",
+        "-d",
+        &depth_str,
+        "-crawl-duration",
+        &timeout_str,
+        "-timeout",
+        "15",
+        "-duc",
+    ];
 
     let mut std_cmd = std::process::Command::new(&binary);
-    std_cmd.args(&args)
-           .stdout(Stdio::piped())
-           .stderr(Stdio::null());
+    std_cmd
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
 
     #[cfg(target_os = "windows")]
     {
@@ -76,7 +106,10 @@ pub async fn run_katana_crawler(
 
     let mut child = Command::from(std_cmd).spawn()?;
 
-    let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("Failed to capture stdout from katana"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout from katana"))?;
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
     let mut seen: HashSet<String> = HashSet::new();
@@ -92,7 +125,9 @@ pub async fn run_katana_crawler(
         }
 
         let line = raw_line.trim();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         let parsed: KatanaOutput = match serde_json::from_str(line) {
             Ok(v) => v,
@@ -115,7 +150,10 @@ pub async fn run_katana_crawler(
                 }
 
                 if seen.len() >= max_urls {
-                    sink.on_log("warn", &format!("[*] Reached URL cap ({}). Stopping crawler.", max_urls));
+                    sink.on_log(
+                        "warn",
+                        &format!("[*] Reached URL cap ({}). Stopping crawler.", max_urls),
+                    );
                     child.kill().await.ok();
                     break;
                 }
@@ -124,7 +162,10 @@ pub async fn run_katana_crawler(
     }
 
     let _ = child.wait().await;
-    sink.on_log("info", &format!("[*] Katana finished. Total unique URLs: {}", seen.len()));
+    sink.on_log(
+        "info",
+        &format!("[*] Katana finished. Total unique URLs: {}", seen.len()),
+    );
 
     let has_injectable = seen.iter().any(|u| u.contains('?') && u.contains('='));
     if !has_injectable && !seen.is_empty() {

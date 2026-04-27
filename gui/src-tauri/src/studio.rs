@@ -5,7 +5,7 @@
 //!   - All user input is validated before any network call.
 //!   - A fresh cookie jar is created per-request (no cross-session leakage).
 
-use reqwest::cookie::{Jar, CookieStore};
+use reqwest::cookie::{CookieStore, Jar};
 use reqwest::redirect::Policy;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,6 @@ use std::sync::OnceLock;
 static HIDDEN_INPUT_SEL: OnceLock<Selector> = OnceLock::new();
 static FORM_SEL: OnceLock<Selector> = OnceLock::new();
 static PASS_SEL: OnceLock<Selector> = OnceLock::new();
-
 
 #[derive(Debug, Deserialize)]
 pub struct AutoLoginRequest {
@@ -33,10 +32,9 @@ pub struct AutoLoginResult {
     pub status_code: u16,
 }
 
-
 fn validate_request(req: &AutoLoginRequest) -> Result<(), String> {
-    let parsed = url::Url::parse(&req.login_url)
-        .map_err(|_| "Login URL is not valid.".to_string())?;
+    let parsed =
+        url::Url::parse(&req.login_url).map_err(|_| "Login URL is not valid.".to_string())?;
 
     let scheme = parsed.scheme();
     if scheme != "http" && scheme != "https" {
@@ -45,10 +43,7 @@ fn validate_request(req: &AutoLoginRequest) -> Result<(), String> {
     if parsed.host_str().is_none() {
         return Err("Login URL has no hostname.".to_string());
     }
-    if req.login_url.contains('\0')
-        || req.username.contains('\0')
-        || req.password.contains('\0')
-    {
+    if req.login_url.contains('\0') || req.username.contains('\0') || req.password.contains('\0') {
         return Err("Input contains forbidden characters.".to_string());
     }
     if req.username.trim().is_empty() {
@@ -59,7 +54,6 @@ fn validate_request(req: &AutoLoginRequest) -> Result<(), String> {
     }
     Ok(())
 }
-
 
 const CSRF_HINTS: &[&str] = &[
     "csrf",
@@ -75,13 +69,13 @@ const CSRF_HINTS: &[&str] = &[
 /// look like CSRF tokens.  If `preferred` is given, only that exact name is
 /// returned (ignoring CSRF heuristics).
 fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, String)> {
-   let selector = HIDDEN_INPUT_SEL.get_or_init(|| {
+    let selector = HIDDEN_INPUT_SEL.get_or_init(|| {
         Selector::parse("input[type='hidden']")
             .expect("hidden-input CSS selector is hardcoded and must parse")
     });
     let mut results = Vec::new();
 
-    for el in doc.select(&selector) {
+    for el in doc.select(selector) {
         let name = match el.attr("name") {
             Some(n) if !n.is_empty() => n.to_string(),
             _ => continue,
@@ -91,10 +85,10 @@ fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, St
         if let Some(pref) = preferred {
             if name.eq_ignore_ascii_case(pref) {
                 results.push((name, value));
-                return results; 
+                return results;
             }
-        continue;
-    }
+            continue;
+        }
         let name_lower = name.to_lowercase();
         if CSRF_HINTS.iter().any(|hint| name_lower.contains(hint)) {
             results.push((name, value));
@@ -107,16 +101,15 @@ fn extract_hidden_tokens(doc: &Html, preferred: Option<&str>) -> Vec<(String, St
 /// contains a `<input type="password">`).  Falls back to `login_url`.
 fn resolve_form_action(doc: &Html, base_url: &url::Url) -> String {
     let form_sel = FORM_SEL.get_or_init(|| {
-        Selector::parse("form")
-            .expect("form CSS selector is hardcoded and must parse")
+        Selector::parse("form").expect("form CSS selector is hardcoded and must parse")
     });
     let pass_sel = PASS_SEL.get_or_init(|| {
         Selector::parse("input[type='password']")
             .expect("password-input CSS selector is hardcoded and must parse")
     });
 
-    for form in doc.select(&form_sel) {
-        if form.select(&pass_sel).next().is_none() {
+    for form in doc.select(form_sel) {
+        if form.select(pass_sel).next().is_none() {
             continue;
         }
         if let Some(action) = form.attr("action") {
@@ -127,7 +120,6 @@ fn resolve_form_action(doc: &Html, base_url: &url::Url) -> String {
     }
     base_url.to_string()
 }
-
 
 #[tauri::command]
 pub async fn studio_auto_login(req: AutoLoginRequest) -> Result<AutoLoginResult, String> {
@@ -144,15 +136,18 @@ pub async fn studio_auto_login(req: AutoLoginRequest) -> Result<AutoLoginResult,
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let base_url = url::Url::parse(&req.login_url)
-        .map_err(|_| "Could not parse login URL.".to_string())?;
+    let base_url =
+        url::Url::parse(&req.login_url).map_err(|_| "Could not parse login URL.".to_string())?;
 
     // ── Step 1: GET the login page ────────────────────────────────────────────
     // This populates the jar with any pre-session cookies and lets us read
     // the CSRF token from the rendered HTML.
     let get_resp = client
         .get(&req.login_url)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
         .send()
         .await
         .map_err(|e| format!("GET request failed: {}", e))?;
@@ -172,11 +167,11 @@ pub async fn studio_auto_login(req: AutoLoginRequest) -> Result<AutoLoginResult,
 
     // ── Step 2: Parse CSRF tokens + form action ───────────────────────────────
     let (csrf_tokens, post_url) = {
-    let doc = Html::parse_document(&html_body);
-    let tokens   = extract_hidden_tokens(&doc, req.token_field.as_deref());
-    let form_url = resolve_form_action(&doc, &base_url);
-    (tokens, form_url)
-};
+        let doc = Html::parse_document(&html_body);
+        let tokens = extract_hidden_tokens(&doc, req.token_field.as_deref());
+        let form_url = resolve_form_action(&doc, &base_url);
+        (tokens, form_url)
+    };
 
     // ── Step 3: Build POST form data ──────────────────────────────────────────
     let username_field = req
@@ -202,8 +197,18 @@ pub async fn studio_auto_login(req: AutoLoginRequest) -> Result<AutoLoginResult,
     let post_resp = client
         .post(&post_url)
         .header("Referer", &req.login_url)
-        .header("Origin", format!("{}://{}", base_url.scheme(), base_url.host_str().unwrap_or("")))
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header(
+            "Origin",
+            format!(
+                "{}://{}",
+                base_url.scheme(),
+                base_url.host_str().unwrap_or("")
+            ),
+        )
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
         .form(&form)
         .send()
         .await
@@ -218,8 +223,8 @@ pub async fn studio_auto_login(req: AutoLoginRequest) -> Result<AutoLoginResult,
         base_url.scheme(),
         base_url.host_str().unwrap_or("")
     );
-    let origin_url = url::Url::parse(&origin_str)
-        .map_err(|e| format!("Could not build origin URL: {}", e))?;
+    let origin_url =
+        url::Url::parse(&origin_str).map_err(|e| format!("Could not build origin URL: {}", e))?;
 
     let cookie_header = jar
         .cookies(&origin_url)

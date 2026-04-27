@@ -6,6 +6,12 @@ pub struct TargetManager {
     seen: HashSet<String>,
 }
 
+impl Default for TargetManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TargetManager {
     /// Creates a new, empty `TargetManager`.
     pub fn new() -> Self {
@@ -23,7 +29,7 @@ impl TargetManager {
     }
 
     /// Returns the next pending target, or `None` if the queue is empty.
-    pub fn next(&mut self) -> Option<String> {
+    pub fn pop_next(&mut self) -> Option<String> {
         self.queue.pop_front()
     }
 

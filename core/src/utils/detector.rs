@@ -1,5 +1,5 @@
-use reqwest::header::HeaderMap;
 use crate::core::VulnerabilityType;
+use reqwest::header::HeaderMap;
 
 const STRONG_SQL: &[&str] = &[
     "You have an error in your SQL",
@@ -59,7 +59,7 @@ impl VulnerabilityDetector {
 
         // SQL injection — strong/weak split
         let strong_hits = STRONG_SQL.iter().filter(|p| body.contains(**p)).count();
-        let weak_hits   = WEAK_SQL.iter().filter(|p| body.contains(**p)).count();
+        let weak_hits = WEAK_SQL.iter().filter(|p| body.contains(**p)).count();
         if strong_hits >= 1 || weak_hits >= 2 {
             return Some(VulnerabilityType::SqlInjection);
         }
@@ -79,7 +79,12 @@ impl VulnerabilityDetector {
                 if matches!(code, 301 | 302 | 303 | 307 | 308) {
                     if let Some(hdrs) = headers {
                         if let Some(loc) = hdrs.get("location").and_then(|v| v.to_str().ok()) {
-                            if loc.contains(payload.trim_start_matches("https://").trim_start_matches("http://").trim_start_matches("//")) {
+                            if loc.contains(
+                                payload
+                                    .trim_start_matches("https://")
+                                    .trim_start_matches("http://")
+                                    .trim_start_matches("//"),
+                            ) {
                                 return Some(VulnerabilityType::OpenRedirect);
                             }
                         }
@@ -98,9 +103,19 @@ impl VulnerabilityDetector {
 
     fn is_xss_payload(&self, payload: &str) -> bool {
         let xss_indicators = [
-            "<script", "<img", "<svg", "<iframe", "<body",
-            "onerror=", "onload=", "onclick=", "onmouseover=",
-            "javascript:", "alert(", "prompt(", "confirm(",
+            "<script",
+            "<img",
+            "<svg",
+            "<iframe",
+            "<body",
+            "onerror=",
+            "onload=",
+            "onclick=",
+            "onmouseover=",
+            "javascript:",
+            "alert(",
+            "prompt(",
+            "confirm(",
         ];
         let payload_lower = payload.to_lowercase();
         xss_indicators.iter().any(|ind| payload_lower.contains(ind))
@@ -135,10 +150,16 @@ impl VulnerabilityDetector {
     }
 
     pub fn is_xss_vulnerable(&self, body: &str, payload: &str, content_type: Option<&str>) -> bool {
-        if !self.is_xss_payload(payload) { return false; }
-        if !body.contains(payload) { return false; }
+        if !self.is_xss_payload(payload) {
+            return false;
+        }
+        if !body.contains(payload) {
+            return false;
+        }
         if let Some(ct) = content_type {
-            if ct.contains("text/html") { return true; }
+            if ct.contains("text/html") {
+                return true;
+            }
         }
         false
     }

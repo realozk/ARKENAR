@@ -1,24 +1,24 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use futures::{stream, StreamExt};
 use log::warn;
-use tokio::sync::{mpsc, Semaphore};
-use reqwest::Method;
 use reqwest::header::HeaderMap;
+use reqwest::Method;
+use tokio::sync::{mpsc, Semaphore};
 use url::Url;
 
-use crate::core::throttle::ThrottleController;
 use crate::core::mutator::{self, InjectionPoint};
 use crate::core::result_aggregator::ScanResult;
 use crate::core::target_manager::TargetManager;
+use crate::core::throttle::ThrottleController;
 use crate::core::VulnerabilityType;
 use crate::deep_hunter::JsAnalyzer;
 use crate::http::{HttpClient, HttpRequest, MAX_RESPONSE_BODY};
 use crate::utils::detector::VulnerabilityDetector;
+use crate::utils::fingerprint::{FingerprintResult, TechFingerprinter};
 use crate::utils::payload_loader::PayloadLoader;
-use crate::utils::fingerprint::{TechFingerprinter, FingerprintResult};
 use crate::ScanConfig;
 
 pub struct ScanEngine {
@@ -83,7 +83,10 @@ impl ScanEngine {
                 match regex::Regex::new(&config.scope_regex) {
                     Ok(r) => Some(r),
                     Err(e) => {
-                        warn!("Invalid scope_regex '{}': {} — ignoring", config.scope_regex, e);
+                        warn!(
+                            "Invalid scope_regex '{}': {} — ignoring",
+                            config.scope_regex, e
+                        );
                         None
                     }
                 }
@@ -91,7 +94,11 @@ impl ScanEngine {
         }
     }
 
-    pub async fn run(mut self, result_tx: mpsc::Sender<ScanResult>, abort: Arc<AtomicBool>) {
+    pub async fn run(
+        mut self,
+        result_tx: mpsc::Sender<ScanResult>,
+        abort: Arc<AtomicBool>,
+    ) -> usize {
         let network_semaphore = Arc::new(Semaphore::new(self.concurrency_limit));
         let target_semaphore = Arc::new(Semaphore::new(100));
         let fingerprinter = Arc::new(TechFingerprinter::new());
@@ -101,7 +108,7 @@ impl ScanEngine {
 
         let mut tasks = Vec::new();
 
-        while let Some(target_url) = self.target_manager.next() {
+        while let Some(target_url) = self.target_manager.pop_next() {
             if let Some(ref re) = self.scope_regex {
                 if !re.is_match(&target_url) {
                     continue;
@@ -145,7 +152,9 @@ impl ScanEngine {
                     }
                 };
 
-                if abort_task.load(Ordering::Relaxed) { return vec![]; }
+                if abort_task.load(Ordering::Relaxed) {
+                    return vec![];
+                }
 
                 let canary_req = mutator::build_canary_request(&request);
 
@@ -238,7 +247,8 @@ impl ScanEngine {
                     enable_smart_payloads,
                     enable_param_fuzz,
                     concurrency_limit,
-                ).await;
+                )
+                .await;
 
                 extra_targets
             });
@@ -258,6 +268,8 @@ impl ScanEngine {
                 Err(e) => warn!("Scan task panicked: {}", e),
             }
         }
+
+        self.target_manager.total_seen()
     }
 
     pub async fn scan_request(&self, request: HttpRequest, result_tx: mpsc::Sender<ScanResult>) {
@@ -280,7 +292,8 @@ impl ScanEngine {
             self.enable_smart_payloads,
             self.enable_param_fuzz,
             self.concurrency_limit,
-        ).await;
+        )
+        .await;
     }
 }
 
@@ -292,16 +305,18 @@ fn create_request_from_url(url_str: &str) -> Result<HttpRequest, url::ParseError
 }
 
 fn extract_server(response: &reqwest::Response) -> Option<String> {
-    response.headers()
+    response
+        .headers()
         .get("server")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
 }
 
 fn headers_to_vec(headers: &HeaderMap) -> Vec<(String, String)> {
-    headers.iter().map(|(k, v)| {
-        (k.to_string(), v.to_str().unwrap_or_default().to_string())
-    }).collect()
+    headers
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
+        .collect()
 }
 
 async fn read_body_capped(resp: reqwest::Response) -> Result<String, reqwest::Error> {
@@ -330,7 +345,7 @@ async fn scan_single_request(
     let injection_points = mutator::extract_injection_points(&request);
 
     if injection_points.is_empty() {
-        let _ = basic_scan(
+        if let Err(e) = basic_scan(
             &request,
             &client,
             &detector,
@@ -338,7 +353,11 @@ async fn scan_single_request(
             &network_semaphore,
             &fingerprinter,
             enable_fingerprint,
-        ).await;
+        )
+        .await
+        {
+            warn!("basic_scan failed for {}: {}", request.url, e);
+        }
         return;
     }
 
@@ -363,7 +382,7 @@ async fn scan_single_request(
     let concurrency = concurrency.max(1);
 
     if enable_param_fuzz {
-        if let Ok(parsed_url) = url::Url::parse(&request.url.to_string()) {
+        if let Ok(parsed_url) = url::Url::parse(request.url.as_str()) {
             let existing_params: std::collections::HashSet<String> = scan_tasks
                 .iter()
                 .filter_map(|(point, _)| match point {
@@ -398,7 +417,9 @@ async fn scan_single_request(
             let fingerprinter = Arc::clone(&fingerprinter);
 
             async move {
-                if abort.load(Ordering::Relaxed) { return; }
+                if abort.load(Ordering::Relaxed) {
+                    return;
+                }
 
                 let mutated_request = mutator::mutate_request(&request, &point, &payload);
 
@@ -413,12 +434,13 @@ async fn scan_single_request(
                 let response_result = client.send_request(&mutated_request).await;
                 let duration_ms = start.elapsed().as_millis();
 
-                match response_result {
-                    Ok(response) => {
+                if let Ok(response) = response_result {
+                    {
                         let status_code = response.status().as_u16();
                         throttle.record_response(status_code);
                         let server = extract_server(&response);
-                        let content_type = response.headers()
+                        let content_type = response
+                            .headers()
                             .get("content-type")
                             .and_then(|v| v.to_str().ok())
                             .map(|s| s.to_string());
@@ -432,7 +454,10 @@ async fn scan_single_request(
                         let fp_result: FingerprintResult = if enable_fingerprint {
                             fingerprinter.analyze(status_code, &resp_headers, &body)
                         } else {
-                            FingerprintResult { tech_stack: vec![], waf_detected: None }
+                            FingerprintResult {
+                                tech_stack: vec![],
+                                waf_detected: None,
+                            }
                         };
 
                         let vuln = detector.detect(
@@ -455,7 +480,11 @@ async fn scan_single_request(
                                 server,
                                 method: mutated_request.method.to_string(),
                                 request_headers: headers_to_vec(&mutated_request.headers),
-                                request_body: if mutated_request.body.is_empty() { None } else { Some(mutated_request.body.clone()) },
+                                request_body: if mutated_request.body.is_empty() {
+                                    None
+                                } else {
+                                    Some(mutated_request.body.clone())
+                                },
                                 tech_stack: fp_result.tech_stack.clone(),
                                 waf_detected: fp_result.waf_detected.clone(),
                                 verified: false,
@@ -464,7 +493,6 @@ async fn scan_single_request(
                             let _ = result_tx.send(result).await;
                         }
                     }
-                    Err(_) => {}
                 }
             }
         })
@@ -476,8 +504,8 @@ async fn scan_single_request(
 fn format_vuln_type(vuln: &VulnerabilityType, point: &InjectionPoint) -> String {
     let type_str = vuln.to_string();
     match point {
-        InjectionPoint::UrlParam(param)  => format!("{} [param: {}]", type_str, param),
-        InjectionPoint::Header(header)   => format!("{} [header: {}]", type_str, header),
+        InjectionPoint::UrlParam(param) => format!("{} [param: {}]", type_str, param),
+        InjectionPoint::Header(header) => format!("{} [header: {}]", type_str, header),
         InjectionPoint::JsonField(field) => format!("{} [json: {}]", type_str, field),
         InjectionPoint::FormParam(param) => format!("{} [form: {}]", type_str, param),
     }
@@ -500,7 +528,8 @@ async fn basic_scan(
 
     let status_code = response.status().as_u16();
     let server = extract_server(&response);
-    let content_type = response.headers()
+    let content_type = response
+        .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
@@ -511,7 +540,10 @@ async fn basic_scan(
     let fp_result = if enable_fingerprint {
         fingerprinter.analyze(status_code, &resp_headers, &body)
     } else {
-        FingerprintResult { tech_stack: vec![], waf_detected: None }
+        FingerprintResult {
+            tech_stack: vec![],
+            waf_detected: None,
+        }
     };
 
     let vuln = detector.detect(
@@ -533,7 +565,11 @@ async fn basic_scan(
             server,
             method: request.method.to_string(),
             request_headers: headers_to_vec(&request.headers),
-            request_body: if request.body.is_empty() { None } else { Some(request.body.clone()) },
+            request_body: if request.body.is_empty() {
+                None
+            } else {
+                Some(request.body.clone())
+            },
             tech_stack: fp_result.tech_stack,
             waf_detected: fp_result.waf_detected,
             verified: false,
@@ -564,7 +600,9 @@ mod tests {
     #[test]
     fn test_engine_creation() {
         let target_manager = TargetManager::new();
-        let client = Arc::new(HttpClient::new(10, None, &vec![], false).expect("test: failed to build HTTP client"));
+        let client = Arc::new(
+            HttpClient::new(10, None, &[], false).expect("test: failed to build HTTP client"),
+        );
         let engine = ScanEngine::new(target_manager, client, 10, 0, None);
         assert_eq!(engine.concurrency_limit, 10);
     }

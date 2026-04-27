@@ -1,9 +1,9 @@
 use crate::core::mutator::InjectionPoint;
 use crate::utils::fingerprint::FingerprintResult;
+use log::warn;
 use std::fs;
 use std::io::BufRead;
 use std::path::Path;
-use log::warn;
 
 pub const POLYGLOT_XSS: &[&str] = &[
     r#"jaVasCript:/*-/*`/*\`/*'/*"/**/(/* */oNcLiCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!\x3csVg/<sVg/oNloAd=alert()//>\x3e"#,
@@ -107,19 +107,27 @@ impl PayloadLoader {
         let mut loader = Self::new();
         if let Some(path) = xss_path {
             loader.xss_payloads = load_list_from_file(path);
-            if loader.xss_payloads.is_empty() { warn!("No XSS payloads loaded from {}", path); }
+            if loader.xss_payloads.is_empty() {
+                warn!("No XSS payloads loaded from {}", path);
+            }
         }
         if let Some(path) = sqli_path {
             loader.sqli_payloads = load_list_from_file(path);
-            if loader.sqli_payloads.is_empty() { warn!("No SQLi payloads loaded from {}", path); }
+            if loader.sqli_payloads.is_empty() {
+                warn!("No SQLi payloads loaded from {}", path);
+            }
         }
         if let Some(path) = json_path {
             loader.json_payloads = load_list_from_file(path);
-            if loader.json_payloads.is_empty() { warn!("No JSON payloads loaded from {}", path); }
+            if loader.json_payloads.is_empty() {
+                warn!("No JSON payloads loaded from {}", path);
+            }
         }
         if let Some(path) = generic_path {
             loader.generic_payloads = load_list_from_file(path);
-            if loader.generic_payloads.is_empty() { warn!("No generic payloads loaded from {}", path); }
+            if loader.generic_payloads.is_empty() {
+                warn!("No generic payloads loaded from {}", path);
+            }
         }
         loader
     }
@@ -162,9 +170,17 @@ impl PayloadLoader {
             return self.sqli_payloads();
         }
 
-        if ["redirect", "url", "next", "return", "goto", "dest", "destination"]
-            .iter()
-            .any(|n| name.contains(n))
+        if [
+            "redirect",
+            "url",
+            "next",
+            "return",
+            "goto",
+            "dest",
+            "destination",
+        ]
+        .iter()
+        .any(|n| name.contains(n))
         {
             return vec![
                 "http://169.254.169.254/latest/meta-data/".into(),
@@ -180,9 +196,11 @@ impl PayloadLoader {
             return self.path_traversal_payloads();
         }
 
-        if ["q", "search", "query", "term", "keyword", "comment", "message", "name"]
-            .iter()
-            .any(|n| name.contains(n))
+        if [
+            "q", "search", "query", "term", "keyword", "comment", "message", "name",
+        ]
+        .iter()
+        .any(|n| name.contains(n))
         {
             return self.xss_payloads();
         }
@@ -220,9 +238,9 @@ impl PayloadLoader {
     ) -> Vec<String> {
         let tech_stack = profile.tech_stack.join(" ").to_lowercase();
         let is_aspnet = tech_stack.contains("asp.net");
-        let is_php    = tech_stack.contains("php");
-        let is_java   = tech_stack.contains("java");
-        let has_waf   = profile.waf_detected.is_some();
+        let is_php = tech_stack.contains("php");
+        let is_java = tech_stack.contains("java");
+        let has_waf = profile.waf_detected.is_some();
 
         if !is_aspnet && !is_php && !is_java && !has_waf {
             return self.get_payloads_for_point(point);
@@ -242,26 +260,38 @@ impl PayloadLoader {
                 let sqli_hi: Vec<String>;
                 let sqli_lo: Vec<String>;
                 if is_aspnet {
-                    sqli_hi = POLYGLOT_SQLI.iter()
+                    sqli_hi = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| p.contains("WAITFOR") || p.contains("UNION SELECT"))
-                        .map(|s| s.to_string()).collect();
-                    sqli_lo = POLYGLOT_SQLI.iter()
+                        .map(|s| s.to_string())
+                        .collect();
+                    sqli_lo = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| !p.contains("WAITFOR") && !p.contains("UNION SELECT"))
-                        .map(|s| s.to_string()).collect();
+                        .map(|s| s.to_string())
+                        .collect();
                 } else if is_php {
-                    sqli_hi = POLYGLOT_SQLI.iter()
+                    sqli_hi = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| p.contains("SLEEP") || p.contains("EXTRACTVALUE"))
-                        .map(|s| s.to_string()).collect();
-                    sqli_lo = POLYGLOT_SQLI.iter()
+                        .map(|s| s.to_string())
+                        .collect();
+                    sqli_lo = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| !p.contains("SLEEP") && !p.contains("EXTRACTVALUE"))
-                        .map(|s| s.to_string()).collect();
+                        .map(|s| s.to_string())
+                        .collect();
                 } else if is_java {
-                    sqli_hi = POLYGLOT_SQLI.iter()
+                    sqli_hi = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| p.contains("pg_sleep"))
-                        .map(|s| s.to_string()).collect();
-                    sqli_lo = POLYGLOT_SQLI.iter()
+                        .map(|s| s.to_string())
+                        .collect();
+                    sqli_lo = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| !p.contains("pg_sleep"))
-                        .map(|s| s.to_string()).collect();
+                        .map(|s| s.to_string())
+                        .collect();
                 } else {
                     sqli_hi = POLYGLOT_SQLI.iter().map(|s| s.to_string()).collect();
                     sqli_lo = Vec::new();
@@ -274,7 +304,8 @@ impl PayloadLoader {
             InjectionPoint::Header(_) => {
                 payloads.extend(self.generic_payloads.iter().cloned());
                 if is_aspnet {
-                    let mssql: Vec<String> = POLYGLOT_SQLI.iter()
+                    let mssql: Vec<String> = POLYGLOT_SQLI
+                        .iter()
                         .filter(|p| p.contains("WAITFOR"))
                         .map(|s| s.to_string())
                         .collect();
@@ -328,7 +359,7 @@ pub fn load_list_from_file(path: &str) -> Vec<String> {
     let reader = std::io::BufReader::new(file);
     reader
         .lines()
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty() && !s.starts_with('#'))
         .collect()
@@ -348,7 +379,8 @@ mod tests {
     #[test]
     fn test_get_payloads_for_json_field() {
         let loader = PayloadLoader::new();
-        let payloads = loader.get_payloads_for_point(&InjectionPoint::JsonField("user.name".to_string()));
+        let payloads =
+            loader.get_payloads_for_point(&InjectionPoint::JsonField("user.name".to_string()));
         assert!(!payloads.is_empty());
         assert_eq!(payloads[0], POLYGLOT_JSON[0]);
     }
@@ -364,7 +396,8 @@ mod tests {
     #[test]
     fn test_get_payloads_for_form_param() {
         let loader = PayloadLoader::new();
-        let payloads = loader.get_payloads_for_point(&InjectionPoint::FormParam("username".to_string()));
+        let payloads =
+            loader.get_payloads_for_point(&InjectionPoint::FormParam("username".to_string()));
         assert!(!payloads.is_empty());
         assert_eq!(payloads[0], POLYGLOT_XSS[0]);
     }
@@ -372,7 +405,8 @@ mod tests {
     #[test]
     fn test_get_payloads_for_header() {
         let loader = PayloadLoader::new();
-        let payloads = loader.get_payloads_for_point(&InjectionPoint::Header("User-Agent".to_string()));
+        let payloads =
+            loader.get_payloads_for_point(&InjectionPoint::Header("User-Agent".to_string()));
         assert!(!payloads.is_empty());
         assert!(payloads.iter().any(|p| p.contains("OR")));
     }

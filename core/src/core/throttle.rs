@@ -1,11 +1,11 @@
-/// Lock-free auto-throttle for the scan engine.
-///
-/// Monitors HTTP response codes and applies exponential backoff when targets
-/// return 429 (Too Many Requests) or 403 (Forbidden). Uses atomics exclusively
-/// to avoid contention in the hot path — no Mutex, no locking.
-///
-/// Backoff: 0 → 50 → 100 → 200 → ... → 2000ms cap.
-/// Decay: -10ms per successful response, floors at 0.
+//! Lock-free auto-throttle for the scan engine.
+//!
+//! Monitors HTTP response codes and applies exponential backoff when targets
+//! return 429 (Too Many Requests) or 403 (Forbidden). Uses atomics exclusively
+//! to avoid contention in the hot path — no Mutex, no locking.
+//!
+//! Backoff: 0 → 50 → 100 → 200 → ... → 2000ms cap.
+//! Decay: -10ms per successful response, floors at 0.
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
 use tokio::time::{sleep, Duration};

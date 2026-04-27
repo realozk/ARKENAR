@@ -10,9 +10,7 @@ static RE_AXIOS: OnceLock<Regex> = OnceLock::new();
 static RE_ROUTE: OnceLock<Regex> = OnceLock::new();
 
 fn re_js_src() -> &'static Regex {
-    RE_JS_SRC.get_or_init(|| {
-        Regex::new(r#"src\s*=\s*["']([^"']+\.js[^"']*)["']"#).unwrap()
-    })
+    RE_JS_SRC.get_or_init(|| Regex::new(r#"src\s*=\s*["']([^"']+\.js[^"']*)["']"#).unwrap())
 }
 
 fn re_js_import() -> &'static Regex {
@@ -22,21 +20,18 @@ fn re_js_import() -> &'static Regex {
 }
 
 fn re_fetch() -> &'static Regex {
-    RE_FETCH.get_or_init(|| {
-        Regex::new(r#"fetch\s*\(\s*["'](/[^"'?\s]+)["']"#).unwrap()
-    })
+    RE_FETCH.get_or_init(|| Regex::new(r#"fetch\s*\(\s*["'](/[^"'?\s]+)["']"#).unwrap())
 }
 
 fn re_axios() -> &'static Regex {
     RE_AXIOS.get_or_init(|| {
-        Regex::new(r#"axios\s*\.\s*(?:get|post|put|patch|delete)\s*\(\s*["'](/[^"'?\s]+)["']"#).unwrap()
+        Regex::new(r#"axios\s*\.\s*(?:get|post|put|patch|delete)\s*\(\s*["'](/[^"'?\s]+)["']"#)
+            .unwrap()
     })
 }
 
 fn re_route() -> &'static Regex {
-    RE_ROUTE.get_or_init(|| {
-        Regex::new(r#"["'](/(?:api|v\d+)/[^"'?\s]{2,})["']"#).unwrap()
-    })
+    RE_ROUTE.get_or_init(|| Regex::new(r#"["'](/(?:api|v\d+)/[^"'?\s]{2,})["']"#).unwrap())
 }
 
 pub struct JsAnalyzer;
@@ -55,7 +50,10 @@ impl JsAnalyzer {
         let mut seen: HashSet<String> = HashSet::new();
         let mut results: Vec<String> = Vec::new();
 
-        let collect = |caps: regex::Captures, seen: &mut HashSet<String>, results: &mut Vec<String>, base: &Url| {
+        let collect = |caps: regex::Captures,
+                       seen: &mut HashSet<String>,
+                       results: &mut Vec<String>,
+                       base: &Url| {
             let raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
             if raw.starts_with("data:") || raw.contains("node_modules") {
                 return;

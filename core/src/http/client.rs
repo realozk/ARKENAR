@@ -1,7 +1,7 @@
 use rand::prelude::IndexedRandom;
-use reqwest::{Client, ClientBuilder, Response, Proxy};
-use reqwest::redirect::Policy;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::redirect::Policy;
+use reqwest::{Client, ClientBuilder, Proxy, Response};
 use std::time::Duration;
 
 pub const MAX_RESPONSE_BODY: usize = 4 * 1024 * 1024;
@@ -81,8 +81,7 @@ impl HttpClient {
     }
 
     pub async fn send_request(&self, req: &HttpRequest) -> Result<Response, reqwest::Error> {
-        let mut builder = self.inner
-            .request(req.method.clone(), req.url.as_str());
+        let mut builder = self.inner.request(req.method.clone(), req.url.as_str());
 
         for (name, value) in self.default_headers.iter() {
             builder = builder.header(name, value);
@@ -117,7 +116,8 @@ impl HttpClient {
     pub async fn get(&self, url: &str) -> Result<Response, reqwest::Error> {
         let ua = self.get_random_user_agent();
 
-        let mut req = self.inner
+        let mut req = self
+            .inner
             .get(url)
             .header(reqwest::header::USER_AGENT, ua)
             .timeout(Duration::from_secs(5));
@@ -151,7 +151,8 @@ impl HttpClient {
     ) -> Result<Response, reqwest::Error> {
         let ua = user_agent.unwrap_or_else(|| self.get_random_user_agent());
 
-        let mut req = self.inner
+        let mut req = self
+            .inner
             .get(url)
             .header(reqwest::header::USER_AGENT, ua)
             .timeout(Duration::from_secs(10));
@@ -169,8 +170,9 @@ impl HttpClient {
 
     fn get_random_user_agent(&self) -> &'static str {
         let mut rng = rand::rng();
-        *self.user_agents
+        self.user_agents
             .choose(&mut rng)
+            .copied()
             .expect("user_agents pool is constructor-initialized and non-empty")
     }
 }

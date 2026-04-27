@@ -1,23 +1,23 @@
 pub mod core;
+#[path = "deep-hunter/brain.rs"]
+pub mod deep_hunter;
 pub mod http;
 pub mod modules;
 pub mod utils;
 pub mod validation;
-#[path = "deep-hunter/brain.rs"]
-pub mod deep_hunter;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub use crate::core::engine::ScanEngine;
 pub use crate::core::result_aggregator::{ResultAggregator, ScanResult};
+pub use crate::core::state::ScanState;
 pub use crate::core::target_manager::TargetManager;
 pub use crate::http::HttpClient;
 pub use crate::modules::crawler::run_katana_crawler;
 pub use crate::modules::nuclei::run_nuclei_scan;
 pub use crate::utils::installer;
 pub use crate::utils::read_lines;
-pub use crate::core::state::ScanState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -138,11 +138,19 @@ impl ScanConfig {
     }
 
     pub fn proxy_ref(&self) -> Option<&str> {
-        if self.proxy.is_empty() { None } else { Some(&self.proxy) }
+        if self.proxy.is_empty() {
+            None
+        } else {
+            Some(&self.proxy)
+        }
     }
 
     pub fn tags_ref(&self) -> Option<&str> {
-        if self.tags.is_empty() { None } else { Some(&self.tags) }
+        if self.tags.is_empty() {
+            None
+        } else {
+            Some(&self.tags)
+        }
     }
 
     pub fn auth_headers(&self) -> Vec<(String, String)> {
@@ -170,26 +178,33 @@ impl ScanConfig {
 }
 
 pub fn parse_custom_headers(raw: &[String]) -> Vec<(String, String)> {
-    raw.iter().filter_map(|h| {
-        let mut parts = h.splitn(2, ':');
-        let key = parts.next()?.trim().to_string();
-        let val = parts.next().unwrap_or("").trim().to_string();
-        if key.is_empty() { return None; }
+    raw.iter()
+        .filter_map(|h| {
+            let mut parts = h.splitn(2, ':');
+            let key = parts.next()?.trim().to_string();
+            let val = parts.next().unwrap_or("").trim().to_string();
+            if key.is_empty() {
+                return None;
+            }
 
-        // Strict validation on key
-        const KEY_FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0', '=', ','];
-        if key.chars().any(|c| KEY_FORBIDDEN.contains(&c)) {
-            return None;
-        }
+            // Strict validation on key
+            const KEY_FORBIDDEN: &[char] = &[
+                ';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0', '=', ',',
+            ];
+            if key.chars().any(|c| KEY_FORBIDDEN.contains(&c)) {
+                return None;
+            }
 
-        // Loose validation on value (allow =, ;, , space)
-        const VAL_FORBIDDEN: &[char] = &['&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
-        if val.chars().any(|c| VAL_FORBIDDEN.contains(&c)) {
-            return None; 
-        }
+            // Loose validation on value (allow =, ;, , space)
+            const VAL_FORBIDDEN: &[char] =
+                &['&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
+            if val.chars().any(|c| VAL_FORBIDDEN.contains(&c)) {
+                return None;
+            }
 
-        Some((key, val))
-    }).collect()
+            Some((key, val))
+        })
+        .collect()
 }
 
 pub trait ScanEventSink: Send + Sync {
@@ -212,12 +227,21 @@ impl ScanEventSink for ConsoleSink {
     fn on_log(&self, level: &str, message: &str) {
         use colored::*;
         use std::io::Write;
+        let already_tagged = message.starts_with('[') || message.starts_with("──");
+        let prefix = match level {
+            "success" if !already_tagged => "[+] ",
+            "error" if !already_tagged => "[!] ",
+            "warn" if !already_tagged => "[~] ",
+            "phase" if !already_tagged => "[*] ",
+            _ => "",
+        };
+        let combined = format!("{}{}", prefix, message);
         let colored = match level {
-            "success" => message.green().to_string(),
-            "error"   => message.red().to_string(),
-            "warn"    => message.yellow().to_string(),
-            "phase"   => message.bright_cyan().bold().to_string(),
-            _         => message.to_string(),
+            "success" => combined.green().to_string(),
+            "error" => combined.red().to_string(),
+            "warn" => combined.yellow().to_string(),
+            "phase" => combined.bright_cyan().bold().to_string(),
+            _ => combined,
         };
         print!("{}\r\n", colored);
         std::io::stdout().flush().ok();
@@ -231,9 +255,15 @@ impl ScanEventSink for ConsoleSink {
             std::io::stdout().flush().ok();
         };
         let vuln_lower = result.vuln_type.to_lowercase();
-        let colored_vuln = if vuln_lower.contains("sql") || vuln_lower.contains("rce") || vuln_lower.contains("command") {
+        let colored_vuln = if vuln_lower.contains("sql")
+            || vuln_lower.contains("rce")
+            || vuln_lower.contains("command")
+        {
             result.vuln_type.red().bold().to_string()
-        } else if vuln_lower.contains("xss") || vuln_lower.contains("ssrf") || vuln_lower.contains("path traversal") {
+        } else if vuln_lower.contains("xss")
+            || vuln_lower.contains("ssrf")
+            || vuln_lower.contains("path traversal")
+        {
             result.vuln_type.yellow().to_string()
         } else if vuln_lower.contains("open redirect") || vuln_lower.contains("sensitive") {
             result.vuln_type.bright_yellow().to_string()
@@ -254,14 +284,19 @@ impl ScanEventSink for ConsoleSink {
             result.timing_ms.to_string().dimmed()
         ));
         out(&format!("    curl:    {}", result.to_curl().dimmed()));
-        out(&"──────────────────────────────────────────".dimmed().to_string());
+        out(&"──────────────────────────────────────────"
+            .dimmed()
+            .to_string());
     }
 
     fn on_progress(&self, phase: &str, current: usize, total: usize) {
         use colored::*;
         use std::io::Write;
         if total > 0 {
-            print!("{}\r\n", format!("[*] {} ({}/{})", phase, current, total).bright_cyan());
+            print!(
+                "{}\r\n",
+                format!("[*] {} ({}/{})", phase, current, total).bright_cyan()
+            );
         } else {
             print!("{}\r\n", format!("[*] {}", phase).bright_cyan());
         }

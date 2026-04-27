@@ -2,16 +2,15 @@ use clap::{CommandFactory, Parser};
 use colored::*;
 use std::io::Write;
 use std::process;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 mod validation;
-use validation::{validate_text_field, validate_tags_field, validate_webhook_url};
+use validation::{validate_tags_field, validate_text_field, validate_webhook_url};
 
 use arkenar_core::{
-    ConsoleSink, ScanConfig, ScanEngine, ResultAggregator, ScanResult, ScanState, TargetManager,
-    HttpClient, run_katana_crawler, run_nuclei_scan,
-    installer, read_lines, SinkRef,
+    installer, read_lines, run_katana_crawler, run_nuclei_scan, ConsoleSink, HttpClient,
+    ResultAggregator, ScanConfig, ScanEngine, ScanResult, ScanState, SinkRef, TargetManager,
 };
 
 #[derive(Parser, Debug)]
@@ -37,7 +36,12 @@ pub struct Args {
     #[arg(required_unless_present_any = ["list", "update"])]
     pub target: Option<String>,
 
-    #[arg(short = 't', long, default_value_t = 50, help = "Number of concurrent threads")]
+    #[arg(
+        short = 't',
+        long,
+        default_value_t = 50,
+        help = "Number of concurrent threads"
+    )]
     pub threads: usize,
 
     #[arg(short = 'p', long, help = "Add a list of payloads from a file")]
@@ -46,7 +50,12 @@ pub struct Args {
     #[arg(long, default_value_t = 5, help = "Request timeout in seconds")]
     pub timeout: u64,
 
-    #[arg(short = 'v', long, default_value_t = false, help = "Show the whole process (Verbose Mode)")]
+    #[arg(
+        short = 'v',
+        long,
+        default_value_t = false,
+        help = "Show the whole process (Verbose Mode)"
+    )]
     pub verbose: bool,
 
     #[arg(short = 'm', long, default_value = "simple",
@@ -54,25 +63,49 @@ pub struct Args {
         help = "Scan mode: simple (fast) or advanced (comprehensive)")]
     pub mode: String,
 
-    #[arg(short = 'o', long, default_value = "scan_results.json", help = "Output file path for results")]
+    #[arg(
+        short = 'o',
+        long,
+        default_value = "scan_results.json",
+        help = "Output file path for results"
+    )]
     pub output: String,
 
     #[arg(long, help = "Proxy URL (e.g. http://127.0.0.1:8080)")]
     pub proxy: Option<String>,
 
-    #[arg(short = 'H', long = "header", help = "Custom header (e.g. \"Authorization: Bearer TOKEN\")")]
+    #[arg(
+        short = 'H',
+        long = "header",
+        help = "Custom header (e.g. \"Authorization: Bearer TOKEN\")"
+    )]
     pub headers: Vec<String>,
 
-    #[arg(short = 'l', long = "list", help = "File containing target URLs (one per line)")]
+    #[arg(
+        short = 'l',
+        long = "list",
+        help = "File containing target URLs (one per line)"
+    )]
     pub list: Option<String>,
 
-    #[arg(long, default_value_t = false, help = "Limit crawling to same domain only")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Limit crawling to same domain only"
+    )]
     pub scope: bool,
 
-    #[arg(long, default_value_t = 100, help = "Max requests per second for ARKENAR Engine")]
+    #[arg(
+        long,
+        default_value_t = 100,
+        help = "Max requests per second for ARKENAR Engine"
+    )]
     pub rate_limit: u64,
 
-    #[arg(long, help = "Custom Nuclei tags (e.g. \"cve,jira,panel\"). Overrides default simple mode logic.")]
+    #[arg(
+        long,
+        help = "Custom Nuclei tags (e.g. \"cve,jira,panel\"). Overrides default simple mode logic."
+    )]
     pub tags: Option<String>,
 
     #[arg(long, help = "Update ARKENAR to the latest version")]
@@ -110,37 +143,76 @@ pub struct Args {
     pub oast_server: Option<String>,
 
     // ── Discovery (v1.3) ──────────────────────────────────────────────────
-    #[arg(long, default_value_t = false, help = "Enable JavaScript static analysis")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Enable JavaScript static analysis"
+    )]
     pub enable_js_analysis: bool,
 
-    #[arg(long, help = "Webhook URL to send notifications to (block SSRF if private)")]
+    #[arg(
+        long,
+        help = "Webhook URL to send notifications to (block SSRF if private)"
+    )]
     pub webhook_url: Option<String>,
 
     // ── Evasion (Market-Killer) ───────────────────────────────────────────
-    #[arg(long, default_value_t = false, help = "Enable WAF evasion mutations on 403 responses")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Enable WAF evasion mutations on 403 responses"
+    )]
     pub enable_waf_evasion: bool,
 
     // ── Fingerprint / Smart Payloads / Scope / Nuclei ─────────────────────
-    #[arg(long, default_value_t = false, help = "Disable tech-stack fingerprinting")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Disable tech-stack fingerprinting"
+    )]
     pub no_fingerprint: bool,
 
     #[arg(long, default_value_t = String::new(), help = "Regex to restrict scan scope (e.g. ^https://example\\.com)")]
     pub scope_regex: String,
 
-    #[arg(long, default_value_t = 5u32, help = "Number of 403 responses before WAF evasion kicks in")]
+    #[arg(
+        long,
+        default_value_t = 5u32,
+        help = "Number of 403 responses before WAF evasion kicks in"
+    )]
     pub waf_evasion_threshold: u32,
 
-    #[arg(long, default_value_t = false, help = "Disable context-aware (smart) payload selection")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Disable context-aware (smart) payload selection"
+    )]
     pub no_smart_payloads: bool,
 
     #[arg(long, default_value_t = String::new(), help = "Path to custom Nuclei templates directory")]
     pub nuclei_templates: String,
 
-    #[arg(long, default_value_t = false, help = "Accept invalid TLS certificates (DANGEROUS — MITM-able). Only for testing broken internal targets.")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Accept invalid TLS certificates (DANGEROUS — MITM-able). Only for testing broken internal targets."
+    )]
     pub allow_insecure_tls: bool,
+
+    // ── Module toggles (parity with GUI) ──────────────────────────────────
+    #[arg(long, default_value_t = false, help = "Skip the Katana crawl phase")]
+    pub no_crawler: bool,
+
+    #[arg(long, default_value_t = false, help = "Skip the Nuclei scan phase")]
+    pub no_nuclei: bool,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Enable experimental parameter fuzzing"
+    )]
+    pub enable_param_fuzz: bool,
 }
-
-
 
 #[tokio::main]
 async fn main() {
@@ -164,10 +236,14 @@ async fn main() {
     if args.resume {
         match ScanState::load(ScanState::default_path()).await {
             Some(state) => {
-                sink.on_log("success", &format!(
-                    "[+] Resuming scan with {} pending URL(s), {} prior result(s)",
-                    state.pending_urls.len(), state.completed_results.len()
-                ));
+                sink.on_log(
+                    "success",
+                    &format!(
+                        "[+] Resuming scan with {} pending URL(s), {} prior result(s)",
+                        state.pending_urls.len(),
+                        state.completed_results.len()
+                    ),
+                );
                 let config = state.config.clone();
                 for target in &state.pending_urls {
                     run_scan_sequence(target, &config, &sink).await;
@@ -184,15 +260,15 @@ async fn main() {
 
     // Validate free-text fields for shell metacharacters and path traversal
     for (name, val) in [
-        ("target",          args.target.as_deref().unwrap_or("")),
-        ("proxy",           args.proxy.as_deref().unwrap_or("")),
-        ("scope-regex",     args.scope_regex.as_str()),
-        ("nuclei-templates",args.nuclei_templates.as_str()),
-        ("headers",         &args.headers.join(";")),
-        ("auth-token",      args.auth_token.as_deref().unwrap_or("")),
-        ("auth-cookies",    args.auth_cookies.as_deref().unwrap_or("")),
-        ("payloads",        args.payloads.as_deref().unwrap_or("")),
-        ("output",          args.output.as_str()),
+        ("target", args.target.as_deref().unwrap_or("")),
+        ("proxy", args.proxy.as_deref().unwrap_or("")),
+        ("scope-regex", args.scope_regex.as_str()),
+        ("nuclei-templates", args.nuclei_templates.as_str()),
+        ("headers", &args.headers.join(";")),
+        ("auth-token", args.auth_token.as_deref().unwrap_or("")),
+        ("auth-cookies", args.auth_cookies.as_deref().unwrap_or("")),
+        ("payloads", args.payloads.as_deref().unwrap_or("")),
+        ("output", args.output.as_str()),
     ] {
         if !val.is_empty() {
             if let Err(e) = validate_text_field(name, val) {
@@ -237,8 +313,10 @@ async fn main() {
         verbose: args.verbose,
         scope: args.scope,
         dry_run: args.dry_run,
-        enable_crawler: true,
-        enable_nuclei: true,
+        enable_crawler: !args.no_crawler,
+        enable_nuclei: !args.no_nuclei,
+        enable_param_fuzz: args.enable_param_fuzz,
+        webhook_url: args.webhook_url.clone(),
         crawler_depth: args.crawler_depth,
         crawler_timeout: args.crawler_timeout,
         crawler_max_urls: args.crawler_max_urls,
@@ -269,25 +347,36 @@ async fn main() {
             Ok(lines) => {
                 print!(
                     "{}\r\n",
-                    format!("[+] Loaded {} target(s) from {}", lines.len(), config.list_file)
-                        .green().bold()
+                    format!(
+                        "[+] Loaded {} target(s) from {}",
+                        lines.len(),
+                        config.list_file
+                    )
+                    .green()
+                    .bold()
                 );
                 std::io::stdout().flush().ok();
                 targets.extend(lines);
             }
             Err(e) => {
-                eprint!("{}\r\n", format!("[!] Failed to read '{}': {}", config.list_file, e).red());
+                eprint!(
+                    "{}\r\n",
+                    format!("[!] Failed to read '{}': {}", config.list_file, e).red()
+                );
                 process::exit(1);
             }
         }
     }
 
-    if !config.target.is_empty() {
+    if !config.target.is_empty() && !targets.iter().any(|t| t == &config.target) {
         targets.push(config.target.clone());
     }
 
     if targets.is_empty() {
-        eprint!("{}\r\n", "[!] No targets specified. Provide a URL or use -l <file>.".red());
+        eprint!(
+            "{}\r\n",
+            "[!] No targets specified. Provide a URL or use -l <file>.".red()
+        );
         let mut cmd = Args::command();
         cmd.print_help().unwrap();
         process::exit(1);
@@ -299,7 +388,8 @@ async fn main() {
             print!(
                 "\r\n{}\r\n",
                 format!("━━━ Target {}/{}: {} ━━━", i + 1, total, target)
-                    .bright_white().bold()
+                    .bright_white()
+                    .bold()
             );
             std::io::stdout().flush().ok();
         }
@@ -333,32 +423,56 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
     let custom_headers = config.parsed_headers();
 
-    sink.on_log("phase", "[*] Phase 1: Crawling...");
-
     let mut target_manager = TargetManager::new();
     target_manager.add_target(target.to_string());
 
-    match run_katana_crawler(target, config, sink, Arc::new(AtomicBool::new(false))).await {
-        Ok(crawled) => {
-            sink.on_log("success", &format!("[+] Discovered {} URL(s).", crawled.len()));
-            for u in crawled {
-                target_manager.add_target(u);
+    if config.enable_crawler {
+        sink.on_log("phase", "[*] Phase 1: Crawling...");
+        match run_katana_crawler(target, config, sink, Arc::new(AtomicBool::new(false))).await {
+            Ok(crawled) => {
+                sink.on_log(
+                    "success",
+                    &format!("[+] Discovered {} URL(s).", crawled.len()),
+                );
+                for u in crawled {
+                    target_manager.add_target(u);
+                }
+            }
+            Err(e) => {
+                sink.on_log("error", &format!("[!] Crawler error: {}", e));
             }
         }
-        Err(e) => {
-            sink.on_log("error", &format!("[!] Crawler error: {}", e));
-        }
+    } else {
+        sink.on_log("phase", "[*] Phase 1: Crawling skipped (--no-crawler).");
     }
 
-    sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
-
-    if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, sink, Arc::new(AtomicBool::new(false))).await {
-        sink.on_log("error", &format!("[!] Nuclei error: {}", e));
+    if config.enable_nuclei {
+        sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
+        if let Err(e) = run_nuclei_scan(
+            target,
+            &config.mode,
+            config.verbose,
+            config.tags_ref(),
+            config.crawler_timeout,
+            sink,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            sink.on_log("error", &format!("[!] Nuclei error: {}", e));
+        }
+    } else {
+        sink.on_log("phase", "[*] Phase 2: Nuclei skipped (--no-nuclei).");
     }
 
     sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
 
-    let http_client = match HttpClient::new(config.timeout, config.proxy_ref(), &custom_headers, config.allow_insecure_tls) {
+    let http_client = match HttpClient::new(
+        config.timeout,
+        config.proxy_ref(),
+        &custom_headers,
+        config.allow_insecure_tls,
+    ) {
         Ok(c) => Arc::new(c),
         Err(e) => {
             sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));
@@ -366,17 +480,25 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
         }
     };
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
-    let engine = ScanEngine::new(
+    let engine = ScanEngine::with_config(
         target_manager,
         Arc::clone(&http_client),
         config.threads,
         config.rate_limit,
-        if config.payloads.is_empty() { None } else { Some(&config.payloads) },
+        if config.payloads.is_empty() {
+            None
+        } else {
+            Some(&config.payloads)
+        },
+        config,
     );
     let output_path = config.output.clone();
 
     let (_, results) = tokio::join!(
-        engine.run(result_tx, Arc::new(std::sync::atomic::AtomicBool::new(false))),
+        engine.run(
+            result_tx,
+            Arc::new(std::sync::atomic::AtomicBool::new(false))
+        ),
         ResultAggregator::run(result_rx, &output_path, sink.clone())
     );
 
@@ -384,37 +506,84 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 }
 
 fn print_scan_config(target: &str, config: &ScanConfig) {
-    let mode_label = if config.mode == "advanced" { "Advanced (comprehensive)" } else { "Simple (fast)" };
+    let mode_label = if config.mode == "advanced" {
+        "Advanced (comprehensive)"
+    } else {
+        "Simple (fast)"
+    };
     let verbose_label = if config.verbose { "ON" } else { "OFF" };
 
-    print!("{}\r\n", format!("[+] Target:     {}", target).green().bold());
-    print!("{}\r\n", format!("[+] Threads:    {}", config.threads).blue());
-    print!("{}\r\n", format!("[+] Timeout:    {}s", config.timeout).blue());
-    print!("{}\r\n", format!("[+] Mode:       {}", mode_label).magenta().bold());
-    print!("{}\r\n", format!("[+] Verbose:    {}", verbose_label).magenta());
-    print!("{}\r\n", format!("[+] Output:     {}", config.output).blue());
-    print!("{}\r\n", format!("[+] Rate Limit: {} req/s", config.rate_limit).blue());
+    print!(
+        "{}\r\n",
+        format!("[+] Target:     {}", target).green().bold()
+    );
+    print!(
+        "{}\r\n",
+        format!("[+] Threads:    {}", config.threads).blue()
+    );
+    print!(
+        "{}\r\n",
+        format!("[+] Timeout:    {}s", config.timeout).blue()
+    );
+    print!(
+        "{}\r\n",
+        format!("[+] Mode:       {}", mode_label).magenta().bold()
+    );
+    print!(
+        "{}\r\n",
+        format!("[+] Verbose:    {}", verbose_label).magenta()
+    );
+    print!(
+        "{}\r\n",
+        format!("[+] Output:     {}", config.output).blue()
+    );
+    print!(
+        "{}\r\n",
+        format!("[+] Rate Limit: {} req/s", config.rate_limit).blue()
+    );
     if !config.proxy.is_empty() {
-        print!("{}\r\n", format!("[+] Proxy:      {}", config.proxy).yellow());
+        print!(
+            "{}\r\n",
+            format!("[+] Proxy:      {}", config.proxy).yellow()
+        );
     }
     let header_list = config.header_list();
     if !header_list.is_empty() {
-        print!("{}\r\n", format!("[+] Headers:    {} custom", header_list.len()).yellow());
+        print!(
+            "{}\r\n",
+            format!("[+] Headers:    {} custom", header_list.len()).yellow()
+        );
     }
     if config.scope {
         print!("{}\r\n", "[+] Scope:      Same-domain only".yellow());
     }
     if !config.tags.is_empty() {
-        print!("{}\r\n", format!("[+] Tags:       {}", config.tags).yellow());
+        print!(
+            "{}\r\n",
+            format!("[+] Tags:       {}", config.tags).yellow()
+        );
     }
     if !config.scope_regex.is_empty() {
-        print!("{}\r\n", format!("[+] Scope Regex: {}", config.scope_regex).yellow());
+        print!(
+            "{}\r\n",
+            format!("[+] Scope Regex: {}", config.scope_regex).yellow()
+        );
     }
     if !config.nuclei_templates_dir.is_empty() {
-        print!("{}\r\n", format!("[+] Nuclei Templates: {}", config.nuclei_templates_dir).yellow());
+        print!(
+            "{}\r\n",
+            format!("[+] Nuclei Templates: {}", config.nuclei_templates_dir).yellow()
+        );
     }
     if config.enable_waf_evasion {
-        print!("{}\r\n", format!("[+] WAF Evasion: ON (threshold: {})", config.waf_evasion_threshold).yellow());
+        print!(
+            "{}\r\n",
+            format!(
+                "[+] WAF Evasion: ON (threshold: {})",
+                config.waf_evasion_threshold
+            )
+            .yellow()
+        );
     }
     if !config.enable_fingerprint {
         print!("{}\r\n", "[+] Fingerprint: DISABLED".dimmed());

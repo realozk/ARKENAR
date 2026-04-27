@@ -419,9 +419,11 @@ The single struct that carries all configuration from the user to the engine. Bo
 | `threads` | `50` | Semaphore capacity / concurrency cap |
 | `timeout` | `5` | Per-request timeout in seconds |
 | `rate_limit` | `100` | Max requests/sec (enforced by `ThrottleController`) |
-| `enable_crawler` | `true` | Toggle Phase 1 (Katana) |
-| `enable_nuclei` | `true` | Toggle Phase 2 (Nuclei) |
-| `webhook_url` | `None` | HTTPS URL for finding alerts (Discord/Slack/custom) |
+| `enable_crawler` | `true` | Toggle Phase 1 (Katana). CLI flag: `--no-crawler` |
+| `enable_nuclei` | `true` | Toggle Phase 2 (Nuclei). CLI flag: `--no-nuclei` |
+| `enable_param_fuzz` | `false` | Add fuzzed parameters from the URL query. CLI flag: `--enable-param-fuzz` |
+| `enable_js_analysis` | `false` | Static analysis of JS endpoints. CLI flag: `--enable-js-analysis` |
+| `webhook_url` | `None` | HTTPS URL for finding alerts (Discord/Slack/custom). CLI flag: `--webhook-url` |
 | `resume` | `false` | Load `.arkenar-state.json` and continue aborted scan |
 | `dry_run` | `false` | Log targets without sending real requests |
 

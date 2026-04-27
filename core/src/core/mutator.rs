@@ -8,8 +8,11 @@ pub const CANARY_TOKEN: &str = "ARK-1337";
 
 pub fn build_canary_request(base_req: &HttpRequest) -> HttpRequest {
     let mut canary_req = base_req.clone();
-    canary_req.url.query_pairs_mut().append_pair("canary", CANARY_TOKEN);
-    update_content_length(&mut canary_req); 
+    canary_req
+        .url
+        .query_pairs_mut()
+        .append_pair("canary", CANARY_TOKEN);
+    update_content_length(&mut canary_req);
     canary_req
 }
 
@@ -86,11 +89,11 @@ fn extract_json_paths_recursive(
 
 pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
     let mut points = Vec::new();
-    
+
     for (key, _value) in req.url.query_pairs() {
         points.push(InjectionPoint::UrlParam(key.to_string()));
     }
-    
+
     let blacklist = get_blacklisted_headers();
     for (name, _value) in req.headers.iter() {
         let header_name = name.as_str().to_lowercase();
@@ -98,7 +101,7 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
             points.push(InjectionPoint::Header(name.to_string()));
         }
     }
-    
+
     match req.body_type {
         BodyType::Json => {
             if let Ok(json_value) = serde_json::from_str::<Value>(&req.body) {
@@ -115,7 +118,7 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
         }
         _ => {}
     }
-    
+
     points
 }
 
@@ -123,14 +126,16 @@ pub fn extract_injection_points(req: &HttpRequest) -> Vec<InjectionPoint> {
 fn tokenize_json_path(path: &str) -> Vec<JsonPathNode> {
     let mut nodes = Vec::new();
     for part in path.split('.') {
-        if part.is_empty() { continue; }
-        
+        if part.is_empty() {
+            continue;
+        }
+
         if let Some(bracket_idx) = part.find('[') {
             let key = &part[..bracket_idx];
             if !key.is_empty() {
                 nodes.push(JsonPathNode::ObjectKey(key.to_string()));
             }
-            
+
             let mut remaining = &part[bracket_idx..];
             while let Some(start) = remaining.find('[') {
                 if let Some(end) = remaining.find(']') {
@@ -157,14 +162,19 @@ fn inject_into_json(value: &mut Value, path: &str, payload: &str) -> bool {
     inject_into_json_recursive(value, &nodes, 0, payload)
 }
 
-fn inject_into_json_recursive(value: &mut Value, nodes: &[JsonPathNode], index: usize, payload: &str) -> bool {
+fn inject_into_json_recursive(
+    value: &mut Value,
+    nodes: &[JsonPathNode],
+    index: usize,
+    payload: &str,
+) -> bool {
     if index >= nodes.len() || index > MAX_JSON_DEPTH {
         return false;
     }
-    
+
     let is_last = index == nodes.len() - 1;
     let node = &nodes[index];
-    
+
     match node {
         JsonPathNode::ObjectKey(key) => {
             if is_last {
@@ -173,12 +183,10 @@ fn inject_into_json_recursive(value: &mut Value, nodes: &[JsonPathNode], index: 
                     return true;
                 }
                 false
+            } else if let Some(next_value) = value.get_mut(key) {
+                inject_into_json_recursive(next_value, nodes, index + 1, payload)
             } else {
-                if let Some(next_value) = value.get_mut(key) {
-                    inject_into_json_recursive(next_value, nodes, index + 1, payload)
-                } else {
-                    false
-                }
+                false
             }
         }
         JsonPathNode::ArrayIndex(arr_idx) => {
@@ -188,12 +196,10 @@ fn inject_into_json_recursive(value: &mut Value, nodes: &[JsonPathNode], index: 
                     return true;
                 }
                 false
+            } else if let Some(next_value) = value.get_mut(*arr_idx) {
+                inject_into_json_recursive(next_value, nodes, index + 1, payload)
             } else {
-                if let Some(next_value) = value.get_mut(*arr_idx) {
-                    inject_into_json_recursive(next_value, nodes, index + 1, payload)
-                } else {
-                    false
-                }
+                false
             }
         }
     }
@@ -234,7 +240,7 @@ fn inject_payload_into_value(value: &mut Value, payload: &str) {
 
 pub fn mutate_request(req: &HttpRequest, point: &InjectionPoint, payload: &str) -> HttpRequest {
     let mut new_request = req.clone();
-    
+
     match point {
         InjectionPoint::UrlParam(param_name) => {
             mutate_url_param(&mut new_request, param_name, payload);
@@ -249,15 +255,15 @@ pub fn mutate_request(req: &HttpRequest, point: &InjectionPoint, payload: &str) 
             mutate_form_param(&mut new_request, form_key, payload);
         }
     }
-    
+
     update_content_length(&mut new_request);
-    
+
     new_request
 }
 
 fn mutate_url_param(req: &mut HttpRequest, param_name: &str, payload: &str) {
     let mut url = req.url.clone();
-    
+
     let pairs: Vec<(String, String)> = url
         .query_pairs()
         .map(|(k, v)| {
@@ -268,12 +274,12 @@ fn mutate_url_param(req: &mut HttpRequest, param_name: &str, payload: &str) {
             }
         })
         .collect();
-    
+
     url.query_pairs_mut().clear();
     for (k, v) in pairs {
         url.query_pairs_mut().append_pair(&k, &v);
     }
-    
+
     req.url = url;
 }
 
@@ -299,9 +305,9 @@ fn mutate_form_param(req: &mut HttpRequest, form_key: &str, payload: &str) {
     let parsed: Vec<(String, String)> = form_urlencoded::parse(req.body.as_bytes())
         .into_owned()
         .collect();
-        
+
     let mut serializer = form_urlencoded::Serializer::new(String::new());
-    
+
     for (key, val) in parsed {
         if key == form_key {
             serializer.append_pair(&key, payload);
@@ -309,7 +315,7 @@ fn mutate_form_param(req: &mut HttpRequest, form_key: &str, payload: &str) {
             serializer.append_pair(&key, &val);
         }
     }
-    
+
     req.body = serializer.finish();
 }
 
@@ -324,32 +330,34 @@ fn update_content_length(req: &mut HttpRequest) {
     }
 }
 
-
- #[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT};
     use reqwest::Method;
     use url::Url;
-    
+
     fn create_test_request_json() -> HttpRequest {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(USER_AGENT, HeaderValue::from_static("TestAgent/1.0"));
-        
+
         let url = Url::parse("https://example.com/api?id=123&name=test").unwrap();
         let body = r#"{"user":{"name":"john","age":25},"active":true}"#.to_string();
-        
+
         HttpRequest::new(Method::POST, url, headers, body)
     }
-    
+
     fn create_test_request_form() -> HttpRequest {
         let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/x-www-form-urlencoded"));
-        
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/x-www-form-urlencoded"),
+        );
+
         let url = Url::parse("https://example.com/login").unwrap();
         let body = "username=admin&password=secret&remember=true".to_string();
-        
+
         HttpRequest::new(Method::POST, url, headers, body)
     }
 
@@ -357,118 +365,121 @@ mod tests {
     fn test_extract_url_params() {
         let req = create_test_request_json();
         let points = extract_injection_points(&req);
-        
+
         assert!(points.contains(&InjectionPoint::UrlParam("id".to_string())));
         assert!(points.contains(&InjectionPoint::UrlParam("name".to_string())));
     }
-    
+
     #[test]
     fn test_extract_headers() {
         let req = create_test_request_json();
         let points = extract_injection_points(&req);
-        
+
         // user-agent should be extracted (not blacklisted)
         assert!(points.contains(&InjectionPoint::Header("user-agent".to_string())));
         // content-type should NOT be extracted (blacklisted)
         assert!(!points.contains(&InjectionPoint::Header("content-type".to_string())));
     }
-    
+
     #[test]
     fn test_extract_json_fields() {
         let req = create_test_request_json();
         let points = extract_injection_points(&req);
-        
+
         assert!(points.contains(&InjectionPoint::JsonField("user.name".to_string())));
         assert!(points.contains(&InjectionPoint::JsonField("user.age".to_string())));
         assert!(points.contains(&InjectionPoint::JsonField("active".to_string())));
     }
-    
+
     #[test]
     fn test_extract_form_params() {
         let req = create_test_request_form();
         let points = extract_injection_points(&req);
-        
+
         assert!(points.contains(&InjectionPoint::FormParam("username".to_string())));
         assert!(points.contains(&InjectionPoint::FormParam("password".to_string())));
         assert!(points.contains(&InjectionPoint::FormParam("remember".to_string())));
     }
-    
+
     #[test]
     fn test_mutate_url_param() {
         let req = create_test_request_json();
         let point = InjectionPoint::UrlParam("id".to_string());
         let mutated = mutate_request(&req, &point, "' OR 1=1--");
-        
-        assert!(mutated.url.query().unwrap().contains("' OR 1=1--") || 
-                mutated.url.to_string().contains("%27"));
+
+        assert!(
+            mutated.url.query().unwrap().contains("' OR 1=1--")
+                || mutated.url.to_string().contains("%27")
+        );
     }
-    
+
     #[test]
     fn test_mutate_json_field() {
         let req = create_test_request_json();
         let point = InjectionPoint::JsonField("user.name".to_string());
         let mutated = mutate_request(&req, &point, "' OR 1=1--");
-        
+
         let json: Value = serde_json::from_str(&mutated.body).unwrap();
         assert_eq!(json["user"]["name"], "' OR 1=1--");
     }
-    
+
     #[test]
     fn test_mutate_form_param() {
         let req = create_test_request_form();
         let point = InjectionPoint::FormParam("username".to_string());
         let mutated = mutate_request(&req, &point, "admin'--");
-        
+
         assert!(mutated.body.contains("username=admin"));
     }
-    
+
     #[test]
     fn test_content_length_updated() {
         let req = create_test_request_json();
         let original_len = req.body.len();
-        
+
         let point = InjectionPoint::JsonField("user.name".to_string());
         let mutated = mutate_request(&req, &point, "very_long_payload_that_changes_body_size");
-        
-        let new_len: usize = mutated.headers
+
+        let new_len: usize = mutated
+            .headers
             .get(CONTENT_LENGTH)
             .unwrap()
             .to_str()
             .unwrap()
             .parse()
             .unwrap();
-        
+
         assert_ne!(original_len, new_len);
         assert_eq!(mutated.body.len(), new_len);
     }
-    
+
     #[test]
     fn test_json_array_injection() {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        
+
         let url = Url::parse("https://example.com/api").unwrap();
         let body = r#"{"items":["first","second","third"]}"#.to_string();
-        
+
         let req = HttpRequest::new(Method::POST, url, headers, body);
         let points = extract_injection_points(&req);
-        
+
         assert!(points.contains(&InjectionPoint::JsonField("items[0]".to_string())));
         assert!(points.contains(&InjectionPoint::JsonField("items[1]".to_string())));
         assert!(points.contains(&InjectionPoint::JsonField("items[2]".to_string())));
     }
-    
+
     #[test]
     fn test_nested_json_array_injection() {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        
+
         let url = Url::parse("https://example.com/api").unwrap();
         let body = r#"{"users":[{"name":"alice"},{"name":"bob"}]}"#.to_string();
-        
+
         let req = HttpRequest::new(Method::POST, url, headers, body);
         let points = extract_injection_points(&req);
-        
+
         assert!(points.contains(&InjectionPoint::JsonField("users[0].name".to_string())));
         assert!(points.contains(&InjectionPoint::JsonField("users[1].name".to_string())));
     }

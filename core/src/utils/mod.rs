@@ -1,15 +1,13 @@
 pub mod detector;
-pub mod payload_loader;
-pub mod installer;
 pub mod fingerprint;
+pub mod installer;
+pub mod payload_loader;
 
 use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use which::which;
-
-
 
 /// Resolves the full path to a tool binary.
 /// Search order: ./tools/{name}.exe → ./{name}.exe → System PATH
@@ -49,7 +47,11 @@ pub fn read_lines(path: &str) -> io::Result<Vec<String>> {
         .filter_map(|line| {
             let line = line.ok()?;
             let trimmed = line.trim().to_string();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
         })
         .collect();
     Ok(lines)

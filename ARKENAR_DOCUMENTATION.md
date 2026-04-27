@@ -109,7 +109,7 @@ The orchestration component processing target URLs and deploying analytical engi
 | :--- | :--- |
 | `ScanEngine::new()` | Creates engine matching generic parameters. |
 | `ScanEngine::with_config()` | Spawns engine syncing states with a user's defined `ScanConfig`. |
-| `ScanEngine::run()` | Main operational loop. Processes targets asynchronously and launches vulnerability scans. |
+| `ScanEngine::run()` | Main operational loop. Processes targets asynchronously and launches vulnerability scans. Returns total processed count (`usize`) so callers can compute "safe" totals after the loop terminates. |
 | `ScanEngine::scan_request()` | Dispatch execution used to inject custom HTTP objects directly into the testing layer. |
 | `create_request_from_url()` | Utility assembling standard `HttpRequest` struct components from a string. |
 | `extract_server()` | Safely extracts the 'server' header text from reqwest values. |
@@ -163,7 +163,7 @@ Handles crash recovery checkpoints managing system state.
 | :--- | :--- |
 | `TargetManager::new()` | Initializes mapping queue naturally resolving vectors smoothly evaluating dependencies explicitly allocating components effortlessly. |
 | `TargetManager::add_target()` | Captures targets testing conditions isolating properties handling logic caching configurations isolating dependencies tracking constraints organizing logic preventing duplicates. |
-| `TargetManager::next()` | Eliminates array configurations passing responses mapping schemas testing lengths detecting outputs testing characteristics tracking loops fetching states identifying algorithms returning arrays identifying fields gathering instances gathering conditions compiling formats monitoring environments. |
+| `TargetManager::pop_next()` | Pops the next target from the deduplicating queue (renamed from `next` to avoid shadowing `Iterator::next`). Eliminates array configurations passing responses mapping schemas testing lengths detecting outputs testing characteristics tracking loops fetching states identifying algorithms returning arrays identifying fields gathering instances gathering conditions compiling formats monitoring environments. |
 | `TargetManager::len()`, `TargetManager::total_seen()`, `TargetManager::is_empty()` | Evaluates tracking lengths resolving layouts matching conditions pulling algorithms extracting arrays parsing distributions identifying features finding attributes extracting fields separating characteristics organizing layouts distinguishing sequences identifying structures tracing conditions returning strings extracting options formatting characteristics defining forms producing systems managing structures caching attributes discovering items capturing sequences fetching dependencies mapping algorithms caching types. |
 
 #### `core/throttle.rs`

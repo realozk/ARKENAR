@@ -8,22 +8,21 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
-use arkenar_core::{
-    HttpClient, ResultAggregator, ScanConfig, ScanEngine, ScanEventSink, ScanResult,
-    SinkRef, TargetManager, installer, read_lines,
-    run_katana_crawler, run_nuclei_scan,
-};
-use arkenar_core::modules::subfinder::run_subfinder;
-use arkenar_core::modules::port_scanner::scan_ports;
 use arkenar_core::modules::dns_lookup::resolve_domain;
 use arkenar_core::modules::js_secrets::scan_js_secrets;
+use arkenar_core::modules::port_scanner::scan_ports;
+use arkenar_core::modules::subfinder::run_subfinder;
+use arkenar_core::{
+    installer, read_lines, run_katana_crawler, run_nuclei_scan, HttpClient, ResultAggregator,
+    ScanConfig, ScanEngine, ScanEventSink, ScanResult, SinkRef, TargetManager,
+};
 
-pub mod studio;
-mod reporting;
-mod notifications;
 mod event_sink;
+mod notifications;
+mod reporting;
+pub mod studio;
 
-use event_sink::{FindingEmitter, spawn_finding_emitter};
+use event_sink::{spawn_finding_emitter, FindingEmitter};
 
 pub struct AppState {
     pub recon_running: Arc<AtomicBool>,
@@ -75,19 +74,19 @@ pub struct ScanFindingEvent {
 }
 #[derive(serde::Deserialize)]
 pub struct StudioRequest {
-    pub url:     String,
-    pub method:  String,
+    pub url: String,
+    pub method: String,
     pub headers: String,
-    pub body:    String,
+    pub body: String,
 }
 
 #[derive(Clone, serde::Serialize)]
 pub struct StudioResponse {
-    pub status:         u16,
-    pub headers:        Vec<(String, String)>,
-    pub body:           String,
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
     pub body_truncated: bool,
-    pub timing_ms:      u128,
+    pub timing_ms: u128,
 }
 
 #[derive(Clone, Serialize)]
@@ -138,17 +137,28 @@ struct TauriSink {
 }
 
 impl TauriSink {
-    fn new_ref(app: AppHandle, webhook_url: Option<String>, finding_emitter: FindingEmitter) -> SinkRef {
-        Arc::new(Self { app, webhook_url, finding_emitter })
+    fn new_ref(
+        app: AppHandle,
+        webhook_url: Option<String>,
+        finding_emitter: FindingEmitter,
+    ) -> SinkRef {
+        Arc::new(Self {
+            app,
+            webhook_url,
+            finding_emitter,
+        })
     }
 }
 
 impl ScanEventSink for TauriSink {
     fn on_log(&self, level: &str, message: &str) {
-        let _ = self.app.emit("scan-log", ScanLogEvent {
-            level: level.to_string(),
-            message: message.to_string(),
-        });
+        let _ = self.app.emit(
+            "scan-log",
+            ScanLogEvent {
+                level: level.to_string(),
+                message: message.to_string(),
+            },
+        );
     }
 
     fn on_finding(&self, result: &ScanResult) {
@@ -166,10 +176,13 @@ impl ScanEventSink for TauriSink {
             verified: result.verified,
             notes: result.notes.clone(),
         });
-        self.on_log("error", &format!(
-            "{} detected → {} (payload: {})",
-            result.vuln_type, result.url, result.payload
-        ));
+        self.on_log(
+            "error",
+            &format!(
+                "{} detected → {} (payload: {})",
+                result.vuln_type, result.url, result.payload
+            ),
+        );
 
         if let Some(ref url) = self.webhook_url {
             let url = url.clone();
@@ -188,7 +201,6 @@ impl ScanEventSink for TauriSink {
         }
     }
 }
-
 
 static SCAN_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -248,12 +260,17 @@ impl Drop for ScanGuard {
 }
 
 fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
-    const FORBIDDEN: &[char] = &[';', '|', '&', '$', '>', '<', '`', '(', ')', '{', '}', '\n', '\r', '\0'];
+    const FORBIDDEN: &[char] = &[
+        ';', '|', '&', '$', '>', '<', '`', '(', ')', '{', '}', '\n', '\r', '\0',
+    ];
     if val.chars().any(|c| FORBIDDEN.contains(&c)) {
         return Err(format!("Field '{}' contains forbidden characters.", name));
     }
     if val.contains("../") || val.contains("..\\") {
-        return Err(format!("Field '{}' contains a path-traversal sequence.", name));
+        return Err(format!(
+            "Field '{}' contains a path-traversal sequence.",
+            name
+        ));
     }
     Ok(())
 }
@@ -268,7 +285,10 @@ fn validate_tags_field(tags: &str) -> Result<(), String> {
             return Err("Tags must not contain CLI flags (e.g. -exec, --config).".to_string());
         }
     }
-    if !tags.chars().all(|c| c.is_alphanumeric() || matches!(c, ',' | '-' | '_' | ' ')) {
+    if !tags
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, ',' | '-' | '_' | ' '))
+    {
         return Err("Field 'tags' contains invalid characters.".to_string());
     }
     Ok(())
@@ -277,15 +297,23 @@ fn validate_tags_field(tags: &str) -> Result<(), String> {
 fn validate_custom_headers(headers: &str) -> Result<(), String> {
     for line in headers.lines() {
         let line = line.trim();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         if let Some((key, val)) = line.split_once(':') {
             let key = key.trim();
             let val = val.trim();
-            const KEY_FORBIDDEN: &[char] = &[';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0', '=', ','];
+            const KEY_FORBIDDEN: &[char] = &[
+                ';', '&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0', '=', ',',
+            ];
             if key.chars().any(|c| KEY_FORBIDDEN.contains(&c)) {
-                return Err(format!("Header key '{}' contains forbidden characters.", key));
+                return Err(format!(
+                    "Header key '{}' contains forbidden characters.",
+                    key
+                ));
             }
-            const VAL_FORBIDDEN: &[char] = &['&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
+            const VAL_FORBIDDEN: &[char] =
+                &['&', '|', '`', '$', '>', '<', '\\', '(', ')', '{', '}', '\0'];
             if val.chars().any(|c| VAL_FORBIDDEN.contains(&c)) {
                 return Err("Header value contains forbidden characters.".to_string());
             }
@@ -297,11 +325,15 @@ fn validate_custom_headers(headers: &str) -> Result<(), String> {
 }
 
 fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
-    validate_text_field("proxy",    &config.proxy)?;
+    validate_text_field("proxy", &config.proxy)?;
     validate_custom_headers(&config.headers)?;
     validate_text_field("payloads", &config.payloads)?;
-    validate_text_field("output",   &config.output)?;
-    if config.target.chars().any(|c| matches!(c, '\n' | '\r' | '\0')) {
+    validate_text_field("output", &config.output)?;
+    if config
+        .target
+        .chars()
+        .any(|c| matches!(c, '\n' | '\r' | '\0'))
+    {
         return Err("Field 'target' contains forbidden characters.".to_string());
     }
     if config.target.contains("../") || config.target.contains("..\\") {
@@ -317,12 +349,15 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
     }
 
     if !config.list_file.is_empty() {
-        if config.list_file.starts_with('/') || config.list_file.starts_with('~') || config.list_file.starts_with('\\') {
-            return Err("Target list path must be relative (no leading /, ~, or backslash).".to_string());
-        }
-        if config.list_file.len() >= 2
-            && config.list_file.chars().nth(1) == Some(':')
+        if config.list_file.starts_with('/')
+            || config.list_file.starts_with('~')
+            || config.list_file.starts_with('\\')
         {
+            return Err(
+                "Target list path must be relative (no leading /, ~, or backslash).".to_string(),
+            );
+        }
+        if config.list_file.len() >= 2 && config.list_file.chars().nth(1) == Some(':') {
             return Err("Target list path must be relative (no drive letters).".to_string());
         }
     }
@@ -352,14 +387,14 @@ fn validate_scan_config(config: &ScanConfig) -> Result<(), String> {
 }
 
 fn validate_webhook_url(raw: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(raw)
-        .map_err(|_| "Webhook URL is not a valid URL.".to_string())?;
+    let parsed = url::Url::parse(raw).map_err(|_| "Webhook URL is not a valid URL.".to_string())?;
 
     if parsed.scheme() != "https" {
         return Err("Webhook URL must use HTTPS.".to_string());
     }
 
-    let host = parsed.host_str()
+    let host = parsed
+        .host_str()
         .ok_or_else(|| "Webhook URL has no hostname.".to_string())?
         .to_lowercase();
 
@@ -420,7 +455,8 @@ async fn run_recon(
 ) -> Result<(), String> {
     validate_recon_domain(&domain)?;
 
-    if state.recon_running
+    if state
+        .recon_running
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
@@ -438,7 +474,14 @@ async fn run_recon(
         let sink: SinkRef = TauriSink::new_ref(app_clone.clone(), None, finding_emitter);
 
         // Always emit the root domain itself first so the UI shows something immediately
-        app_clone.emit("recon-subdomain", ReconSubdomainEvent { host: domain.clone() }).ok();
+        app_clone
+            .emit(
+                "recon-subdomain",
+                ReconSubdomainEvent {
+                    host: domain.clone(),
+                },
+            )
+            .ok();
 
         let subfinder_hosts = match run_subfinder(&domain, sink.clone(), Arc::clone(&abort)).await {
             Ok(h) => h,
@@ -469,7 +512,12 @@ async fn run_recon(
         // but DO run port scan + DNS for ALL hosts including root
         for (i, host) in hosts.iter().enumerate() {
             if i > 0 {
-                app_clone.emit("recon-subdomain", ReconSubdomainEvent { host: host.clone() }).ok();
+                app_clone
+                    .emit(
+                        "recon-subdomain",
+                        ReconSubdomainEvent { host: host.clone() },
+                    )
+                    .ok();
             }
 
             let (ports_result, dns_result) = tokio::join!(
@@ -479,44 +527,63 @@ async fn run_recon(
 
             if let Ok(ports) = ports_result {
                 total_ports += ports.len();
-                app_clone.emit("recon-ports", ReconPortsEvent {
-                    host: host.clone(),
-                    ports,
-                }).ok();
+                app_clone
+                    .emit(
+                        "recon-ports",
+                        ReconPortsEvent {
+                            host: host.clone(),
+                            ports,
+                        },
+                    )
+                    .ok();
             }
 
             if let Ok(dns) = dns_result {
-                app_clone.emit("recon-dns", ReconDnsEvent {
-                    host: host.clone(),
-                    a: dns.a_records,
-                    mx: dns.mx,
-                    txt: dns.txt,
-                    cname: dns.cname,
-                    whois: dns.whois_raw,
-                }).ok();
+                app_clone
+                    .emit(
+                        "recon-dns",
+                        ReconDnsEvent {
+                            host: host.clone(),
+                            a: dns.a_records,
+                            mx: dns.mx,
+                            txt: dns.txt,
+                            cname: dns.cname,
+                            whois: dns.whois_raw,
+                        },
+                    )
+                    .ok();
             }
         }
 
-        let secrets = match scan_js_secrets(visited_urls, Arc::clone(&abort), sink.clone()).await {
-            Ok(s) => s,
-            Err(_) => vec![],
-        };
+        let secrets = scan_js_secrets(visited_urls, Arc::clone(&abort), sink.clone())
+            .await
+            .unwrap_or_default();
 
         let total_secrets = secrets.len();
         for s in secrets {
-            app_clone.emit("recon-js-secret", ReconJsSecretEvent {
-                url: s.url,
-                secret_type: s.secret_type,
-                matched_value: s.matched_value,
-                line_number: s.line_number,
-            }).ok();
+            app_clone
+                .emit(
+                    "recon-js-secret",
+                    ReconJsSecretEvent {
+                        url: s.url,
+                        secret_type: s.secret_type,
+                        matched_value: s.matched_value,
+                        line_number: s.line_number,
+                    },
+                )
+                .ok();
         }
 
-        app_clone.emit("recon-complete", ReconCompleteEvent {
-            total_hosts,
-            total_ports,
-            total_secrets,
-        }).ok();
+        app_clone
+            .emit(
+                "recon-complete",
+                ReconCompleteEvent {
+                    total_hosts,
+                    total_ports,
+                    total_secrets,
+                },
+            )
+            .ok();
 
         recon_flag.store(false, Ordering::SeqCst);
     });
@@ -532,7 +599,10 @@ fn stop_recon(state: State<'_, AppState>) {
 
 #[tauri::command]
 async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
-    if SCAN_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+    if SCAN_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Err("A scan is already running.".to_string());
     }
 
@@ -543,7 +613,8 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
 
     let abort_flag = Arc::new(AtomicBool::new(false));
     {
-        let mut guard = CURRENT_ABORT.lock()
+        let mut guard = CURRENT_ABORT
+            .lock()
             .map_err(|_| "Internal lock error.".to_string())?;
         *guard = Some(Arc::clone(&abort_flag));
     }
@@ -558,7 +629,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
     if !config.list_file.is_empty() {
         match read_lines(&config.list_file) {
             Ok(lines) => {
-                sink.on_log("success", &format!("Loaded {} target(s) from {}", lines.len(), config.list_file));
+                sink.on_log(
+                    "success",
+                    &format!("Loaded {} target(s) from {}", lines.len(), config.list_file),
+                );
                 targets.extend(lines);
             }
             Err(e) => {
@@ -582,21 +656,34 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         let start_time = Instant::now();
         let total_targets = targets.len();
 
-        sink.on_log("phase", &format!("── Scan started: {} target(s)", total_targets));
-        sink.on_log("info", &format!(
-            "Mode: {} | Threads: {} | Timeout: {}s | Rate Limit: {} req/s",
-            config.mode, config.threads, config.timeout, config.rate_limit
-        ));
+        sink.on_log(
+            "phase",
+            &format!("── Scan started: {} target(s)", total_targets),
+        );
+        sink.on_log(
+            "info",
+            &format!(
+                "Mode: {} | Threads: {} | Timeout: {}s | Rate Limit: {} req/s",
+                config.mode, config.threads, config.timeout, config.rate_limit
+            ),
+        );
 
         if config.dry_run {
             for t in &targets {
                 sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", t));
             }
             sink.on_log("info", "Dry run complete. No requests were sent.");
-            let _ = app.emit("scan-complete", ScanStatsEvent {
-                targets: total_targets, urls: 0, critical: 0, medium: 0, safe: 0,
-                elapsed: format!("{:.1}s", start_time.elapsed().as_secs_f64()),
-            });
+            let _ = app.emit(
+                "scan-complete",
+                ScanStatsEvent {
+                    targets: total_targets,
+                    urls: 0,
+                    critical: 0,
+                    medium: 0,
+                    safe: 0,
+                    elapsed: format!("{:.1}s", start_time.elapsed().as_secs_f64()),
+                },
+            );
             return;
         }
 
@@ -614,7 +701,10 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             }
 
             if total_targets > 1 {
-                sink.on_log("phase", &format!("━━━ Target {}/{}: {} ━━━", i + 1, total_targets, target));
+                sink.on_log(
+                    "phase",
+                    &format!("━━━ Target {}/{}: {} ━━━", i + 1, total_targets, target),
+                );
             }
 
             let mut target_manager = TargetManager::new();
@@ -647,7 +737,17 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             if config.enable_nuclei {
                 sink.on_log("phase", "── Phase 2: Nuclei Scanner");
 
-                if let Err(e) = run_nuclei_scan(target, &config.mode, config.verbose, config.tags_ref(), config.crawler_timeout, &sink, Arc::clone(&abort_flag)).await {
+                if let Err(e) = run_nuclei_scan(
+                    target,
+                    &config.mode,
+                    config.verbose,
+                    config.tags_ref(),
+                    config.crawler_timeout,
+                    &sink,
+                    Arc::clone(&abort_flag),
+                )
+                .await
+                {
                     sink.on_log("error", &format!("Nuclei error: {}", e));
                 } else {
                     sink.on_log("success", "Nuclei scan completed.");
@@ -662,11 +762,19 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             }
 
             sink.on_log("phase", "── Phase 3: ARKENAR Engine");
-            sink.on_log("info", &format!("Scanning with {} threads...", config.threads));
+            sink.on_log(
+                "info",
+                &format!("Scanning with {} threads...", config.threads),
+            );
 
             let proxy_ref = config.proxy_ref().map(|s| s.to_string());
             let proxy_opt = proxy_ref.as_deref();
-            let http_client = match HttpClient::new(config.timeout, proxy_opt, &custom_headers, config.allow_insecure_tls) {
+            let http_client = match HttpClient::new(
+                config.timeout,
+                proxy_opt,
+                &custom_headers,
+                config.allow_insecure_tls,
+            ) {
                 Ok(c) => Arc::new(c),
                 Err(e) => {
                     sink.on_log("error", &format!("Failed to build HTTP client: {}", e));
@@ -675,13 +783,16 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             };
 
             let (result_tx, result_rx) = mpsc::channel::<ScanResult>(200);
-            let total_scanned = target_manager.total_seen();
             let engine = ScanEngine::with_config(
                 target_manager,
                 Arc::clone(&http_client),
                 config.threads,
                 config.rate_limit,
-                if config.payloads.is_empty() { None } else { Some(&config.payloads) },
+                if config.payloads.is_empty() {
+                    None
+                } else {
+                    Some(&config.payloads)
+                },
                 &config,
             );
 
@@ -689,15 +800,14 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
             let output_path = config.output.clone();
             let abort_for_engine = Arc::clone(&abort_flag);
 
-            let engine_handle = tokio::spawn(async move {
-                engine.run(result_tx, abort_for_engine).await;
-            });
+            let engine_handle =
+                tokio::spawn(async move { engine.run(result_tx, abort_for_engine).await });
 
             let aggregator_handle = tokio::spawn(async move {
                 ResultAggregator::run(result_rx, &output_path, sink_agg).await
             });
 
-            let _ = engine_handle.await;
+            let total_scanned = engine_handle.await.unwrap_or(0);
             if let Ok(results) = aggregator_handle.await {
                 let mut vulnerable_urls = std::collections::HashSet::new();
                 for r in &results {
@@ -717,23 +827,32 @@ async fn start_scan(app: AppHandle, config: ScanConfig) -> Result<(), String> {
         sink.on_log("phase", &format!("── Scan Complete ({})", elapsed));
 
         if total_critical > 0 {
-            sink.on_log("error", &format!("{} critical vulnerability(ies) found!", total_critical));
+            sink.on_log(
+                "error",
+                &format!("{} critical vulnerability(ies) found!", total_critical),
+            );
         }
         if total_medium > 0 {
-            sink.on_log("warn", &format!("{} medium-severity issue(s) found.", total_medium));
+            sink.on_log(
+                "warn",
+                &format!("{} medium-severity issue(s) found.", total_medium),
+            );
         }
         if total_critical == 0 && total_medium == 0 {
             sink.on_log("success", "No vulnerabilities detected.");
         }
 
-        let _ = app.emit("scan-complete", ScanStatsEvent {
-            targets: total_targets,
-            urls: total_urls,
-            critical: total_critical,
-            medium: total_medium,
-            safe: total_safe,
-            elapsed,
-        });
+        let _ = app.emit(
+            "scan-complete",
+            ScanStatsEvent {
+                targets: total_targets,
+                urls: total_urls,
+                critical: total_critical,
+                medium: total_medium,
+                safe: total_safe,
+                elapsed,
+            },
+        );
     });
 
     Ok(())
@@ -758,14 +877,14 @@ async fn studio_send(req: StudioRequest) -> Result<StudioResponse, String> {
     validate_studio_request(&req)?;
 
     let method = match req.method.to_uppercase().as_str() {
-        "GET"     => reqwest::Method::GET,
-        "POST"    => reqwest::Method::POST,
-        "PUT"     => reqwest::Method::PUT,
-        "PATCH"   => reqwest::Method::PATCH,
-        "DELETE"  => reqwest::Method::DELETE,
-        "HEAD"    => reqwest::Method::HEAD,
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "PATCH" => reqwest::Method::PATCH,
+        "DELETE" => reqwest::Method::DELETE,
+        "HEAD" => reqwest::Method::HEAD,
         "OPTIONS" => reqwest::Method::OPTIONS,
-        other     => return Err(format!("Unsupported HTTP method: {}", other)),
+        other => return Err(format!("Unsupported HTTP method: {}", other)),
     };
 
     let client = match STUDIO_CLIENT.get() {
@@ -830,7 +949,6 @@ async fn studio_send(req: StudioRequest) -> Result<StudioResponse, String> {
         timing_ms,
     })
 }
-
 
 #[tauri::command]
 async fn stop_scan() -> Result<(), String> {
@@ -917,8 +1035,7 @@ async fn export_report(
         return Err("Report path must end with .html or .htm.".to_string());
     }
     let html = reporting::generate_html_report(&findings, &config, &elapsed);
-    std::fs::write(&output_path, html)
-        .map_err(|e| format!("Failed to write report: {}", e))?;
+    std::fs::write(&output_path, html).map_err(|e| format!("Failed to write report: {}", e))?;
     Ok(output_path)
 }
 
@@ -926,7 +1043,6 @@ async fn export_report(
 fn show_main_window(window: tauri::WebviewWindow) {
     let _ = window.show();
 }
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -966,7 +1082,8 @@ pub fn run() {
             let handle: AppHandle = app.handle().clone();
             // Setup sink only logs — no findings during startup, so a no-op emitter is fine.
             let setup_emitter = spawn_finding_emitter(handle.clone());
-            let setup_sink: Arc<dyn ScanEventSink> = TauriSink::new_ref(handle.clone(), None, setup_emitter);
+            let setup_sink: Arc<dyn ScanEventSink> =
+                TauriSink::new_ref(handle.clone(), None, setup_emitter);
             tauri::async_runtime::spawn(async move {
                 setup_sink.on_log("info", "Checking dependencies (Katana, Nuclei)...");
                 installer::check_and_install_tools().await;

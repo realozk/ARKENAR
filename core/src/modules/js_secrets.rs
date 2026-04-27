@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::OnceLock;
-use regex::Regex;
 use crate::SinkRef;
+use regex::Regex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::sync::OnceLock;
 
 pub struct JsSecret {
     pub url: String,
@@ -38,7 +38,10 @@ fn patterns() -> &'static Vec<Pattern> {
             },
             Pattern {
                 name: "Generic Password",
-                regex: Regex::new(r#"(?i)(password|passwd|secret|api_key|apikey)\s*[:=]\s*["'][^"']{8,}["']"#).unwrap(),
+                regex: Regex::new(
+                    r#"(?i)(password|passwd|secret|api_key|apikey)\s*[:=]\s*["'][^"']{8,}["']"#,
+                )
+                .unwrap(),
             },
             Pattern {
                 name: "JWT Token",
@@ -58,10 +61,7 @@ pub async fn scan_js_secrets(
         .danger_accept_invalid_certs(true)
         .build()?;
 
-    let filtered: Vec<String> = js_urls
-        .into_iter()
-        .filter(|u| u.ends_with(".js"))
-        .collect();
+    let filtered: Vec<String> = js_urls.into_iter().filter(|u| u.ends_with(".js")).collect();
 
     let mut results: Vec<JsSecret> = Vec::new();
     let pats = patterns();

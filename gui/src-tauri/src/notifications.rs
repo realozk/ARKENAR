@@ -9,7 +9,7 @@ fn classify_webhook(url: &str) -> (bool, bool) {
     if let Ok(parsed) = url::Url::parse(url) {
         let host = parsed.host_str().unwrap_or("").to_lowercase();
         let is_discord = host == "discord.com" || host.ends_with(".discord.com");
-        let is_slack   = host == "hooks.slack.com";
+        let is_slack = host == "hooks.slack.com";
         return (is_discord, is_slack);
     }
     (false, false)
@@ -74,8 +74,5 @@ pub async fn send_webhook(webhook_url: &str, result: &ScanResult) {
         Err(_) => return,
     };
 
-    let _ = client.post(webhook_url)
-        .json(&payload)
-        .send()
-        .await;
+    let _ = client.post(webhook_url).json(&payload).send().await;
 }

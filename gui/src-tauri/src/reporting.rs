@@ -1,25 +1,35 @@
-/// Self-contained HTML report generator for scan results.
-///
-/// Produces a single .html file with embedded CSS + JS — no external
-/// dependencies. Includes a severity distribution chart, filterable
-/// findings table, and dark theme matching the GUI aesthetic.
+//! Self-contained HTML report generator for scan results.
+//!
+//! Produces a single .html file with embedded CSS + JS — no external
+//! dependencies. Includes a severity distribution chart, filterable
+//! findings table, and dark theme matching the GUI aesthetic.
 
-use arkenar_core::{ScanConfig};
 use crate::ScanFindingEvent;
+use arkenar_core::ScanConfig;
 
 pub fn generate_html_report(
     results: &[ScanFindingEvent],
     config: &ScanConfig,
     elapsed: &str,
 ) -> String {
-    let critical: Vec<_> = results.iter().filter(|r| {
-        let v = r.vuln_type.to_lowercase();
-        v.contains("sqli") || v.contains("sql") || v.contains("rce") || v.contains("command")
-    }).collect();
-    let medium: Vec<_> = results.iter().filter(|r| {
-        let v = r.vuln_type.to_lowercase();
-        !v.contains("sqli") && !v.contains("sql") && !v.contains("rce") && !v.contains("command") && v != "safe"
-    }).collect();
+    let critical: Vec<_> = results
+        .iter()
+        .filter(|r| {
+            let v = r.vuln_type.to_lowercase();
+            v.contains("sqli") || v.contains("sql") || v.contains("rce") || v.contains("command")
+        })
+        .collect();
+    let medium: Vec<_> = results
+        .iter()
+        .filter(|r| {
+            let v = r.vuln_type.to_lowercase();
+            !v.contains("sqli")
+                && !v.contains("sql")
+                && !v.contains("rce")
+                && !v.contains("command")
+                && v != "safe"
+        })
+        .collect();
 
     let total = results.len();
     let crit_count = critical.len();
@@ -29,7 +39,13 @@ pub fn generate_html_report(
     for (i, r) in results.iter().enumerate() {
         let severity = match r.vuln_type.as_str() {
             s if s.contains("SQL") || s.contains("RCE") || s.contains("Command") => "Critical",
-            s if s.contains("XSS") || s.contains("SSRF") || s.contains("Path Traversal") || s.contains("Blind") => "High",
+            s if s.contains("XSS")
+                || s.contains("SSRF")
+                || s.contains("Path Traversal")
+                || s.contains("Blind") =>
+            {
+                "High"
+            }
             s if s.contains("Open Redirect") || s.contains("Sensitive") => "Medium",
             _ => "Info",
         };
@@ -42,10 +58,16 @@ pub fn generate_html_report(
 
         let mut stack_html = String::new();
         for tech in &r.tech_stack {
-            stack_html.push_str(&format!("<span style=\"color:#00d5be; margin-right:4px;\">{}</span>", html_escape(tech)));
+            stack_html.push_str(&format!(
+                "<span style=\"color:#00d5be; margin-right:4px;\">{}</span>",
+                html_escape(tech)
+            ));
         }
         if let Some(waf) = &r.waf_detected {
-            stack_html.push_str(&format!("<span style=\"color:#eab308;\">WAF:{}</span>", html_escape(waf)));
+            stack_html.push_str(&format!(
+                "<span style=\"color:#eab308;\">WAF:{}</span>",
+                html_escape(waf)
+            ));
         }
         if stack_html.is_empty() {
             stack_html = "\u{2014}".to_string();
@@ -63,7 +85,8 @@ pub fn generate_html_report(
                 <td class="mono curl-cell">{}</td>
             </tr>"#,
             i + 1,
-            sev_class, severity,
+            sev_class,
+            severity,
             html_escape(&r.vuln_type),
             html_escape(&r.url),
             r.status_code,
@@ -73,7 +96,8 @@ pub fn generate_html_report(
         ));
     }
 
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -151,7 +175,10 @@ function filterTable() {{
         table_or_empty = if total == 0 {
             r#"<div class="empty">No findings to display.</div>"#.to_string()
         } else {
-            format!(r#"<table><thead><tr><th>#</th><th>Severity</th><th>Type</th><th>URL</th><th>Status</th><th>Stack</th><th>Timing</th><th>Reproduce</th></tr></thead><tbody>{}</tbody></table>"#, rows)
+            format!(
+                r#"<table><thead><tr><th>#</th><th>Severity</th><th>Type</th><th>URL</th><th>Status</th><th>Stack</th><th>Timing</th><th>Reproduce</th></tr></thead><tbody>{}</tbody></table>"#,
+                rows
+            )
         },
     )
 }

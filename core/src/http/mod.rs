@@ -53,7 +53,7 @@ impl HttpRequest {
     pub fn new(method: Method, url: Url, headers: HeaderMap, body: String) -> Self {
         let body_type = BodyType::detect_body_type(&headers);
         Self {
-           method,
+            method,
             url,
             headers,
             body,
