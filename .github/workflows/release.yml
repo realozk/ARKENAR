@@ -29,6 +29,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "Setting version to $VERSION"
+          # tauri.conf.json
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" gui/src-tauri/tauri.conf.json
+          # gui Cargo.toml (first version = line only)
+          sed -i.bak "0,/^version = \"[^\"]*\"/ s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" gui/src-tauri/Cargo.toml
+          rm -f gui/src-tauri/tauri.conf.json.bak gui/src-tauri/Cargo.toml.bak
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -204,6 +216,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Sync version from tag
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          sed -i.bak "0,/^version = \"[^\"]*\"/ s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" core/Cargo.toml
+          sed -i.bak "0,/^version = \"[^\"]*\"/ s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" cli/Cargo.toml
+          rm -f core/Cargo.toml.bak cli/Cargo.toml.bak
+
       - name: Install Rust stable + target
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -245,39 +266,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── 4. Publish both crates to crates.io ──────────────────────────────────
-  publish-crates:
-    name: Publish to crates.io
-    runs-on: ubuntu-22.04
-    needs: build-tauri
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set version from tag
-        run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          echo "Publishing version: $VERSION"
-          # Patch version in all Cargo.toml files to match the tag
-          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" core/Cargo.toml
-          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" cli/Cargo.toml
-          # Update the arkenar-core dependency in cli/Cargo.toml to the same version
-          sed -i "s/arkenar-core = { version = \".*\"/arkenar-core = { version = \"${VERSION}\"/" cli/Cargo.toml
-
-      - name: Publish arkenar-core
-        run: cargo publish -p arkenar-core --allow-dirty
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io index
-        run: sleep 30
-
-      - name: Publish arkenar
-        run: cargo publish -p arkenar --allow-dirty
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
