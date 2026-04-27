@@ -1,21 +1,21 @@
-name: Release Arkenar GUI
+name: Release Arkenar
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+*' 
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
+  # ── 1. Build GUI installers ────────────────────────────────────────────────
   build-tauri:
     name: Build GUI — ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
 
     strategy:
-      fail-fast: false 
+      fail-fast: false
       matrix:
         include:
           - platform: windows
@@ -84,7 +84,7 @@ jobs:
           releaseBody: |
             ## Arkenar ${{ github.ref_name }}
 
-            ###  Downloads
+            ### Downloads
 
             #### GUI (Desktop App)
             | Platform | File |
@@ -103,19 +103,14 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
 
-  update-latest-json:
-    name: Update latest.json
+  # ── 2. Upload latest.json as a release asset (no bot commits) ─────────────
+  upload-latest-json:
+    name: Upload latest.json
     runs-on: ubuntu-22.04
     needs: build-tauri
 
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build latest.json from release assets
+      - name: Build and upload latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -167,29 +162,9 @@ jobs:
           }
           EOF
 
-      - name: Commit and open PR for latest.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BRANCH="chore/update-latest-json-${{ github.ref_name }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add latest.json
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git checkout -B "$BRANCH"
-          git commit -m "chore: update latest.json for ${{ github.ref_name }}"
-          git push --force origin "$BRANCH"
-          existing_pr=$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$existing_pr" ]; then
-            echo "PR #$existing_pr already exists, updated branch."
-          else
-            gh pr create \
-              --title "chore: update latest.json for ${{ github.ref_name }}" \
-              --body "Auto-generated PR to update \`latest.json\` for release **${{ github.ref_name }}**." \
-              --base main \
-              --head "$BRANCH"
-          fi
+          gh release upload "$TAG" latest.json --clobber --repo "$REPO"
 
+  # ── 3. Build CLI binaries ─────────────────────────────────────────────────
   build-cli:
     name: Build CLI — ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -269,3 +244,40 @@ jobs:
         run: gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── 4. Publish both crates to crates.io ──────────────────────────────────
+  publish-crates:
+    name: Publish to crates.io
+    runs-on: ubuntu-22.04
+    needs: build-tauri
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set version from tag
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "Publishing version: $VERSION"
+          # Patch version in all Cargo.toml files to match the tag
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" core/Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" cli/Cargo.toml
+          # Update the arkenar-core dependency in cli/Cargo.toml to the same version
+          sed -i "s/arkenar-core = { version = \".*\"/arkenar-core = { version = \"${VERSION}\"/" cli/Cargo.toml
+
+      - name: Publish arkenar-core
+        run: cargo publish -p arkenar-core --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index
+        run: sleep 30
+
+      - name: Publish arkenar
+        run: cargo publish -p arkenar --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
