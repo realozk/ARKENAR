@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ─── TASK 2: Desktop Type Scale ─────────────────────────────────── */
+/* ─── Desktop Type Scale ─────────────────────────────────────────── */
 :root {
   --fs-chrome: 11px;      /* titlebar, status strip, table headers */
   --fs-label:  10.5px;    /* section labels, uppercase metadata */
@@ -105,10 +105,6 @@ input, textarea, .terminal-line, .finding-card pre, .mono {
 #root {
   border-radius: 12px;
   overflow: hidden;
-  /* TASK 2: Apply --ui-scale as an accessibility transform on the root,
-     not as root font-size (which caused proportional bloat).
-     The scale is set in App.tsx via document.documentElement.style.setProperty("--ui-scale", …).
-     We keep this as a declaration only; the actual application happens via JS. */
 }
 
 
@@ -117,7 +113,6 @@ html {
   background: var(--color-bg-root);
   color: var(--color-text-primary);
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* TASK 2: Flat 14px desktop base. --ui-scale is applied as transform on #root via JS, not here. */
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -125,14 +120,13 @@ html {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "tnum";
 }
 
-/* TASK 2: Monospace elements — disable ligatures, use coding-specific features */
+/* Monospace elements — disable ligatures, use coding-specific features */
 .mono, .font-mono, code, kbd, pre {
   font-variant-ligatures: none;
   font-feature-settings: "tnum", "zero", "ss01";
 }
 
-/* TASK 2: On 2K+ displays (≥1.5dppx), enforce visually thin outlines instead of
-   doubled-looking 1px borders. Use 0.5px where browsers honor it. */
+/* On 2K+ displays, prefer 0.5px hairline outlines over 1px borders. */
 @media (min-resolution: 1.5dppx) {
   .border-hairline {
     outline: 0.5px solid var(--color-border-subtle);
@@ -140,7 +134,7 @@ html {
   }
 }
 
-/* TASK 6: Global focus ring — applied to all interactive elements via focus-visible */
+/* Global focus ring */
 :focus-visible {
   outline: 1px solid var(--color-accent);
   outline-offset: 2px;
@@ -202,7 +196,6 @@ input[type="number"] {
 
 .toggle-track {
   position: relative;
-  /* TASK 5: Reduced toggle size to 28×14px for denser chrome */
   width: 28px;
   height: 14px;
   border-radius: 7px;
@@ -221,7 +214,6 @@ input[type="number"] {
   position: absolute;
   top: 50%;
   left: 2px;
-  /* TASK 5: Smaller thumb 10×10 */
   width: 10px;
   height: 10px;
   border-radius: 50%;

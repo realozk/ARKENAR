@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   ChevronIcon, PlayIcon, StopIcon, ClipboardIcon, DotIcon, SaveIcon,
 } from "../icons";
@@ -11,8 +11,6 @@ const STAGES: { id: PipelineStage; label: string }[] = [
   { id: "await", label: "AWAIT" },
   { id: "render", label: "RENDER" },
 ];
-
-// TASK 4: Removed INJECTION_HINTS constant and its render block.
 // §payload§ | §reqid§ | §token§ were mockup decorations with no functional purpose.
 // A real variable injection feature will be implemented as a proper dropdown later.
 

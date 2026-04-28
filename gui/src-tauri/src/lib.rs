@@ -19,7 +19,6 @@ use arkenar_core::{
 
 mod event_sink;
 mod notifications;
-mod reporting;
 pub mod studio;
 
 use event_sink::{spawn_finding_emitter, FindingEmitter};
@@ -965,12 +964,6 @@ async fn stop_scan() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_tools() -> Result<String, String> {
-    installer::check_and_install_tools().await;
-    Ok("Tools verified.".to_string())
-}
-
-#[tauri::command]
 async fn test_webhook(url: String) -> Result<(), String> {
     validate_webhook_url(&url)?;
 
@@ -1018,28 +1011,6 @@ async fn test_webhook(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn export_report(
-    findings: Vec<ScanFindingEvent>,
-    config: arkenar_core::ScanConfig,
-    elapsed: String,
-    output_path: String,
-) -> Result<String, String> {
-    if output_path.is_empty() {
-        return Err("Output path must not be empty.".to_string());
-    }
-    if output_path.contains("..") {
-        return Err("Report path must not contain '..'.".to_string());
-    }
-    let lower = output_path.to_lowercase();
-    if !lower.ends_with(".html") && !lower.ends_with(".htm") {
-        return Err("Report path must end with .html or .htm.".to_string());
-    }
-    let html = reporting::generate_html_report(&findings, &config, &elapsed);
-    std::fs::write(&output_path, html).map_err(|e| format!("Failed to write report: {}", e))?;
-    Ok(output_path)
-}
-
-#[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow) {
     let _ = window.show();
 }
@@ -1058,9 +1029,7 @@ pub fn run() {
             stop_scan,
             run_recon,
             stop_recon,
-            check_tools,
             test_webhook,
-            export_report,
             studio_send,
             studio::studio_auto_login,
             show_main_window,

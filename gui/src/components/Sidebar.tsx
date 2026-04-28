@@ -1,7 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+﻿import { useState, useCallback, useEffect, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-// TASK 5: Removed oversized lucide-react section icons (Crosshair, FileText, Layers, Radar, Telescope, Zap)
-// Section labels now use plain muted mono text matching Studio pattern — no icons needed.
 import { ListOrdered, FolderSearch, BookmarkPlus, Bookmark, ClipboardPaste, RotateCcw } from "lucide-react";
 import { CloseIcon, PlusIcon } from './icons';
 import { log } from '../utils/logger';
@@ -41,8 +39,6 @@ function saveTemplates(tpls: ScanTemplate[]) {
 }
 
 /* ── Studio-style plain section divider label ──────────────────────────── */
-// TASK 5: Replaces SectionLabel (with icon) for the sidebar.
-// No icon, muted color, thin uppercase mono — matches Studio's section labels exactly.
 function PlainSectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="px-0 pt-4 pb-2">
@@ -194,7 +190,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         )}
 
         {/* ── TARGET ─────────────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no bullseye icon, muted color */}
         <PlainSectionLabel>Target</PlainSectionLabel>
         <div>
           <div className="flex gap-2 items-center">
@@ -241,7 +236,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── TARGET LIST ─────────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no FileText icon */}
         <PlainSectionLabel>Target List</PlainSectionLabel>
         <div
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -261,7 +255,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
               <FolderSearch size={16} strokeWidth={2.5} />
             </button>
           </div>
-          {/* TASK 5: Shorter helper text */}
           <p
             className="mt-1.5 font-mono text-text-ghost leading-snug"
             style={{ fontSize: 'var(--fs-label)' }}
@@ -271,10 +264,8 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── SCAN MODE ─────────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no Layers icon */}
         <PlainSectionLabel>{t("scanMode")}</PlainSectionLabel>
         <div>
-          {/* TASK 5: Studio segmented control pattern — flat border, accent-bg for active */}
           <div
             className="flex overflow-hidden border border-[color:var(--color-border-subtle)]"
             style={{ background: "var(--color-bg-root)" }}
@@ -329,7 +320,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── DISCOVERY ─────────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no Telescope icon */}
         <PlainSectionLabel>Discovery</PlainSectionLabel>
         <div>
           <ToggleRow label="JS Endpoint Analysis" desc="Crawls discovered .js files for hidden API endpoints" checked={config.enableJsAnalysis} onChange={(v) => onUpdate("enableJsAnalysis", v)} />
@@ -342,7 +332,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── INTEGRATIONS ─────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no Radar icon */}
         <PlainSectionLabel>{t("integrations")}</PlainSectionLabel>
         <div>
           <ToggleRow label={t("katanaCrawler")} desc={t("katanaCrawlerDesc")} checked={config.enableCrawler} onChange={(v) => onUpdate("enableCrawler", v)} />
@@ -357,7 +346,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── OPTIONS ─────────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no Telescope icon */}
         <PlainSectionLabel>{t("options")}</PlainSectionLabel>
         <div>
           <ToggleRow label={t("sameDomainScope")} desc={t("sameDomainScopeDesc")} checked={config.scope} onChange={(v) => onUpdate("scope", v)} />
@@ -366,7 +354,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── PERFORMANCE ─────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no Zap icon */}
         <PlainSectionLabel>{t("performance")}</PlainSectionLabel>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -386,7 +373,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         </div>
 
         {/* ── ENGINE ─────────────────────────────────────────────── */}
-        {/* TASK 5: PlainSectionLabel — no Zap icon */}
         <PlainSectionLabel>Engine</PlainSectionLabel>
         <div>
           <ToggleRow label="Smart Payload Selection" desc="Prioritizes payloads by parameter name" checked={config.enableSmartPayloads} onChange={(v) => onUpdate("enableSmartPayloads", v)} />
@@ -396,7 +382,6 @@ export function Sidebar({ config, onUpdate, onReset, scanQueue = [], onAddToQueu
         <div className={`grid transition-all duration-300 ease-in-out ${config.enableCrawler ? "grid-rows-[1fr] mt-2 opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
           <div className="overflow-hidden">
             <div className="pt-4 space-y-4">
-              {/* TASK 5: PlainSectionLabel for Crawler too */}
               <PlainSectionLabel>{t("crawler")}</PlainSectionLabel>
               <div className="grid grid-cols-2 gap-3">
                 <div>

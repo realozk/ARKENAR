@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+﻿import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ScanConfig, ScanFindingEvent, ScanStatus } from "../../types";
 import { useScannerEvents } from "./useScannerEvents";
@@ -18,7 +18,7 @@ interface ScannerWorkspaceProps {
   webhookUrl?: string;
 }
 
-/* ── Tab bar button — TASK 5: Studio-style flat bottom-border tabs ─── */
+/* ── Tab bar button ─── */
 function TabBtn({
   active,
   onClick,
@@ -121,7 +121,6 @@ export default function ScannerWorkspace({
 
         {/* Main panel */}
         <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-          {/* TASK 5: Flat bottom-border tab bar — matches Studio tab pattern */}
           <div
             className="flex items-end px-3 border-b border-[color:var(--color-border-subtle)] shrink-0"
             style={{ background: "var(--color-bg-panel)" }}

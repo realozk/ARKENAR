@@ -1,4 +1,4 @@
-import { CpuIcon, GlobeIcon, ShieldIcon, EyeIcon, NetworkIcon, TimerIcon, ActivityIcon, BoltIcon, CheckCircleIcon, TargetIcon } from "./icons";
+﻿import { CpuIcon, GlobeIcon, ShieldIcon, EyeIcon, NetworkIcon, TimerIcon, ActivityIcon, BoltIcon, CheckCircleIcon, TargetIcon } from "./icons";
 import { useState, useEffect, useRef, type ElementType } from "react";
 import type { ScanStatsEvent, ScanStatus } from "../types";
 import { t } from "../utils/i18n";
@@ -61,7 +61,6 @@ function Sparkline({ values }: { values: number[] }) {
 }
 
 /* ─── StatCard — redesigned to match Studio density ─────────────── */
-// TASK 3: Replaced rounded-xl bg-bg-card card with sharp flat 1px border panel
 function StatCard({ label, value, icon: Icon, accent, animate, children }: {
   label: string;
   value: string | number;
@@ -134,8 +133,6 @@ function getPhaseIndex(progress: number): number {
   if (progress >= 20) return 0;
   return 0;
 }
-
-// TASK 3: Reduced circle sizes w-11 h-11 → w-9 h-9, icon size 20→14, connecting line w-24→flex-1 max-w-[120px]
 function PhaseTimeline({ progress, scanning }: { progress: number; scanning: boolean }) {
   const activePhase = scanning ? getPhaseIndex(progress) : -1;
 
@@ -241,7 +238,6 @@ export function TopStats({ stats, scanStatus, scanProgress, rps = 0, language: _
 
   return (
     <div className="shrink-0 flex flex-col">
-      {/* TASK 3: Responsive grid — cards wrap at narrow widths instead of truncating labels */}
       <div
         className="gap-2 px-4 pt-3 pb-2"
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}

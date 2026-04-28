@@ -4,54 +4,45 @@ All notable changes to Arkenar are documented here.
 
 ---
 
-## [1.2.0] — Phase 2: Structural Migration & Reconnaissance Suite
+## [1.2.0]
 
 ### Added
-- **Recon Workspace** — Added a 3-panel UI architecture (`ReconTopBar`, `ReconLeftRail`, `ReconHostBoard`) for the Recon phase including a DNS Board, Subdomain tracking, and Port scanning interfaces.
-- **DNS & WHOIS Module** — Built `dns_lookup.rs` using `trust-dns-resolver` and raw TCP connection logic to asynchronously retrieve A, MX, TXT, CNAME, and raw WHOIS records.
-- **Port Scanner Module** — Built an async TCP connect scanner in `port_scanner.rs` to sweep the top 1000 ports concurrently using semaphores.
-- **JS Secrets Scanner Module** — Added an async JavaScript analysis module that tests fetched endpoints against RegExp patterns detecting AWS Keys, GitHub Tokens, JWTs, and other API secrets.
-- **Subfinder Integration** — Integrated projectdiscovery's `subfinder` for active subdomain mapping.
-- **Live Sitemap Workspace** — Added a visual tree view inside the Basic Scanner to display discovered endpoints and nested domain structures.
-- **Contextual Parameter Fuzzing** — Added payload logic targeting specifically named parameters to optimize payload selection and reduce scan times.
+- New Recon workspace (`ReconTopBar` / `ReconLeftRail` / `ReconHostBoard`) with a DNS board, subdomain tracking, and port scanning
+- `dns_lookup` module — async A / MX / TXT / CNAME plus raw WHOIS over TCP, using `trust-dns-resolver`
+- `port_scanner` module — async TCP connect scan over the top 1000 ports, semaphore-bounded
+- `js_secrets` module — fetches JS files and matches against AWS keys, GitHub tokens, JWTs, and other API-secret patterns
+- `subfinder` integration for active subdomain enumeration
+- Live sitemap tree inside the Basic Scanner showing discovered endpoints
+- Parameter-name-aware payload selection (faster scans, fewer obviously-wrong payloads)
 
 ### Changed
-- **Tailwind UI Migration** — Ported all application workspaces (Basic, Recon, Studio) to a Tailwind CSS-driven dark-themed, mono-styled design system.
-- **CSS Variable Architecture (Phase 1)** — Replaced hard-coded hex colors with a token-driven design system inside `App.css` (e.g., `--color-bg-root-2`, `--color-accent-weak`, deep black themes).
-- **Thin-Stroke Icon System (Phase 2)** — Phased out `lucide-react` in favor of a centralized, custom thin-stroke `Icon` primitive for unified visual language.
-- **Cross-Tab State Persistence** — Shifted core application state (visited URLs, scan states, configs) to the top-level `App` component, so switching between Studio and Scanner doesn't lose terminal output.
-- **Layout Adjustments** — Updated typography, density scaling, and the `AdvancedConfig` modal structure for high-density displays.
+- All three workspaces (Basic, Recon, Studio) migrated to Tailwind CSS with a token-driven dark theme
+- All hard-coded hex colors in `App.css` replaced with CSS custom properties (`--color-bg-*`, `--color-accent-*`, etc.)
+- Dropped `lucide-react` in favor of an in-house thin-stroke `Icon` primitive
+- Top-level state (visited URLs, scan status, config) lifted into `App` so switching tabs doesn't wipe the terminal
+- Density / typography pass on the Advanced Config modal for high-DPI screens
 
 ### Fixed
-- **Custom Header Validation Bug** — Fixed strict header parsing inside `cli/src/main.rs` to allow `=` characters, so Cookie strings don't throw validation errors.
-- **Recon Data Flow** — Fixed the backend `run_recon` command to reliably emit IPC events for both root domains and subdomains.
-- **Native Titlebar macOS Integration** — Added platform-specific conditional rendering for seamless macOS transparent titlebars.
+- Custom-header parsing in the CLI no longer rejects `=` inside cookie values
+- `run_recon` now emits IPC events for both the root domain and its subdomains
+- macOS native titlebar overlay no longer overlaps window content
+- `total_safe` count was computed before the scan loop finished — `ScanEngine::run()` now returns `usize` and the Tauri layer reads the count after it returns
+- JSONL write failures in `result_aggregator.rs` were silently dropped — now surfaced through the event sink and further writes for that scan are disabled
 
-### Improved / Security
-- **Codebase Hardening** — Did a pre-release pass on the Rust backend targeting dead-code removal, unifying debug routing channels, and streamlining error handling.
-- **Comment Auditing** — Stripped redundant and verbose comments from the codebase, keeping only what's genuinely useful.
+### Internal
+- Pre-release dead-code sweep and comment cleanup across the Rust backend
+- `ConsoleSink` now prefixes `[+]`/`[!]`/`[~]`/`[*]` per log level and skips re-tagging already-prefixed messages
+- `basic_scan` errors now log via `warn!` instead of being dropped
+- Workspace builds clean under `cargo clippy -D warnings`; module docs converted from `///` to `//!` where appropriate
 
----
+### Release / CI
+- `latest.json` is now a release asset, served via `releases/latest/download/latest.json` (the in-app updater endpoint was repointed to match)
+- Tag pushes auto-patch `tauri.conf.json` and the three `Cargo.toml`s, so the version shown in-app always matches the tag
 
-## [1.2.1] — Hardening & CI Polish
-
-### Fixed
-- **GUI `total_safe` miscount** — `ScanEngine::run()` now returns `usize` (total processed). The Tauri layer reads the count after the engine finishes, fixing a race where safe totals were computed before the scan loop completed.
-- **JSONL write errors swallowed** — `result_aggregator.rs` now surfaces write failures through the event sink and disables further writes for that scan instead of silently dropping findings.
-
-### Improved
-- **`ConsoleSink` log prefixes** — CLI output now prefixes `[+]` / `[!]` / `[~]` / `[*]` per log level. Already-tagged messages are not double-prefixed.
-- **Engine error visibility** — `basic_scan` errors are now logged via `warn!` instead of silently dropped.
-- **Clippy clean (`-D warnings`)** — Resolved `lines_filter_map_ok`, `too_many_arguments`, `manual_map`, `collapsible_else_if`, `bool_assert_comparison`, `explicit_auto_deref`, `useless_vec`, `needless_borrow`, `empty_line_after_doc_comment`, `manual_unwrap_or_default`, `new_without_default`, `single_match`. Module-level docs converted from `///` to `//!` in 4 files.
-
-### CI / Release
-- **No bot commits** — `latest.json` is now uploaded as a GitHub release asset instead of committed back to `main`. `github-actions[bot]` no longer appears as a contributor.
-- **Auto version sync from tag** — Pushing `v1.2.1` patches `tauri.conf.json`, `gui/src-tauri/Cargo.toml`, `core/Cargo.toml`, and `cli/Cargo.toml` in CI. The version shown inside the app always matches the release tag with no manual edits needed.
-
-### Documentation
-- **README** — Options expanded into five sub-tables covering ~30 flags with examples.
-- **ARCHITECTURE.md** — Added `studio.rs` and `event_sink.rs` to the GUI breakdown; expanded ScanConfig table with new CLI flags.
-- **ARKENAR_DOCUMENTATION.md** — Updated `TargetManager::pop_next` rename and `ScanEngine::run` return type.
+### Docs
+- README options grouped into five sub-tables with examples
+- `ARCHITECTURE.md`: added `studio.rs` and `event_sink.rs`, expanded the `ScanConfig` table
+- `ARKENAR_DOCUMENTATION.md`: `TargetManager::pop_next` rename + `ScanEngine::run` return type
 
 ---
 

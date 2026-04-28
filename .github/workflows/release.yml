@@ -115,14 +115,29 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
 
-  # ── 2. Upload latest.json as a release asset (no bot commits) ─────────────
+  # ── 2. Upload latest.json as a release asset, plus commit it to main ──────
+  # The release-asset upload is the canonical source: 1.2.0+ installs read
+  # https://github.com/<owner>/<repo>/releases/latest/download/latest.json
+  # The commit-to-main step is a bridge for installs from <1.2.0 that still
+  # have the old raw.githubusercontent.com/.../main/latest.json URL baked in.
+  # Once those legacy installs have updated to 1.2.0+, the commit step can
+  # be removed.
   upload-latest-json:
     name: Upload latest.json
     runs-on: ubuntu-22.04
     needs: build-tauri
 
+    permissions:
+      contents: write
+
     steps:
-      - name: Build and upload latest.json
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build, upload, and commit latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -175,6 +190,16 @@ jobs:
           EOF
 
           gh release upload "$TAG" latest.json --clobber --repo "$REPO"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          if git diff --cached --quiet; then
+            echo "latest.json unchanged; nothing to commit."
+          else
+            git commit -m "chore: update latest.json for ${TAG}"
+            git push origin main
+          fi
 
   # ── 3. Build CLI binaries ─────────────────────────────────────────────────
   build-cli:

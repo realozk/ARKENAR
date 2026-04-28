@@ -57,8 +57,8 @@ pub fn validate_webhook_url(raw: &str) -> Result<(), String> {
         return Err("Webhook URL must use HTTPS.".to_string());
     }
 
-    // The url crate returns "[::1]" (with brackets) from host_str() for IPv6 literals.
-    // Use the typed Host enum for robust IP detection — no string-parsing ambiguity.
+    // The url crate returns "[::1]" (with brackets) from host_str() for IPv6 literals,
+    // so use the typed Host enum to detect IPs instead of string-parsing host_str().
     match parsed.host() {
         None => return Err("Webhook URL has no host.".to_string()),
         Some(Host::Ipv4(v4)) => {

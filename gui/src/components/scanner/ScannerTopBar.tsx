@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+﻿import { useState, useRef } from "react";
 import type { ScanConfig, ScanStatus, ScanStatsEvent } from "../../types";
 import {
   PlayIcon,
@@ -69,7 +69,6 @@ export default function ScannerTopBar({
     >
       {/* ── Target row ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-4 py-2.5">
-        {/* TASK 5: Section label uses Studio mono uppercase style */}
         <span
           className="font-mono uppercase shrink-0"
           style={{ fontSize: 'var(--fs-label)', letterSpacing: 'var(--tr-label)', color: 'var(--color-text-muted)' }}
@@ -97,7 +96,7 @@ export default function ScannerTopBar({
           style={{ fontSize: 'var(--fs-code)' }}
         />
 
-        {/* Paste button — TASK 6: hover affordance + focus ring */}
+        {/* Paste button */}
         <button
           onClick={handlePaste}
           title="Paste from clipboard"

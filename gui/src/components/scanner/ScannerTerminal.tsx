@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+﻿import { useRef, useEffect, useState, useCallback } from "react";
 import type { LogEntry } from "../../types";
 import {
   CopyIcon,
@@ -22,7 +22,6 @@ const LEVELS = ["all", "info", "success", "warn", "error", "phase"] as const;
 type LevelFilter = (typeof LEVELS)[number];
 
 /* ── Pill ─────────────────────────────────────────────────────────────── */
-// TASK 5: Dense flat border chip matching ScannerFindings style
 function Pill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button

@@ -96,7 +96,7 @@ function App() {
   const compareWithHistoryRef = useRef<((body: string) => void) | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<unknown | null>(null);
-  const CURRENT_VERSION = "1.1.0";
+  const CURRENT_VERSION = "1.2.0";
 
   useEffect(() => {
     checkForAppUpdates().then((update) => {
@@ -614,7 +614,7 @@ function App() {
     };
   }, [scanStatus, handleStartScan, handleClear, handleStopScan, activeTab, showSettings, showPalette]);
 
-  // Task 9: If scan finishes naturally while user is mid-hold, cancel the timers so
+  // If a scan finishes naturally while the user is mid-hold, cancel the timers so
   // the delayed callback doesn't fire a spurious stop/start on an already-idle app.
   useEffect(() => {
     if (scanStatus !== "running" && isHoldingStop) {

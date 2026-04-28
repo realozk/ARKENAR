@@ -83,23 +83,23 @@ export function ChangelogModal({ isOpen, onClose, availableUpdate }: ChangelogMo
                 <div className="inline-flex h-12 w-12 items-center justify-center border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 mb-5">
                   <SparklesIcon size={20} className="text-[color:var(--color-accent)]" />
                 </div>
-                <h2 className="text-base font-bold text-[color:var(--color-text-primary)]">What's New in v1.1</h2>
-                <p className="text-[color:var(--color-text-muted)] text-xs mt-1">The most powerful Arkenar yet.</p>
+                <h2 className="text-base font-bold text-[color:var(--color-text-primary)]">What's New in v1.2</h2>
+                <p className="text-[color:var(--color-text-muted)] text-xs mt-1">Recon suite and UI rebuild.</p>
               </div>
 
               <div className="space-y-5 mb-8">
                 <div className="flex gap-4 items-start">
                   <CpuIcon size={16} className="text-[color:var(--color-accent)] mt-0.5 shrink-0" />
                   <div>
-                    <h4 className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-primary)] mb-1">Arkenar Studio</h4>
-                    <p className="text-xs text-[color:var(--color-text-muted)] leading-relaxed">A full HTTP repeater environment with history, auto-login, and manual exploitation tools.</p>
+                    <h4 className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-primary)] mb-1">Recon Workspace</h4>
+                    <p className="text-xs text-[color:var(--color-text-muted)] leading-relaxed">DNS, WHOIS, top-1000 port scan, subfinder, and JS secret detection in one host board.</p>
                   </div>
                 </div>
                 <div className="flex gap-4 items-start">
                   <ShieldIcon size={16} className="text-[color:var(--color-accent)] mt-0.5 shrink-0" />
                   <div>
-                    <h4 className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-primary)] mb-1">Smart Login</h4>
-                    <p className="text-xs text-[color:var(--color-text-muted)] leading-relaxed">Automated session capture with CSRF detection to bypass complex login forms.</p>
+                    <h4 className="text-[10px] font-mono uppercase tracking-[0.18em] text-[color:var(--color-text-primary)] mb-1">Core Fixes</h4>
+                    <p className="text-xs text-[color:var(--color-text-muted)] leading-relaxed">Fixed the safe-count race, surfaced JSONL write errors, and got the engine clippy-clean.</p>
                   </div>
                 </div>
               </div>

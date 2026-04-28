@@ -1,6 +1,6 @@
-import type { ScanConfig } from "../../types";
+﻿import type { ScanConfig } from "../../types";
 
-/* ── Toggle — TASK 5: Smaller 28×14px dense toggle matching chrome ── */
+/* ── Toggle ── */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div
@@ -99,7 +99,7 @@ function NumberRow({ label, value, onChange, min = 1, max = 1000 }: NumberRowPro
   );
 }
 
-/* ── ModeButton — TASK 5: Studio segmented control pattern ──────────── */
+/* ── ModeButton ──────────── */
 // Flat border container, accent background for active state
 function ModeButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
@@ -162,7 +162,7 @@ function Divider() {
   return <div className="border-t border-[color:var(--color-border-subtle)] my-3.5" />;
 }
 
-/* ── Section header — TASK 5: Studio-style muted mono uppercase (no icon, no orange) */
+/* ── Section header */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -206,7 +206,7 @@ export default function ScannerConfig({ config, onUpdate }: ScannerConfigProps) 
         className="flex-1 overflow-y-auto px-3.5 py-2.5"
         style={{ scrollbarWidth: "thin", scrollbarColor: "var(--color-border-hover) transparent" } as React.CSSProperties}
       >
-        {/* Mode — TASK 5: flat segmented control */}
+        {/* Mode */}
         <div className="mb-4">
           <SectionLabel>Mode</SectionLabel>
           <div

@@ -60,7 +60,7 @@ pub struct Args {
 
     #[arg(short = 'm', long, default_value = "simple",
         value_parser = clap::builder::PossibleValuesParser::new(["simple", "advanced"]),
-        help = "Scan mode: simple (fast) or advanced (comprehensive)")]
+        help = "Scan mode: simple (fast) or advanced (deeper, slower)")]
     pub mode: String,
 
     #[arg(
@@ -507,7 +507,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
 
 fn print_scan_config(target: &str, config: &ScanConfig) {
     let mode_label = if config.mode == "advanced" {
-        "Advanced (comprehensive)"
+        "Advanced (deeper)"
     } else {
         "Simple (fast)"
     };

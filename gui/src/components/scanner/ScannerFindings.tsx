@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+﻿import { useState, useMemo } from "react";
 import type { ScanFindingEvent } from "../../types";
 import {
   CopyIcon,
@@ -38,8 +38,7 @@ function SeverityBadge({ critical }: { critical: boolean }) {
   );
 }
 
-/* ── Filter pill — TASK 5: Compact h-6 dense chip ─────────────────────── */
-// TASK 5: Replaced rounded-full pill with sharp 1px border chip, denser padding
+/* ── Filter pill ─────────────────────── */
 function Pill({
   active,
   critical,
@@ -302,8 +301,6 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
             style={{ fontSize: 'var(--fs-code)' }}
           />
         </div>
-
-        {/* TASK 5: Dense h-6 filter chips (replaced rounded-full pills) */}
         <Pill active={severity === "all"} onClick={() => setSeverity("all")}>
           All ({findings.length})
         </Pill>
@@ -332,8 +329,6 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
           <option value="severity">Severity</option>
           <option value="url">URL A→Z</option>
         </select>
-
-        {/* TASK 5: "Clear Findings" flat styled button — TrashIcon + label */}
         {findings.length > 0 && (
           <button
             onClick={handleExport}
@@ -350,7 +345,7 @@ export default function ScannerFindings({ findings, onSendToStudio }: ScannerFin
         )}
       </div>
 
-      {/* Content — TASK 6: Better centered empty state */}
+      {/* Content */}
       {processed.length === 0 ? (
         <div
           className="flex-1 flex flex-col items-center justify-center gap-3

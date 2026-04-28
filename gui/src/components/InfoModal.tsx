@@ -71,7 +71,7 @@ export function InfoModal({ onClose }: InfoModalProps) {
                         </div>
                         <div className="flex items-center gap-3 mb-2">
                             <span className="border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/10 px-2 py-0.5 font-mono text-[9px] font-black tracking-widest text-[color:var(--color-accent)] uppercase">
-                                v1.1.0
+                                v1.2.0
                             </span>
                         </div>
                         <p className="text-sm font-medium text-[color:var(--color-text-muted)] max-w-[300px] leading-relaxed">
@@ -85,10 +85,10 @@ export function InfoModal({ onClose }: InfoModalProps) {
 
                         <ul className="space-y-3.5 mt-4 text-sm text-[color:var(--color-text-muted)] mb-5">
                            {[
-                                "Added Arkenar Studio: Modular architecture for HTTP repeating.",
-                                "Smart Auto-Login: CSRF-aware authentication handshake.",
-                                "Reflection Analysis: Pre-check system to reduce false positives.",
-                                "Fixed fatal blank screen on launch caused by legacy Studio History."
+                                "Recon Workspace: DNS, WHOIS, port scan, subfinder, JS secrets.",
+                                "Live Sitemap inside the Basic Scanner.",
+                                "Full Tailwind UI rebuild with thin-stroke icons.",
+                                "Fixed safe-count race and surfaced JSONL write errors."
                             ].map((item, i) => (
                                 <li key={i} className="flex items-start gap-3 group">
                                     <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-accent)] group-hover:scale-125 transition-transform duration-300" />

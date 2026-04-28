@@ -1,4 +1,4 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
+﻿import { getCurrentWindow } from "@tauri-apps/api/window";
 import { StatusDot } from "./primitives";
 import {
   BasicIcon, StudioIcon, ReconIcon,
@@ -204,7 +204,6 @@ export function TitleBar({
           }`}
           style={hasTarget ? {
             backgroundColor: "var(--color-accent)",
-            // TASK 6: Reduced glow intensity from 0.20 to 0.15
             boxShadow: isHoldingSpace
               ? "0 0 18px rgba(249,115,22,0.45)"
               : "0 0 8px rgba(249,115,22,0.15)",
@@ -286,15 +285,10 @@ export function TitleBar({
       className="relative h-11 shrink-0 border-b border-[color:var(--color-border-subtle)] flex items-center select-none z-10 chrome"
       style={{ background: "var(--color-bg-root-2)" }}
     >
-      {/* LEFT: mac spacer (OS draws traffic lights) OR left padding + icon buttons + wordmark */}
+      {/* LEFT: mac spacer (OS draws traffic lights) or left padding + icon buttons + wordmark */}
       <div className="flex items-center shrink-0">
-        {/*
-          TASK 1: On macOS with titleBarStyle:"Overlay", the OS renders the native
-          traffic lights (red/yellow/green) at trafficLightPosition (x:14, y:16).
-          We DO NOT render our own traffic-light buttons — instead we use a 78px spacer
-          that reserves the same horizontal space so content doesn't overlap the OS chrome.
-          On non-macOS, we use a small left-padding div and show WindowControls on the right.
-        */}
+        {/* On macOS the OS draws the traffic lights at trafficLightPosition; reserve a
+            78px spacer here so content doesn't overlap them. */}
         {isMac ? MacSpacer : <div className="pl-3" />}
         <div className="flex items-center gap-0.5 pl-1 pr-2">
           {IconButtons}
