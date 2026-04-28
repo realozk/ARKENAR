@@ -1,23 +1,8 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
 
 **Arkenar is a web scanner I built that ties together Katana and Nuclei with a custom mutation engine. The goal is to find injection flaws and logic bugs that static templates tend to miss.**
-​
 
-
-## • Core Capabilities
-
-• **Hybrid Engine**: Chains Katana, Nuclei, and Subfinder with native scanning logic for full-spectrum reconnaissance.
-
-• **Smart Payload Injection**: Uses a payload library for XSS, SQLi, and file exposure; mutates to bypass WAFs and filters.
-
-• **Reconnaissance Suite**: Async TCP port scanning, DNS/WHOIS resolution, subdomain enumeration, and JS secrets detection.
-
-• **Noise Reduction**: Response filtering to cut down false positives.
-
-• **Configuration**: Control over threading, timeouts, and scan flags.
-
-• **Coverage**: Targets OWASP Top 10 and infrastructure misconfigurations.
-​
+It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same core engine — pick whichever fits your workflow.
 
 <p align="center">
 
@@ -37,13 +22,15 @@
   </a>
   <a href="https://crates.io/crates/arkenar">
     <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
-</a>
+  </a>
+</p>
 
 ## Table of Contents
 
 - [Preview](#preview)
-- [Installation](#installation-recommended)
-- [Usage](#usage)
+- [Installation](#installation)
+- [GUI Features](#gui-features)
+- [CLI Usage](#cli-usage)
 - [Troubleshooting](#troubleshooting)
 - [Architecture & Docs](#architecture--docs)
 - [Contributing](#contributing)
@@ -52,17 +39,17 @@
 
 ---
 
-##  Preview
+## Preview
 
-<div align="center"> <img src="/media/demo.gif" width="90%" alt="Arkenar Banner"> </div>
+<div align="center"> <img src="/media/demo.gif" width="90%" alt="Arkenar Demo"> </div>
 
+---
 
-
-##  Installation (Recommended)
+## Installation
 
 ### GUI Desktop App
 
-Download the installer directly from [GitHub Releases](https://github.com/realozk/ARKENAR/releases/latest):
+Download the installer from [GitHub Releases](https://github.com/realozk/ARKENAR/releases/latest):
 
 | Platform | File |
 |----------|------|
@@ -72,105 +59,185 @@ Download the installer directly from [GitHub Releases](https://github.com/realoz
 
 The app auto-downloads Katana and Nuclei on first launch.
 
----
-
-###  Windows (CLI)
-You can install **Arkenar** using this PowerShell script. Copy and paste it into your terminal:
-
+### CLI — Windows
 ```powershell
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
-
 ```
-### Linux & macOS (CLI)
-Run this to download and install:
 
+### CLI — Linux & macOS
 ```bash
 curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bash
 ```
 
 ---
 
-## Usage
+## GUI Features
 
-You can scan a single target or pass a list.
+The desktop app has four main workspaces: **Scanner**, **Studio**, **Recon**, and **History**.
 
-macOS & Linux
+### Basic Scanner
+
+This is the main scanning interface. You set a target, pick your options, and watch it run.
+
+**Targets**
+- Single URL or a list file (drag-drop or browse)
+- Scan queue — add multiple targets and run them one after another
+- Paste from clipboard
+
+**Scan Modes**
+- `Simple` — runs a fast crawl + Nuclei pass
+- `Advanced` — adds WAF evasion, deeper fuzzing, and more Nuclei coverage
+
+**Module toggles**
+- Katana crawler — discovers URLs before scanning
+- Nuclei scanner — runs CVE/panel/tech templates
+- JS endpoint analysis — finds hidden API paths in JavaScript
+- Parameter fuzzing — tests query params with contextual payloads
+- Tech fingerprinting — detects the stack and routes payloads accordingly
+- Smart payloads — picks payload types based on parameter names (e.g. `id` → SQLi)
+- WAF evasion — mutates payloads when it hits 403s
+
+**Performance**
+- Threads (1–500), timeout (1–120s), rate limit (1–5000 req/s)
+- Crawler depth, max URLs, and crawl timeout
+- Proxy, custom headers, scope regex
+
+**Auth**
+- Bearer token, cookie string, or custom headers
+
+**During a scan**
+- Live terminal output with `[+]` / `[!]` / `[~]` / `[*]` prefixes
+- Findings tab updates in real time with severity labels
+- Top bar shows targets, URLs found, critical/medium/safe counts, RPS, and elapsed time
+- Ctrl+Enter to start, Esc to stop
+
+**After a scan**
+- Export a self-contained HTML report
+- Export scan history as CSV
+- Findings stay in the History tab across sessions (up to 50 scans)
+
+**Keyboard shortcuts**
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+K` | Command palette |
+| `Ctrl+Enter` | Start scan |
+| `Esc` | Stop scan |
+| `T` / `F` / `H` | Switch to Terminal / Findings / History |
+| `Ctrl+B` | Toggle sidebar |
+| `Ctrl+,` | Settings |
+
+---
+
+### Studio
+
+A manual HTTP request builder for testing individual endpoints.
+
+- Build requests with any method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
+- Tabs for headers, body, query params, and environment variables
+- Response viewer with body, headers, cookies, and diff view
+- Syntax highlighting, response timing, and size display
+- Session history — search and reload previous requests
+- PoC export — one click generates cURL, Python Requests, or Raw HTTP
+- Smart Auto-Login — give it a login URL and credentials, it handles GET → parse CSRF → POST automatically and injects the session cookies
+
+---
+
+### Recon
+
+Reconnaissance workspace for mapping a target before you scan it.
+
+- **Subdomain enumeration** via Subfinder
+- **Port scanning** — async TCP connect scan of the top 1000 ports
+- **DNS records** — A, MX, TXT, CNAME, and raw WHOIS
+- **JS secrets detection** — scans fetched JS files for AWS keys, GitHub tokens, JWTs, and other patterns
+- Host board with filters: all hosts / high-risk (open ports) / alive / hosts with secrets
+- Add any discovered host directly to the scan queue or send it to Studio
+
+---
+
+### History & Settings
+
+- **History** — full list of past scans with timestamps, finding counts, and CSV export
+- **Settings** — global defaults for threads/timeout/rate-limit, webhook URL (Discord, Slack, or custom JSON), output path, UI scale, and audio notifications
+
+---
+
+## CLI Usage
 
 ```bash
-# basic single target scan
+# scan a single target
 arkenar https://example.com
 
-# scan with a list and custom rate limit
-arkenar -l subdomains.txt -o output.json --rate-limit 150
+# scan a list with a custom rate limit
+arkenar -l targets.txt -o results.json --rate-limit 150
+
+# full example
+arkenar https://example.com -m advanced -t 100 --enable-js-analysis --proxy http://127.0.0.1:8080
 ```
 
-Windows (PowerShell / CMD)
+Run `arkenar --help` for everything. Common flags:
 
-```bash 
-# basic single target scan
-arkenar.exe https://example.com
-
-# scan with a list and output file
-arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
-```
-
-
-### Options
-
-Run `arkenar --help` for the full list. The most common flags:
-
-#### Targeting & I/O
-| Flag | Description | Example |
+### Targeting & output
+| Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-l`, `--list` | File containing target URLs (one per line) | `-l targets.txt` |
-| `-o`, `--output` | JSON output path (default: `scan_results.json`) | `-o result.json` |
-| `-p`, `--payloads` | Extra payload list to merge into the loader | `-p extra.txt` |
-| `--dry-run` | Print what would be scanned, send no real requests | `--dry-run` |
-| `--resume` | Resume an interrupted scan from `.arkenar-state.json` | `--resume` |
-| `--update` | Self-update ARKENAR + Katana + Nuclei | `--update` |
+| `-l`, `--list <FILE>` | File of target URLs (one per line) | — |
+| `-o`, `--output <FILE>` | JSON output path | `scan_results.json` |
+| `-p`, `--payloads <FILE>` | Extra payload file to merge in | — |
+| `--dry-run` | Print targets without sending requests | — |
+| `--resume` | Resume from `.arkenar-state.json` | — |
+| `--update` | Update Arkenar + Katana + Nuclei | — |
 
-#### Scan profile
-| Flag | Description | Example |
+### Scan profile
+| Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-m`, `--mode` | `simple` (fast) or `advanced` (comprehensive) | `-m advanced` |
-| `-t`, `--threads` | Concurrent worker count (default 50) | `-t 100` |
-| `--rate-limit` | Max requests per second (default 100) | `--rate-limit 200` |
-| `--timeout` | Per-request timeout in seconds (default 5) | `--timeout 10` |
-| `-v`, `--verbose` | Detailed logs | `-v` |
+| `-m`, `--mode` | `simple` or `advanced` | `simple` |
+| `-t`, `--threads <N>` | Concurrent workers | `50` |
+| `--rate-limit <N>` | Max requests/sec | `100` |
+| `--timeout <N>` | Per-request timeout (seconds) | `5` |
+| `-v`, `--verbose` | Detailed logs | — |
 
-#### Network & headers
-| Flag | Description | Example |
-| :--- | :--- | :--- |
-| `--proxy` | HTTP/SOCKS proxy URL | `--proxy http://127.0.0.1:8080` |
-| `-H`, `--header` | Custom header (repeatable) | `-H "Cookie: a=b"` |
-| `--allow-insecure-tls` | Accept invalid TLS certs (DANGEROUS — MITM-able) | `--allow-insecure-tls` |
-| `--scope` | Limit crawler to same domain | `--scope` |
-| `--scope-regex` | Regex restricting which URLs are scanned | `--scope-regex '^https://example\.com'` |
+### Modules
+| Flag | Description |
+| :--- | :--- |
+| `--no-crawler` | Skip the Katana crawl phase |
+| `--no-nuclei` | Skip the Nuclei scan phase |
+| `--enable-param-fuzz` | Enable parameter fuzzing |
+| `--enable-js-analysis` | Enable JS endpoint analysis |
+| `--enable-waf-evasion` | Mutate payloads on 403 responses |
+| `--no-fingerprint` | Disable tech-stack fingerprinting |
+| `--no-smart-payloads` | Disable context-aware payload selection |
 
-#### Modules (parity with the GUI)
-| Flag | Description | Example |
+### Crawler
+| Flag | Description | Default |
 | :--- | :--- | :--- |
-| `--no-crawler` | Skip the Katana crawl phase | `--no-crawler` |
-| `--no-nuclei` | Skip the Nuclei scan phase | `--no-nuclei` |
-| `--enable-param-fuzz` | Add experimental parameter fuzzing | `--enable-param-fuzz` |
-| `--enable-js-analysis` | Static analysis of JS endpoints | `--enable-js-analysis` |
-| `--enable-waf-evasion` | Mutate payloads on 403 responses | `--enable-waf-evasion` |
-| `--no-fingerprint` | Disable tech-stack fingerprinting | `--no-fingerprint` |
-| `--no-smart-payloads` | Disable context-aware payload selection | `--no-smart-payloads` |
-| `--tags` | Custom Nuclei tags (overrides simple-mode logic) | `--tags cve,jira` |
-| `--nuclei-templates` | Custom Nuclei templates directory | `--nuclei-templates ./tpl` |
-| `--crawler-depth` | Katana crawl depth (default 3) | `--crawler-depth 5` |
-| `--crawler-max-urls` | Cap on URLs Katana discovers (default 50) | `--crawler-max-urls 200` |
-| `--crawler-timeout` | Per-target nuclei/crawl timeout in seconds | `--crawler-timeout 90` |
+| `--crawler-depth <N>` | Katana crawl depth | `3` |
+| `--crawler-max-urls <N>` | Cap on discovered URLs | `50` |
+| `--crawler-timeout <N>` | Crawl timeout per target (seconds) | `60` |
 
-#### Auth, OAST & alerts
-| Flag | Description | Example |
-| :--- | :--- | :--- |
-| `--auth-type` | `none` / `bearer` / `cookie` / `custom` | `--auth-type bearer` |
-| `--auth-token` | Bearer token (paired with `--auth-type bearer`) | `--auth-token eyJ...` |
-| `--auth-cookies` | Raw cookie string (paired with `--auth-type cookie`) | `--auth-cookies "sess=abc"` |
-| `--oast-server` | Interactsh OAST server | `--oast-server https://oast.pro` |
-| `--webhook-url` | HTTPS webhook for findings (private/loopback IPs blocked) | `--webhook-url https://hooks…` |
+### Nuclei
+| Flag | Description |
+| :--- | :--- |
+| `--tags <TAGS>` | Comma-separated Nuclei tags (e.g. `cve,jira`) |
+| `--nuclei-templates <DIR>` | Custom templates directory |
+
+### Network & headers
+| Flag | Description |
+| :--- | :--- |
+| `--proxy <URL>` | HTTP/SOCKS proxy |
+| `-H`, `--header <HEADER>` | Custom header, repeatable |
+| `--allow-insecure-tls` | Accept invalid TLS certs (dangerous) |
+| `--scope` | Restrict crawl to same domain |
+| `--scope-regex <REGEX>` | Restrict URLs by regex |
+
+### Auth & OAST
+| Flag | Description |
+| :--- | :--- |
+| `--auth-type` | `none` / `bearer` / `cookie` / `custom` |
+| `--auth-token <TOKEN>` | Bearer token |
+| `--auth-cookies <COOKIES>` | Raw cookie string |
+| `--oast-server <URL>` | Interactsh server for blind detection |
+| `--webhook-url <URL>` | HTTPS webhook for findings |
 
 ---
 
@@ -178,38 +245,37 @@ Run `arkenar --help` for the full list. The most common flags:
 
 ### Nuclei permission denied on macOS / Linux
 
-If you see errors like `permission denied` when Nuclei tries to write its config files, fix the ownership of its config directories:
-
 ```bash
+# macOS
 sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
 sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
-```
 
-On Linux, the paths are typically:
-
-```bash
+# Linux
 sudo chown -R $(whoami) ~/.config/nuclei/
 sudo chown -R $(whoami) ~/.config/uncover/
 ```
 
 ### Self-update permission denied
 
-If `arkenar --update` fails with `Permission denied`, the binary is in a protected directory. Re-run with:
-
 ```bash
 sudo arkenar --update
 ```
 
+---
+
 ## Architecture & Docs
-For anyone looking to understand how the internals work:
+
 - [System Architecture (Data Flow & Golden Rules)](ARCHITECTURE.md)
 - [Project Documentation (Component Breakdown)](ARKENAR_DOCUMENTATION.md)
 
 ## Contributing
-Contributions are welcome. Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+MIT — see [LICENSE](LICENSE).
 
 ## Disclaimer
-This tool is for educational and authorized testing purposes only. I'm not responsible for any misuse or damage caused by this tool. Always get proper authorization before scanning any target.
+
+This tool is for educational and authorized testing purposes only. I'm not responsible for any misuse or damage. Always get proper authorization before scanning any target.
