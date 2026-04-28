@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Arkenar
 
-> **Purpose of this document:** You are the project owner. This file is your single source of truth for how Arkenar is structured, how data moves through it, and what the non-negotiable design rules are. Read this before touching any code.
+> **Purpose of this document:** This is my single source of truth for how Arkenar is structured, how data moves through it, and what the design rules are. Read this before touching any code.
 
 ---
 
@@ -493,4 +493,4 @@ Understanding where untrusted input enters the system is critical for maintenanc
 
 ---
 
-*This document was generated from a full read of the Arkenar source tree. Keep it updated when you add new files, new IPC commands, or new `core` modules.*
+*Keep this updated when you add new files, new IPC commands, or new `core` modules.*

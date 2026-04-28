@@ -1,21 +1,22 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
 
-**Designed for pentesters and offensive security pros, Arkenar acts as a central orchestration layer. It combines Katana and Nuclei, while layering on its own custom mutation engine to catch complex logic flaws and injections that static templates might miss.**
+**Arkenar is a web scanner I built that ties together Katana and Nuclei with a custom mutation engine. The goal is to find injection flaws and logic bugs that static templates tend to miss.**
 ​
+
 
 ## • Core Capabilities
 
-• **Hybrid Engine**: Seamlessly chains external tools (Katana, Nuclei, Subfinder) with native scanning logic for full-spectrum reconnaissance.
+• **Hybrid Engine**: Chains Katana, Nuclei, and Subfinder with native scanning logic for full-spectrum reconnaissance.
 
-• **Smart Payload Injection**: Uses a dynamic library of payloads for XSS, SQLi, and file exposure; actively mutates to bypass WAFs and filters.
+• **Smart Payload Injection**: Uses a payload library for XSS, SQLi, and file exposure; mutates to bypass WAFs and filters.
 
-• **Reconnaissance Suite**: Fast asynchronous TCP port scanning, active DNS/WHOIS resolution, subdomain footprinting, and JS secrets pattern matching.
+• **Reconnaissance Suite**: Async TCP port scanning, DNS/WHOIS resolution, subdomain enumeration, and JS secrets detection.
 
-• **Noise Reduction**: Built-in response filtering cuts false positives for actionable results only.
+• **Noise Reduction**: Response filtering to cut down false positives.
 
-• **Deep Configuration**: Full control over threading, timeouts, and scan flags for specific rules.
+• **Configuration**: Control over threading, timeouts, and scan flags.
 
-• **Broad Coverage**: Targets OWASP Top 10 and infrastructure misconfigurations.
+• **Coverage**: Targets OWASP Top 10 and infrastructure misconfigurations.
 ​
 
 <p align="center">
@@ -74,14 +75,14 @@ The app auto-downloads Katana and Nuclei on first launch.
 ---
 
 ###  Windows (CLI)
-You can install **Arkenar** instantly using our automated PowerShell script. Copy and paste this command into your terminal:
+You can install **Arkenar** using this PowerShell script. Copy and paste it into your terminal:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
 
 ```
 ### Linux & macOS (CLI)
-Run the following command to download and install automatically:
+Run this to download and install:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bash
@@ -91,32 +92,32 @@ curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bas
 
 ## Usage
 
-Running ARKENAR is simple. You can scan a single target or use a list of subdomains.
+You can scan a single target or pass a list.
 
 macOS & Linux
 
 ```bash
-# Basic single target scan
+# basic single target scan
 arkenar https://example.com
 
-# Advanced scan with a list and custom rate limit
+# scan with a list and custom rate limit
 arkenar -l subdomains.txt -o output.json --rate-limit 150
 ```
 
 Windows (PowerShell / CMD)
 
 ```bash 
-# Basic single target scan
+# basic single target scan
 arkenar.exe https://example.com
 
-# Advanced scan with a list and output file
+# scan with a list and output file
 arkenar.exe -l subdomains.txt -o results.json --rate-limit 150
 ```
 
 
 ### Options
 
-Run `arkenar --help` for the authoritative list. The most common flags:
+Run `arkenar --help` for the full list. The most common flags:
 
 #### Targeting & I/O
 | Flag | Description | Example |
@@ -200,15 +201,15 @@ sudo arkenar --update
 ```
 
 ## Architecture & Docs
-For developers and contributors looking to understand the inner workings of Arkenar's core modules:
+For anyone looking to understand how the internals work:
 - [System Architecture (Data Flow & Golden Rules)](ARCHITECTURE.md)
 - [Project Documentation (Component Breakdown)](ARKENAR_DOCUMENTATION.md)
 
 ## Contributing
-Contributions are welcome Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
+Contributions are welcome. Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for details on how to get started.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Disclaimer
-This tool is for educational and authorized testing purposes only. The developer is not responsible for any misuse or damage caused by this tool. Always obtain proper authorization before scanning any target.
+This tool is for educational and authorized testing purposes only. I'm not responsible for any misuse or damage caused by this tool. Always get proper authorization before scanning any target.

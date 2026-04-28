@@ -7,29 +7,29 @@ All notable changes to Arkenar are documented here.
 ## [1.2.0] — Phase 2: Structural Migration & Reconnaissance Suite
 
 ### Added
-- **Recon Workspace** — Implemented a modern 3-panel UI architecture (`ReconTopBar`, `ReconLeftRail`, `ReconHostBoard`) for the Recon phase including a dynamic DNS Board, Subdomain tracking, and Port scanning interfaces.
-- **DNS & WHOIS Module** — Developed `dns_lookup.rs` using `trust-dns-resolver` and raw TCP connection logic to asynchronously retrieve real-time A, MX, TXT, CNAME, and raw WHOIS records.
-- **Port Scanner Module** — Constructed a high-performance, purely asynchronous TCP connect scanner in `port_scanner.rs` to fast-sweep the top 1000 ports concurrently using semaphores.
-- **JS Secrets Scanner Module** — Added an asynchronous javascript analysis module testing fetched endpoints against RegExp structures detecting AWS Keys, GitHub Tokens, JWTs, and other API secrets.
-- **Subfinder Integration** — Integrated projectdiscovery's `subfinder` to allow execution of active subdomain mapping.
-- **Live Sitemap Workspace** — Prepared a visual tree view inside the Basic Scanner to display discovered endpoints and nested domain structures.
-- **Contextual Parameter Fuzzing** — Added smart payload logic targeting specifically named parameters to optimize payload selection and drastically reduce scan times.
+- **Recon Workspace** — Added a 3-panel UI architecture (`ReconTopBar`, `ReconLeftRail`, `ReconHostBoard`) for the Recon phase including a DNS Board, Subdomain tracking, and Port scanning interfaces.
+- **DNS & WHOIS Module** — Built `dns_lookup.rs` using `trust-dns-resolver` and raw TCP connection logic to asynchronously retrieve A, MX, TXT, CNAME, and raw WHOIS records.
+- **Port Scanner Module** — Built an async TCP connect scanner in `port_scanner.rs` to sweep the top 1000 ports concurrently using semaphores.
+- **JS Secrets Scanner Module** — Added an async JavaScript analysis module that tests fetched endpoints against RegExp patterns detecting AWS Keys, GitHub Tokens, JWTs, and other API secrets.
+- **Subfinder Integration** — Integrated projectdiscovery's `subfinder` for active subdomain mapping.
+- **Live Sitemap Workspace** — Added a visual tree view inside the Basic Scanner to display discovered endpoints and nested domain structures.
+- **Contextual Parameter Fuzzing** — Added payload logic targeting specifically named parameters to optimize payload selection and reduce scan times.
 
 ### Changed
-- **Comprehensive Tailwind UI Migration** — Fully ported all application workspaces (Basic, Recon, Studio) to a new Tailwind CSS-driven dark-themed, mono-styled design system matching the unified Arkenar UI Mockup.
-- **CSS Variable Architecture (Phase 1)** — Replaced legacy hard-coded hex colors with a token-driven design system inside `App.css` (e.g., `--color-bg-root-2`, `--color-accent-weak`, deep black themes).
-- **Thin-Stroke Icon System (Phase 2)** — Phased out `lucide-react` entirely in favor of a centralized, custom thin-stroke `Icon` primitive for unified visual language.
-- **Cross-Tab State Persistence** — Shifted core application state (visited URLs, scan states, configs) to the top-level `App` component, resulting in seamless switching between Studio and Scanner without losing terminal outputs.
-- **Layout Adjustments** — Optimized typography, density scaling, and modernized the `AdvancedConfig` modal structure for high-density displays.
+- **Tailwind UI Migration** — Ported all application workspaces (Basic, Recon, Studio) to a Tailwind CSS-driven dark-themed, mono-styled design system.
+- **CSS Variable Architecture (Phase 1)** — Replaced hard-coded hex colors with a token-driven design system inside `App.css` (e.g., `--color-bg-root-2`, `--color-accent-weak`, deep black themes).
+- **Thin-Stroke Icon System (Phase 2)** — Phased out `lucide-react` in favor of a centralized, custom thin-stroke `Icon` primitive for unified visual language.
+- **Cross-Tab State Persistence** — Shifted core application state (visited URLs, scan states, configs) to the top-level `App` component, so switching between Studio and Scanner doesn't lose terminal output.
+- **Layout Adjustments** — Updated typography, density scaling, and the `AdvancedConfig` modal structure for high-density displays.
 
 ### Fixed
-- **Custom Header Validation Bug** — Corrected strict header parsing inside `cli/src/main.rs` to explicitly allow `=` characters, ensuring valid Cookie string ingestion without throwing validation errors.
-- **Recon Data Flow** — Repaired the backend `run_recon` command to reliably emit IPC events for both root domains and subdomains ensuring complete table population.
-- **Native Titlebar macOS Integration** — Implemented platform-specific conditional rendering to strip out the web traffic lights and natively integrate seamless macOS transparent titlebars.
+- **Custom Header Validation Bug** — Fixed strict header parsing inside `cli/src/main.rs` to allow `=` characters, so Cookie strings don't throw validation errors.
+- **Recon Data Flow** — Fixed the backend `run_recon` command to reliably emit IPC events for both root domains and subdomains.
+- **Native Titlebar macOS Integration** — Added platform-specific conditional rendering for seamless macOS transparent titlebars.
 
 ### Improved / Security
-- **Global Codebase Hardening** — Performed a full pre-release behavioral-correction pass on the Rust backend targeting dead-code removal, unifying debug routing channels, and streamlining error execution.
-- **Comment Auditing** — Systematically stripped all redundant, verbose, and "AI-generated" tracking markers from the codebase, preserving only essential security and architectural documentation for a clean public release.
+- **Codebase Hardening** — Did a pre-release pass on the Rust backend targeting dead-code removal, unifying debug routing channels, and streamlining error handling.
+- **Comment Auditing** — Stripped redundant and verbose comments from the codebase, keeping only what's genuinely useful.
 
 ---
 
@@ -58,28 +58,28 @@ All notable changes to Arkenar are documented here.
 ## [1.1.0] — Phase 1: Foundation Intelligence & Studio Refactor
 
 ### Added
-- **Arkenar Studio (New Architecture)** — Completely refactored the Studio environment into a modular architecture using a dedicated Custom Hook (`useStudio`) for high-performance state management.
-- **Reflection Analysis (The Noise Killer)** — Implemented a pre-check system that injects randomized canary strings to detect reflected input before firing heavy payloads, drastically reducing false positives.
-- **Technology Fingerprinting Module** — Built a fast heuristic matcher for server headers and DOM tags to identify target stacks (PHP, ASP.NET, Java, etc.) and optimize scan logic.
-- **Smart Auto-Login** — Added a CSRF-aware authentication handshake (GET -> Parse -> POST) that automatically captures and injects session cookies into Studio requests.
+- **Arkenar Studio (New Architecture)** — Refactored the Studio into a modular architecture using a dedicated Custom Hook (`useStudio`) for state management.
+- **Reflection Analysis (The Noise Killer)** — Added a pre-check system that injects randomized canary strings to detect reflected input before firing heavy payloads, reducing false positives.
+- **Technology Fingerprinting Module** — Built a heuristic matcher for server headers and DOM tags to identify target stacks (PHP, ASP.NET, Java, etc.) and route payloads accordingly.
+- **Smart Auto-Login** — Added a CSRF-aware authentication handshake (GET -> Parse -> POST) that captures and injects session cookies into Studio requests.
 - **Dynamic Payload Routing** — Upgraded the mutation engine to select payloads based on the detected technology stack (e.g., routing ASP.NET-specific payloads when IIS is detected).
 - **Traffic History Drawer** — Added a sidebar to track, search, and recall previous manual HTTP requests within the current session.
-- **Advanced PoC Exporter** — One-click generation of Proof-of-Concept snippets in `cURL`, `Python Requests`, and `Raw HTTP` formats.
-- **Custom Nuclei Template Support** — Added the ability to load personal `.yaml` templates from a dedicated local folder directly via the GUI.
-- **New Utility Toolkit** — Integrated real-time data manipulation tools: Base64 (Encode/Decode), URL Encoding, and Hex conversion directly within the request builder.
+- **PoC Exporter** — One-click generation of Proof-of-Concept snippets in `cURL`, `Python Requests`, and `Raw HTTP` formats.
+- **Custom Nuclei Template Support** — Added the ability to load personal `.yaml` templates from a local folder directly via the GUI.
+- **New Utility Toolkit** — Integrated real-time data manipulation tools: Base64 (Encode/Decode), URL Encoding, and Hex conversion inside the request builder.
 
 ### Changed
-- **Codebase Modularization** — Split the monolithic `StudioPanel.tsx` into five distinct, specialized components for better maintainability.
+- **Codebase Modularization** — Split the monolithic `StudioPanel.tsx` into five distinct components.
 - **Optimized Scanning Logic** — Fuzzing context now respects concurrency caps by consuming Semaphore permits during reflection pre-checks.
 - **UI Data Richness** — ScanFindingEvent now includes tech stack metadata, rendered as icons in the Findings and Terminal views.
 
 ### Fixed
-- **State Desynchronization** — Resolved issues where request headers or body would get lost when switching between different scan tabs.
-- **UI Freezing** — Fixed long-standing UI hangs during large response rendering by implementing optimized line-by-line code display.
+- **State Desynchronization** — Fixed issues where request headers or body would get lost when switching between scan tabs.
+- **UI Freezing** — Fixed UI hangs during large response rendering by implementing line-by-line code display.
 
 ### Security
-- **Logic Isolation** — Improved security by keeping all sensitive data manipulation (like Smart Login handshakes) within the Rust backend.
-- **Path Sanitization** — Added strict validation for custom template paths to prevent path traversal and shell metacharacter injection.
+- **Logic Isolation** — Kept all sensitive data manipulation (like Smart Login handshakes) within the Rust backend.
+- **Path Sanitization** — Added validation for custom template paths to prevent path traversal and shell metacharacter injection.
 ---
 
 ## [1.0.4] — 2026-03-12
