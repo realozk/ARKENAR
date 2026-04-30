@@ -1,23 +1,23 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "notes": "See the CHANGELOG for details.",
-  "pub_date": "2026-04-28T09:19:18Z",
+  "pub_date": "2026-04-30T03:04:25Z",
   "platforms": {
     "windows-x86_64": {
       "signature": "",
-      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.0/Arkenar_1.2.0_x64-setup.exe"
+      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.1/Arkenar_1.2.1_x64-setup.exe"
     },
     "linux-x86_64": {
       "signature": "",
-      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.0/Arkenar_1.2.0_amd64.AppImage"
+      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.1/Arkenar_1.2.1_amd64.AppImage"
     },
     "darwin-x86_64": {
       "signature": "",
-      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.0/Arkenar_1.2.0_x64.dmg"
+      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.1/Arkenar_1.2.1_x64.dmg"
     },
     "darwin-aarch64": {
       "signature": "",
-      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.0/Arkenar_1.2.0_aarch64.dmg"
+      "url": "https://github.com/realozk/ARKENAR/releases/download/v1.2.1/Arkenar_1.2.1_aarch64.dmg"
     }
   }
 }
