@@ -34,23 +34,6 @@ function nowStr(): string {
   });
 }
 
-const SCROLLBAR_CSS = `
-  .rw-scroll::-webkit-scrollbar { width: 4px; }
-  .rw-scroll::-webkit-scrollbar-track { background: transparent; }
-  .rw-scroll::-webkit-scrollbar-thumb { background: var(--color-border-hover); border-radius: 2px; }
-  .rw-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-ghost); }
-  @keyframes rw-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .rw-pulse { animation: rw-pulse 1.2s ease-in-out infinite; }
-  .rw-toggle {
-    position: relative; display: inline-flex; align-items: center;
-    width: 32px; height: 18px; border-radius: 9px; cursor: pointer;
-    transition: background 0.2s; flex-shrink: 0;
-  }
-  .rw-toggle-thumb {
-    position: absolute; width: 12px; height: 12px; border-radius: 50%;
-    background: #000; transition: transform 0.2s;
-  }
-`;
 
 export default function ReconWorkspace({
   hosts,
@@ -146,8 +129,6 @@ export default function ReconWorkspace({
         color: "var(--color-text-primary)",
       }}
     >
-      <style>{SCROLLBAR_CSS}</style>
-
       <ReconTopBar
         domain={domain}
         onDomainChange={setDomain}

@@ -762,3 +762,40 @@ select option {
       var(--color-accent) 100%) !important;
   animation: loading-swipe 1s linear infinite !important;
 }
+
+/* ─── Recon Panel Toggles ─────────────────────────────────────── */
+.rw-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.rw-toggle-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes rw-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.rw-pulse {
+  animation: rw-pulse 1.2s ease-in-out infinite;
+}
+
+.rw-scroll::-webkit-scrollbar       { width: 4px; }
+.rw-scroll::-webkit-scrollbar-track { background: transparent; }
+.rw-scroll::-webkit-scrollbar-thumb { background: var(--color-border-hover); border-radius: 2px; }
+.rw-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-ghost); }
