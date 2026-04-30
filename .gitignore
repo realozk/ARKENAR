@@ -54,3 +54,6 @@ gui/src-tauri/arkenar-report.html
 # Temp / backup
 *.tmp
 *.bak
+
+# Claude Code (AI tooling — never commit)
+.claude/
