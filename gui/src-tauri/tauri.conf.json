@@ -21,7 +21,10 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 14, "y": 16 },
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 16
+        },
         "transparent": false,
         "shadow": true,
         "theme": "Dark",
@@ -60,7 +63,7 @@
         "https://github.com/realozk/ARKENAR/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwREEzNEI0RjY2OTI2MzEKUldReEptbjJ0RFRhd0tvUy9xZHpOKzU2M1FkOS90MEFhOUdWZFc2am84ZDJydWhKbHpXeWVkL2cK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzMDU3OUI5REMwMjVDQjQKUldTMFhBTGN1WGtGTS90b2g2a1ZacklNME16eTRVZVlsYjh6ZlQvVWMzUjhMZ2haT0UwQ3hReUUK"
     }
   }
 }

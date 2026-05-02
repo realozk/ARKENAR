@@ -153,13 +153,25 @@ jobs:
 
           WIN_ASSET="Arkenar_${VERSION}_x64-setup.exe"
           LINUX_ASSET="Arkenar_${VERSION}_amd64.AppImage"
-          MAC_X64_ASSET="Arkenar_${VERSION}_x64.dmg"
-          MAC_ARM_ASSET="Arkenar_${VERSION}_aarch64.dmg"
+          # Tauri updater on macOS requires .app.tar.gz, NOT .dmg
+          # .dmg is for first-time install only; the updater cannot use it
+          MAC_X64_ASSET="Arkenar_${VERSION}_x64.app.tar.gz"
+          MAC_ARM_ASSET="Arkenar_${VERSION}_aarch64.app.tar.gz"
 
           WIN_SIG=$(fetch_sig "$WIN_ASSET")
           LINUX_SIG=$(fetch_sig "$LINUX_ASSET")
           MAC_X64_SIG=$(fetch_sig "$MAC_X64_ASSET")
           MAC_ARM_SIG=$(fetch_sig "$MAC_ARM_ASSET")
+
+          # Fail loudly if signatures are missing — empty sigs mean updater always rejects
+          if [ -z "$WIN_SIG" ] || [ -z "$LINUX_SIG" ]; then
+            echo "ERROR: Missing signatures. Is TAURI_PRIVATE_KEY set in GitHub secrets?"
+            echo "  WIN_SIG is empty: $([ -z "$WIN_SIG" ] && echo yes || echo no)"
+            echo "  LINUX_SIG is empty: $([ -z "$LINUX_SIG" ] && echo yes || echo no)"
+            echo "  MAC_X64_SIG is empty: $([ -z "$MAC_X64_SIG" ] && echo yes || echo no)"
+            echo "  MAC_ARM_SIG is empty: $([ -z "$MAC_ARM_SIG" ] && echo yes || echo no)"
+            exit 1
+          fi
 
           BASE="https://github.com/${REPO}/releases/download/${TAG}"
 
