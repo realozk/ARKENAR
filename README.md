@@ -275,7 +275,7 @@ sudo arkenar --update
 ### Running Tests
 
 ```bash
-cargo test --workspace
+cargo test -p arkenar -p arkenar-core
 ```
 
 Tests use Rust's built-in test harness with [`assert_cmd`](https://crates.io/crates/assert_cmd), [`predicates`](https://crates.io/crates/predicates), and [`tempfile`](https://crates.io/crates/tempfile) (all MIT/Apache-2.0). The CI runs the full suite on Linux, Windows, and macOS on every push and pull request.

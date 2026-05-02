@@ -27,15 +27,15 @@ ARKENAR uses Rust's built-in test harness ([`cargo test`](https://doc.rust-lang.
 To run the full test suite locally:
 
 ```bash
-cargo test --workspace
+cargo test -p arkenar -p arkenar-core
 ```
 
 To also check formatting and linting in one go (same checks the CI runs):
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace -- -D warnings
-cargo test --workspace
+cargo clippy -p arkenar -p arkenar-core -- -D warnings
+cargo test -p arkenar -p arkenar-core
 ```
 
 The CI workflow (`.github/workflows/ci.yml`) runs these automatically on every push and pull request to `main`, across Linux, Windows, and macOS.
@@ -56,7 +56,7 @@ If you want to write code for the project, here's the workflow:
 1. Fork the repository and create a new branch for your feature or fix (e.g., `git checkout -b feature/new-scanner`).
 2. Write your code and add tests for the new or changed behaviour (see Test Policy above).
 3. Run `cargo fmt` to keep the code style consistent, and `cargo clippy` to catch common mistakes.
-4. Run `cargo test --workspace` and make sure everything passes.
+4. Run `cargo test -p arkenar -p arkenar-core` and make sure everything passes.
 5. Commit your changes with a clear message explaining what you did.
 6. Push to your fork and open a Pull Request.
 

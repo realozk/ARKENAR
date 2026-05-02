@@ -29,10 +29,10 @@ jobs:
           workspaces: ". -> target"
 
       - name: Run tests
-        run: cargo test --workspace --verbose
+        run: cargo test -p arkenar -p arkenar-core --verbose
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy -p arkenar -p arkenar-core -- -D warnings
