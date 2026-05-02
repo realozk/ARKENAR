@@ -1,5 +1,4 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
-
 **Arkenar is a web scanner I built that ties together Katana and Nuclei with a custom mutation engine. The goal is to find injection flaws and logic bugs that static templates tend to miss.**
 
 It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same core engine — pick whichever fits your workflow.
@@ -23,6 +22,9 @@ It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same
   <a href="https://crates.io/crates/arkenar">
     <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
   </a>
+  <a href="https://www.bestpractices.dev/projects/12728">
+    <img src="https://www.bestpractices.dev/projects/12728/badge">
+    </a>
 </p>
 
 ## Table of Contents
