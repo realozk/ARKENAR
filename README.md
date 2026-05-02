@@ -270,7 +270,15 @@ sudo arkenar --update
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+### Running Tests
+
+```bash
+cargo test --workspace
+```
+
+Tests use Rust's built-in test harness with [`assert_cmd`](https://crates.io/crates/assert_cmd), [`predicates`](https://crates.io/crates/predicates), and [`tempfile`](https://crates.io/crates/tempfile) (all MIT/Apache-2.0). The CI runs the full suite on Linux, Windows, and macOS on every push and pull request.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full test policy and contribution guidelines.
 
 ## License
 
