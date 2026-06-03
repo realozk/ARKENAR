@@ -15,7 +15,7 @@ use crate::core::target_manager::TargetManager;
 use crate::core::throttle::ThrottleController;
 use crate::core::VulnerabilityType;
 use crate::deep_hunter::JsAnalyzer;
-use crate::http::{HttpClient, HttpRequest, MAX_RESPONSE_BODY};
+use crate::http::{HttpClient, HttpRequest};
 use crate::utils::detector::VulnerabilityDetector;
 use crate::utils::fingerprint::{FingerprintResult, TechFingerprinter};
 use crate::utils::payload_loader::PayloadLoader;
@@ -161,17 +161,22 @@ impl ScanEngine {
                 let (reflects, page_body) = {
                     let _net_permit = network_sem.acquire().await.ok();
                     throttle.wait().await;
-                    match client.send_request(&canary_req).await {
-                        Ok(resp) => {
-                            let status = resp.status().as_u16();
-                            throttle.record_response(status);
-                            match read_body_capped(resp).await {
-                                Ok(body) => {
-                                    let r = body.contains(mutator::CANARY_TOKEN);
-                                    (r, body)
-                                }
-                                Err(_) => (false, String::new()),
+                    match client.send(&canary_req).await {
+                        Ok(cap) => {
+                            throttle.record_response(cap.status);
+                            let server = extract_server(&cap.headers);
+                            for secret in &cap.secrets {
+                                let _ = tx
+                                    .send(secret_to_result(
+                                        cap.final_url.as_str(),
+                                        cap.status,
+                                        server.clone(),
+                                        secret,
+                                    ))
+                                    .await;
                             }
+                            let r = cap.body.contains(mutator::CANARY_TOKEN);
+                            (r, cap.body)
                         }
                         Err(_) => (false, String::new()),
                     }
@@ -188,15 +193,24 @@ impl ScanEngine {
                         };
                         let _net_permit = network_sem.acquire().await.ok();
                         throttle.wait().await;
-                        if let Ok(js_resp) = client.send_request(&js_req).await {
-                            throttle.record_response(js_resp.status().as_u16());
-                            if let Ok(js_body) = read_body_capped(js_resp).await {
-                                let endpoints = js_analyzer.extract_endpoints(&js_body);
-                                for path in endpoints {
-                                    if let Ok(base) = Url::parse(&target_url) {
-                                        if let Ok(full) = base.join(&path) {
-                                            extra_targets.push(full.to_string());
-                                        }
+                        if let Ok(js_cap) = client.send(&js_req).await {
+                            throttle.record_response(js_cap.status);
+                            let server = extract_server(&js_cap.headers);
+                            for secret in &js_cap.secrets {
+                                let _ = tx
+                                    .send(secret_to_result(
+                                        js_cap.final_url.as_str(),
+                                        js_cap.status,
+                                        server.clone(),
+                                        secret,
+                                    ))
+                                    .await;
+                            }
+                            let endpoints = js_analyzer.extract_endpoints(&js_cap.body);
+                            for path in endpoints {
+                                if let Ok(base) = Url::parse(&target_url) {
+                                    if let Ok(full) = base.join(&path) {
+                                        extra_targets.push(full.to_string());
                                     }
                                 }
                             }
@@ -216,15 +230,10 @@ impl ScanEngine {
                 let tech_profile = {
                     let _net_permit = network_sem.acquire().await.ok();
                     throttle.wait().await;
-                    match client.send_request(&fp_req).await {
-                        Ok(resp) => {
-                            let status_code = resp.status().as_u16();
-                            throttle.record_response(status_code);
-                            let headers = resp.headers().clone();
-                            match read_body_capped(resp).await {
-                                Ok(body) => fingerprinter.analyze(status_code, &headers, &body),
-                                Err(_) => FingerprintResult::default(),
-                            }
+                    match client.send(&fp_req).await {
+                        Ok(cap) => {
+                            throttle.record_response(cap.status);
+                            fingerprinter.analyze(cap.status, &cap.headers, &cap.body)
                         }
                         Err(_) => FingerprintResult::default(),
                     }
@@ -304,9 +313,8 @@ fn create_request_from_url(url_str: &str) -> Result<HttpRequest, url::ParseError
     Ok(HttpRequest::new(Method::GET, url, headers, body))
 }
 
-fn extract_server(response: &reqwest::Response) -> Option<String> {
-    response
-        .headers()
+fn extract_server(headers: &HeaderMap) -> Option<String> {
+    headers
         .get("server")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
@@ -319,10 +327,27 @@ fn headers_to_vec(headers: &HeaderMap) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn read_body_capped(resp: reqwest::Response) -> Result<String, reqwest::Error> {
-    let bytes = resp.bytes().await?;
-    let len = bytes.len().min(MAX_RESPONSE_BODY);
-    Ok(String::from_utf8_lossy(&bytes[..len]).into_owned())
+fn secret_to_result(
+    url: &str,
+    status: u16,
+    server: Option<String>,
+    secret: &arkenar_secrets::Secret,
+) -> ScanResult {
+    ScanResult {
+        url: url.to_string(),
+        vuln_type: format!("Sensitive Exposure [{}]", secret.kind),
+        payload: secret.matched.clone(),
+        timing_ms: 0,
+        status_code: status,
+        server,
+        method: "GET".to_string(),
+        request_headers: Vec::new(),
+        request_body: None,
+        tech_stack: Vec::new(),
+        waf_detected: None,
+        verified: true,
+        notes: Some(format!("secret at line {}", secret.line)),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -431,25 +456,33 @@ async fn scan_single_request(
                 throttle.wait().await;
 
                 let start = Instant::now();
-                let response_result = client.send_request(&mutated_request).await;
+                let response_result = client.send(&mutated_request).await;
                 let duration_ms = start.elapsed().as_millis();
 
-                if let Ok(response) = response_result {
+                if let Ok(cap) = response_result {
                     {
-                        let status_code = response.status().as_u16();
+                        let status_code = cap.status;
                         throttle.record_response(status_code);
-                        let server = extract_server(&response);
-                        let content_type = response
-                            .headers()
+                        let server = extract_server(&cap.headers);
+                        let content_type = cap
+                            .headers
                             .get("content-type")
                             .and_then(|v| v.to_str().ok())
                             .map(|s| s.to_string());
-                        let resp_headers = response.headers().clone();
+                        let resp_headers = cap.headers.clone();
 
-                        let body = match read_body_capped(response).await {
-                            Ok(b) => b,
-                            Err(_) => return,
-                        };
+                        for secret in &cap.secrets {
+                            let _ = result_tx
+                                .send(secret_to_result(
+                                    cap.final_url.as_str(),
+                                    status_code,
+                                    server.clone(),
+                                    secret,
+                                ))
+                                .await;
+                        }
+
+                        let body = cap.body;
 
                         let fp_result: FingerprintResult = if enable_fingerprint {
                             fingerprinter.analyze(status_code, &resp_headers, &body)
@@ -523,19 +556,30 @@ async fn basic_scan(
     let _permit = network_semaphore.acquire().await.ok();
 
     let start = Instant::now();
-    let response = client.send_request(request).await?;
+    let cap = client.send(request).await?;
     let duration_ms = start.elapsed().as_millis();
 
-    let status_code = response.status().as_u16();
-    let server = extract_server(&response);
-    let content_type = response
-        .headers()
+    let status_code = cap.status;
+    let server = extract_server(&cap.headers);
+    let content_type = cap
+        .headers
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let resp_headers = response.headers().clone();
+    let resp_headers = cap.headers.clone();
 
-    let body = read_body_capped(response).await?;
+    for secret in &cap.secrets {
+        let _ = result_tx
+            .send(secret_to_result(
+                cap.final_url.as_str(),
+                status_code,
+                server.clone(),
+                secret,
+            ))
+            .await;
+    }
+
+    let body = cap.body;
 
     let fp_result = if enable_fingerprint {
         fingerprinter.analyze(status_code, &resp_headers, &body)

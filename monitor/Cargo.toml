@@ -1,0 +1,23 @@
+[package]
+name = "arkenar-monitor"
+version = "0.1.0"
+edition = "2021"
+description = "Continuous passive ASM + secret monitor for Arkenar (alert-on-change)."
+license = "MIT"
+repository = "https://github.com/RealOzk/ARKENAR"
+
+[[bin]]
+name = "arkenar-monitor"
+path = "src/main.rs"
+
+[dependencies]
+arkenar-core = { path = "../core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+redb = "2"
+sha2 = "0.10"

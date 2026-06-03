@@ -5,12 +5,15 @@ use std::process;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+mod report;
 mod validation;
+use report::Severity;
 use validation::{validate_tags_field, validate_text_field, validate_webhook_url};
 
 use arkenar_core::{
-    installer, read_lines, run_katana_crawler, run_nuclei_scan, ConsoleSink, HttpClient,
-    ResultAggregator, ScanConfig, ScanEngine, ScanResult, ScanState, SinkRef, TargetManager,
+    installer, read_lines, run_katana_crawler, run_nuclei_scan, CompositeSink, ConsoleSink,
+    HttpClient, ResultAggregator, ScanConfig, ScanEngine, ScanResult, ScanState, SinkRef,
+    TargetManager, WebhookNotifier,
 };
 
 #[derive(Parser, Debug)]
@@ -212,6 +215,14 @@ pub struct Args {
         help = "Enable experimental parameter fuzzing"
     )]
     pub enable_param_fuzz: bool,
+
+    // ── CI / GitHub Action ────────────────────────────────────────────────
+    #[arg(long, value_parser = ["none", "low", "medium", "high", "critical"],
+        help = "Exit non-zero if a finding at/above this severity is found (CI gate)")]
+    pub fail_on: Option<String>,
+
+    #[arg(long, help = "Write a SARIF report to this path (for the GitHub Security tab)")]
+    pub sarif: Option<String>,
 }
 
 #[tokio::main]
@@ -382,7 +393,19 @@ async fn main() {
         process::exit(1);
     }
 
+    // Console + optional webhook notifier (URL already SSRF-validated above).
+    let notifier = config
+        .webhook_url
+        .as_ref()
+        .filter(|u| !u.is_empty())
+        .map(|u| WebhookNotifier::new(u.clone()));
+    let scan_sink: SinkRef = match &notifier {
+        Some(n) => CompositeSink::new_ref(vec![sink.clone(), n.clone() as SinkRef]),
+        None => sink.clone(),
+    };
+
     let total = targets.len();
+    let mut all_results: Vec<ScanResult> = Vec::new();
     for (i, target) in targets.iter().enumerate() {
         if total > 1 {
             print!(
@@ -393,7 +416,37 @@ async fn main() {
             );
             std::io::stdout().flush().ok();
         }
-        run_scan_sequence(target, &config, &sink).await;
+        all_results.extend(run_scan_sequence(target, &config, &scan_sink).await);
+    }
+
+    // Deliver queued alerts before exit.
+    if let Some(n) = &notifier {
+        scan_sink.on_log("info", "[*] Flushing webhook notifications…");
+        n.flush().await;
+    }
+
+    if let Some(path) = &args.sarif {
+        match serde_json::to_string_pretty(&report::to_sarif(&all_results)) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(path, json) {
+                    scan_sink.on_log("error", &format!("[!] Failed to write SARIF: {}", e));
+                } else {
+                    scan_sink.on_log("success", &format!("[+] SARIF written to {}", path));
+                }
+            }
+            Err(e) => scan_sink.on_log("error", &format!("[!] SARIF serialize failed: {}", e)),
+        }
+    }
+
+    // CI gate: exit non-zero if findings meet the threshold.
+    if let Some(level) = args.fail_on.as_deref().and_then(Severity::parse) {
+        if report::gate(&all_results, level) {
+            scan_sink.on_log(
+                "error",
+                &format!("[!] Gate failed: findings at/above '{}' severity.", args.fail_on.unwrap()),
+            );
+            process::exit(1);
+        }
     }
 }
 
@@ -413,10 +466,10 @@ fn print_banner() {
     std::io::stdout().flush().ok();
 }
 
-async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
+async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) -> Vec<ScanResult> {
     if config.dry_run {
         sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", target));
-        return;
+        return Vec::new();
     }
 
     print_scan_config(target, config);
@@ -476,7 +529,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
         Ok(c) => Arc::new(c),
         Err(e) => {
             sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));
-            return;
+            return Vec::new();
         }
     };
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
@@ -503,6 +556,7 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
     );
 
     ResultAggregator::report_summary(&results, sink);
+    results
 }
 
 fn print_scan_config(target: &str, config: &ScanConfig) {

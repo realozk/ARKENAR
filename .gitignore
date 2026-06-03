@@ -57,3 +57,6 @@ gui/src-tauri/arkenar-report.html
 
 # Claude Code (AI tooling — never commit)
 .claude/
+
+# Strategy / vision / build-plan docs — internal only, keep out of the public OSS repo
+docs/

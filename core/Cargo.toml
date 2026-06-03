@@ -8,6 +8,7 @@ repository = "https://github.com/RealOzk/ARKENAR"
 homepage = "https://github.com/RealOzk/ARKENAR"
 
 [dependencies]
+arkenar-secrets = { path = "../secrets" }
 tokio = { version = "1.0", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "socks", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
