@@ -15,7 +15,7 @@ pub use crate::core::result_aggregator::{ResultAggregator, ScanResult};
 pub use crate::core::state::ScanState;
 pub use crate::core::target_manager::TargetManager;
 pub use crate::http::{HttpClient, HttpRequest};
-pub use crate::notify::{CompositeSink, WebhookNotifier};
+pub use crate::notify::{CompositeSink, TelegramNotifier, WebhookNotifier};
 pub use crate::modules::crawler::run_katana_crawler;
 pub use crate::modules::crawler_native::run_native_crawler;
 pub use crate::modules::nuclei::run_nuclei_scan;

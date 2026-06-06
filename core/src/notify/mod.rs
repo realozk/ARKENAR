@@ -1,7 +1,9 @@
 //! Headless notification sinks: webhook delivery and a fan-out composite.
 
+pub mod telegram;
 pub mod webhook;
 
+pub use telegram::send_telegram;
 pub use webhook::{build_payload, redact_secret, send_webhook};
 
 use crate::{ScanEventSink, ScanResult, SinkRef};
@@ -68,6 +70,55 @@ impl ScanEventSink for WebhookNotifier {
         let _ = self.tx.send(Msg::Finding(Box::new(result.clone())));
     }
 
+    fn on_progress(&self, _phase: &str, _current: usize, _total: usize) {}
+}
+
+/// A [`ScanEventSink`] that POSTs findings to a Telegram chat via a bot. Same
+/// non-blocking channel + `flush` pattern as [`WebhookNotifier`].
+pub struct TelegramNotifier {
+    tx: mpsc::UnboundedSender<Msg>,
+}
+
+impl TelegramNotifier {
+    pub fn new(bot_token: String, chat_id: String) -> Arc<Self> {
+        let (tx, mut rx) = mpsc::unbounded_channel::<Msg>();
+
+        tokio::spawn(async move {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .ok();
+
+            while let Some(msg) = rx.recv().await {
+                match msg {
+                    Msg::Finding(result) => {
+                        if let Some(ref client) = client {
+                            telegram::send_telegram(client, &bot_token, &chat_id, &result).await;
+                        }
+                    }
+                    Msg::Flush(ack) => {
+                        let _ = ack.send(());
+                    }
+                }
+            }
+        });
+
+        Arc::new(Self { tx })
+    }
+
+    pub async fn flush(&self) {
+        let (ack_tx, ack_rx) = oneshot::channel();
+        if self.tx.send(Msg::Flush(ack_tx)).is_ok() {
+            let _ = ack_rx.await;
+        }
+    }
+}
+
+impl ScanEventSink for TelegramNotifier {
+    fn on_log(&self, _level: &str, _message: &str) {}
+    fn on_finding(&self, result: &ScanResult) {
+        let _ = self.tx.send(Msg::Finding(Box::new(result.clone())));
+    }
     fn on_progress(&self, _phase: &str, _current: usize, _total: usize) {}
 }
 
