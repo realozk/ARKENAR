@@ -2,7 +2,7 @@
 
 **Arkenar is a web scanner I built that ties together Katana and Nuclei with a custom mutation engine. The goal is to find injection flaws and logic bugs that static templates tend to miss.**
 
-It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same core engine — pick whichever fits your workflow.
+Arkenar is a fast, terminal-native scanner (CLI). It scans live targets for injection flaws, leaked secrets/API keys, and exposed files — from the outside.
 
 <p align="center">
 
@@ -29,7 +29,6 @@ It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same
 
 - [Preview](#preview)
 - [Installation](#installation)
-- [GUI Features](#gui-features)
 - [CLI Usage](#cli-usage)
 - [Troubleshooting](#troubleshooting)
 - [Architecture & Docs](#architecture--docs)
@@ -47,119 +46,23 @@ It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same
 
 ## Installation
 
-### GUI Desktop App
+Arkenar is a terminal-native scanner. One command installs it.
 
-Download the installer from [GitHub Releases](https://github.com/realozk/ARKENAR/releases/latest):
-
-| Platform | File |
-|----------|------|
-| **Windows** | `Arkenar_*_x64-setup.exe` — double-click, no admin required |
-| **Linux** | `arkenar_*_amd64.AppImage` (portable) or `arkenar_*_amd64.deb` |
-| **macOS** | `Arkenar_*_universal.dmg` — works on both Intel and Apple Silicon |
-
-The app auto-downloads Katana and Nuclei on first launch.
-
-### CLI — Windows
-```powershell
-iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
-```
-
-### CLI — Linux & macOS
+### Linux & macOS
 ```bash
 curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bash
 ```
 
----
+### Windows
+```powershell
+iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
+```
 
-## GUI Features
+Arkenar auto-downloads Katana, Nuclei, and Subfinder on first use.
 
-The desktop app has four main workspaces: **Scanner**, **Studio**, **Recon**, and **History**.
-
-### Basic Scanner
-
-This is the main scanning interface. You set a target, pick your options, and watch it run.
-
-**Targets**
-- Single URL or a list file (drag-drop or browse)
-- Scan queue — add multiple targets and run them one after another
-- Paste from clipboard
-
-**Scan Modes**
-- `Simple` — runs a fast crawl + Nuclei pass
-- `Advanced` — adds WAF evasion, deeper fuzzing, and more Nuclei coverage
-
-**Module toggles**
-- Katana crawler — discovers URLs before scanning
-- Nuclei scanner — runs CVE/panel/tech templates
-- JS endpoint analysis — finds hidden API paths in JavaScript
-- Parameter fuzzing — tests query params with contextual payloads
-- Tech fingerprinting — detects the stack and routes payloads accordingly
-- Smart payloads — picks payload types based on parameter names (e.g. `id` → SQLi)
-- WAF evasion — mutates payloads when it hits 403s
-
-**Performance**
-- Threads (1–500), timeout (1–120s), rate limit (1–5000 req/s)
-- Crawler depth, max URLs, and crawl timeout
-- Proxy, custom headers, scope regex
-
-**Auth**
-- Bearer token, cookie string, or custom headers
-
-**During a scan**
-- Live terminal output with `[+]` / `[!]` / `[~]` / `[*]` prefixes
-- Findings tab updates in real time with severity labels
-- Top bar shows targets, URLs found, critical/medium/safe counts, RPS, and elapsed time
-- Ctrl+Enter to start, Esc to stop
-
-**After a scan**
-- Export a self-contained HTML report
-- Export scan history as CSV
-- Findings stay in the History tab across sessions (up to 50 scans)
-
-**Keyboard shortcuts**
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+K` | Command palette |
-| `Ctrl+Enter` | Start scan |
-| `Esc` | Stop scan |
-| `T` / `F` / `H` | Switch to Terminal / Findings / History |
-| `Ctrl+B` | Toggle sidebar |
-| `Ctrl+,` | Settings |
-
----
-
-### Studio
-
-A manual HTTP request builder for testing individual endpoints.
-
-- Build requests with any method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
-- Tabs for headers, body, query params, and environment variables
-- Response viewer with body, headers, cookies, and diff view
-- Syntax highlighting, response timing, and size display
-- Session history — search and reload previous requests
-- PoC export — one click generates cURL, Python Requests, or Raw HTTP
-- Smart Auto-Login — give it a login URL and credentials, it handles GET → parse CSRF → POST automatically and injects the session cookies
-
----
-
-### Recon
-
-Reconnaissance workspace for mapping a target before you scan it.
-
-- **Subdomain enumeration** via Subfinder
-- **Port scanning** — async TCP connect scan of the top 1000 ports
-- **DNS records** — A, MX, TXT, CNAME, and raw WHOIS
-- **JS secrets detection** — scans fetched JS files for AWS keys, GitHub tokens, JWTs, and other patterns
-- Host board with filters: all hosts / high-risk (open ports) / alive / hosts with secrets
-- Add any discovered host directly to the scan queue or send it to Studio
-
----
-
-### History & Settings
-
-- **History** — full list of past scans with timestamps, finding counts, and CSV export
-- **Settings** — global defaults for threads/timeout/rate-limit, webhook URL (Discord, Slack, or custom JSON), output path, UI scale, and audio notifications
+> **Legacy desktop app:** the 1.2 GUI is still available on
+> [GitHub Releases](https://github.com/realozk/ARKENAR/releases) but is no longer
+> actively developed — development is CLI-first from 1.3 onward.
 
 ---
 
@@ -174,6 +77,9 @@ arkenar -l targets.txt -o results.json --rate-limit 150
 
 # full example
 arkenar https://example.com -m advanced -t 100 --enable-js-analysis --proxy http://127.0.0.1:8080
+
+# recon: subdomains + ports + DNS
+arkenar example.com --recon
 ```
 
 Run `arkenar --help` for everything. Common flags:

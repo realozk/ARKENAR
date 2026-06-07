@@ -18,7 +18,10 @@ pub use crate::http::{HttpClient, HttpRequest};
 pub use crate::notify::{CompositeSink, TelegramNotifier, WebhookNotifier};
 pub use crate::modules::crawler::run_katana_crawler;
 pub use crate::modules::crawler_native::run_native_crawler;
+pub use crate::modules::dns_lookup::{resolve_domain, DnsResult};
 pub use crate::modules::nuclei::run_nuclei_scan;
+pub use crate::modules::port_scanner::scan_ports;
+pub use crate::modules::subfinder::run_subfinder;
 pub use crate::utils::installer;
 pub use crate::utils::read_lines;
 

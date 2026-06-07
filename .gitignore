@@ -31,25 +31,12 @@ node_modules/
 # Generated / runtime files
 scan_results.json
 tsc_errors.txt
-repomix-output.xml
 *.json.bak
-gui/src-tauri/tools/
-gui/src-tauri/scan_results.json
-gui/src-tauri/arkenar_report.html# Repomix packed output — auto-generated, never commit
+
+# Repomix packed output — auto-generated, never commit
 repomix-output.txt
 repomix-output.xml
 *.repomix.txt
-
-# Rust build output
-target/
-
-# Node / frontend
-gui/node_modules/
-gui/dist/
-
-# Tauri runtime artefacts
-gui/src-tauri/scan-results.json
-gui/src-tauri/arkenar-report.html
 
 # Temp / backup
 *.tmp

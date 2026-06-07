@@ -11,9 +11,9 @@ use report::Severity;
 use validation::{validate_tags_field, validate_text_field, validate_webhook_url};
 
 use arkenar_core::{
-    installer, read_lines, run_katana_crawler, run_nuclei_scan, CompositeSink, ConsoleSink,
-    HttpClient, ResultAggregator, ScanConfig, ScanEngine, ScanResult, ScanState, SinkRef,
-    TargetManager, WebhookNotifier,
+    installer, read_lines, resolve_domain, run_katana_crawler, run_nuclei_scan, run_subfinder,
+    scan_ports, CompositeSink, ConsoleSink, HttpClient, ResultAggregator, ScanConfig, ScanEngine,
+    ScanResult, ScanState, SinkRef, TargetManager, WebhookNotifier,
 };
 
 #[derive(Parser, Debug)]
@@ -216,6 +216,13 @@ pub struct Args {
     )]
     pub enable_param_fuzz: bool,
 
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Recon mode: subdomain enumeration + port scan + DNS (instead of a vuln scan)"
+    )]
+    pub recon: bool,
+
     // ── CI / GitHub Action ────────────────────────────────────────────────
     #[arg(long, value_parser = ["none", "low", "medium", "high", "critical"],
         help = "Exit non-zero if a finding at/above this severity is found (CI gate)")]
@@ -393,6 +400,14 @@ async fn main() {
         process::exit(1);
     }
 
+    // Recon mode: subdomains + ports + DNS (the former GUI recon workspace, now CLI).
+    if args.recon {
+        for target in &targets {
+            run_recon_sequence(target, &sink).await;
+        }
+        return;
+    }
+
     // Console + optional webhook notifier (URL already SSRF-validated above).
     let notifier = config
         .webhook_url
@@ -557,6 +572,74 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) ->
 
     ResultAggregator::report_summary(&results, sink);
     results
+}
+
+/// Recon: subdomain enumeration (subfinder) → per-host port scan + DNS.
+/// The capability that used to live only in the GUI recon workspace.
+async fn run_recon_sequence(target: &str, sink: &SinkRef) {
+    // Accept a URL or a bare domain — extract the host.
+    let domain = url::Url::parse(target)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_string()))
+        .unwrap_or_else(|| target.trim().to_string());
+
+    let abort = Arc::new(AtomicBool::new(false));
+
+    sink.on_log("phase", "[*] Recon Phase 1: subdomain enumeration (subfinder)...");
+    let subs = match run_subfinder(&domain, sink.clone(), abort.clone()).await {
+        Ok(h) => h,
+        Err(e) => {
+            sink.on_log("error", &format!("[!] subfinder error: {}", e));
+            Vec::new()
+        }
+    };
+
+    // Dedup root + subdomains (DNS is case-insensitive); keep original case.
+    let mut seen = std::collections::HashSet::new();
+    seen.insert(domain.to_ascii_lowercase());
+    let mut hosts = vec![domain.clone()];
+    for h in subs {
+        if seen.insert(h.to_ascii_lowercase()) {
+            hosts.push(h);
+        }
+    }
+    sink.on_log("success", &format!("[+] {} host(s) discovered.", hosts.len()));
+
+    sink.on_log("phase", "[*] Recon Phase 2: port scan + DNS per host...");
+    let mut total_open = 0usize;
+    for host in &hosts {
+        let (ports_res, dns_res) =
+            tokio::join!(scan_ports(host, abort.clone(), sink.clone()), resolve_domain(host));
+
+        let ports = ports_res.unwrap_or_default();
+        total_open += ports.len();
+        let ports_str = if ports.is_empty() {
+            "—".to_string()
+        } else {
+            ports
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        let ip_str = match dns_res {
+            Ok(d) if !d.a_records.is_empty() => d.a_records.join(", "),
+            _ => "—".to_string(),
+        };
+        sink.on_log(
+            "success",
+            &format!("[+] {}  ports[{}]  ip[{}]", host, ports_str, ip_str),
+        );
+    }
+
+    sink.on_log(
+        "success",
+        &format!(
+            "[+] Recon complete: {} host(s), {} open port(s).",
+            hosts.len(),
+            total_open
+        ),
+    );
 }
 
 fn print_scan_config(target: &str, config: &ScanConfig) {

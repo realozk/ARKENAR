@@ -3,7 +3,6 @@ members = [
     "core",
     "cli",
     "secrets",
-    "gui/src-tauri",
 ]
 resolver = "2"
 
