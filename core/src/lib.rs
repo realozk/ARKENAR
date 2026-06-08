@@ -16,10 +16,8 @@ pub use crate::core::state::ScanState;
 pub use crate::core::target_manager::TargetManager;
 pub use crate::http::{HttpClient, HttpRequest};
 pub use crate::notify::{CompositeSink, TelegramNotifier, WebhookNotifier};
-pub use crate::modules::crawler::run_katana_crawler;
 pub use crate::modules::crawler_native::run_native_crawler;
 pub use crate::modules::dns_lookup::{resolve_domain, DnsResult};
-pub use crate::modules::nuclei::run_nuclei_scan;
 pub use crate::modules::port_scanner::scan_ports;
 pub use crate::modules::subfinder::run_subfinder;
 pub use crate::utils::installer;
@@ -38,13 +36,11 @@ pub struct ScanConfig {
     pub output: String,
     pub proxy: String,
     pub headers: String,
-    pub tags: String,
     pub payloads: String,
     pub verbose: bool,
     pub scope: bool,
     pub dry_run: bool,
     pub enable_crawler: bool,
-    pub enable_nuclei: bool,
     pub crawler_depth: u32,
     pub crawler_max_urls: usize,
     pub crawler_timeout: u64,
@@ -53,7 +49,6 @@ pub struct ScanConfig {
     pub resume: bool,
     pub enable_fingerprint: bool,
     pub scope_regex: String,
-    pub nuclei_templates_dir: String,
     pub enable_smart_payloads: bool,
 
     /// If true, accept invalid TLS certificates. Defaults to false.
@@ -91,13 +86,11 @@ impl Default for ScanConfig {
             output: "scan_results.json".to_string(),
             proxy: String::new(),
             headers: String::new(),
-            tags: String::new(),
             payloads: String::new(),
             verbose: false,
             scope: false,
             dry_run: false,
             enable_crawler: true,
-            enable_nuclei: true,
             crawler_depth: 3,
             crawler_max_urls: 50,
             crawler_timeout: 60,
@@ -106,7 +99,6 @@ impl Default for ScanConfig {
             resume: false,
             enable_fingerprint: true,
             scope_regex: String::new(),
-            nuclei_templates_dir: String::new(),
             enable_smart_payloads: true,
             allow_insecure_tls: false,
             // Auth
@@ -148,14 +140,6 @@ impl ScanConfig {
             None
         } else {
             Some(&self.proxy)
-        }
-    }
-
-    pub fn tags_ref(&self) -> Option<&str> {
-        if self.tags.is_empty() {
-            None
-        } else {
-            Some(&self.tags)
         }
     }
 

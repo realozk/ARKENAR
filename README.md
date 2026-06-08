@@ -1,8 +1,9 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
 
-**Arkenar is a web scanner I built that ties together Katana and Nuclei with a custom mutation engine. The goal is to find injection flaws and logic bugs that static templates tend to miss.**
+**Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, active WAF evasion, and Zero-FP verification.
 
-Arkenar is a fast, terminal-native scanner (CLI). It scans live targets for injection flaws, leaked secrets/API keys, and exposed files — from the outside.
+Its flagship is the **Rapid Extraction Module** — a specialized engine that actively *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. **One static binary. No external tools.**
+
 
 <p align="center">
 
@@ -14,12 +15,8 @@ Arkenar is a fast, terminal-native scanner (CLI). It scans live targets for inje
 </p>
 
 <p align="center">
-  <a href="https://github.com/projectdiscovery/katana">
-    <img src="https://img.shields.io/badge/Katana-ProjectDiscovery?style=for-the-badge&labelColor=1f6feb&color=0b1220&logo=github&logoColor=white">
-  </a>
-  <a href="https://github.com/projectdiscovery/nuclei">
-    <img src="https://img.shields.io/badge/Nuclei-ProjectDiscovery?style=for-the-badge&labelColor=dc2626&color=0b1220&logo=github&logoColor=white">
-  </a>
+  <img src="https://img.shields.io/badge/built%20with-Rust-orange?style=for-the-badge&logo=rust&logoColor=white">
+  <img src="https://img.shields.io/badge/dependencies-zero%20external%20tools-22c55e?style=for-the-badge">
   <a href="https://crates.io/crates/arkenar">
     <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
   </a>
@@ -58,7 +55,7 @@ curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bas
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
 ```
 
-Arkenar auto-downloads Katana, Nuclei, and Subfinder on first use.
+Arkenar is a single static Rust binary — no external tools, no Go subprocesses, nothing to download on first use.
 
 > **Legacy desktop app:** the 1.2 GUI is still available on
 > [GitHub Releases](https://github.com/realozk/ARKENAR/releases) but is no longer
@@ -89,10 +86,13 @@ Run `arkenar --help` for everything. Common flags:
 | :--- | :--- | :--- |
 | `-l`, `--list <FILE>` | File of target URLs (one per line) | — |
 | `-o`, `--output <FILE>` | JSON output path | `scan_results.json` |
+| `--json` | Stream findings as JSON to stdout (for `\| jq`) | — |
+| `--quiet` | Findings only, no progress/log chrome | — |
+| `--verified-only` | Show only proven (verified) findings | — |
 | `-p`, `--payloads <FILE>` | Extra payload file to merge in | — |
 | `--dry-run` | Print targets without sending requests | — |
 | `--resume` | Resume from `.arkenar-state.json` | — |
-| `--update` | Update Arkenar + Katana + Nuclei | — |
+| `--update` | Update Arkenar to the latest version | — |
 
 ### Scan profile
 | Flag | Description | Default |
@@ -106,26 +106,19 @@ Run `arkenar --help` for everything. Common flags:
 ### Modules
 | Flag | Description |
 | :--- | :--- |
-| `--no-crawler` | Skip the Katana crawl phase |
-| `--no-nuclei` | Skip the Nuclei scan phase |
+| `--no-crawler` | Skip the native crawl / forced-browse phase |
 | `--enable-param-fuzz` | Enable parameter fuzzing |
 | `--enable-js-analysis` | Enable JS endpoint analysis |
 | `--enable-waf-evasion` | Mutate payloads on 403 responses |
 | `--no-fingerprint` | Disable tech-stack fingerprinting |
 | `--no-smart-payloads` | Disable context-aware payload selection |
 
-### Crawler
+### Crawler (native, pure Rust)
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `--crawler-depth <N>` | Katana crawl depth | `3` |
+| `--crawler-depth <N>` | Crawl depth | `3` |
 | `--crawler-max-urls <N>` | Cap on discovered URLs | `50` |
 | `--crawler-timeout <N>` | Crawl timeout per target (seconds) | `60` |
-
-### Nuclei
-| Flag | Description |
-| :--- | :--- |
-| `--tags <TAGS>` | Comma-separated Nuclei tags (e.g. `cve,jira`) |
-| `--nuclei-templates <DIR>` | Custom templates directory |
 
 ### Network & headers
 | Flag | Description |
@@ -148,18 +141,6 @@ Run `arkenar --help` for everything. Common flags:
 ---
 
 ## Troubleshooting
-
-### Nuclei permission denied on macOS / Linux
-
-```bash
-# macOS
-sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
-sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
-
-# Linux
-sudo chown -R $(whoami) ~/.config/nuclei/
-sudo chown -R $(whoami) ~/.config/uncover/
-```
 
 ### Self-update permission denied
 

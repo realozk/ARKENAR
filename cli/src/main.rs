@@ -8,12 +8,12 @@ use tokio::sync::mpsc;
 mod report;
 mod validation;
 use report::Severity;
-use validation::{validate_tags_field, validate_text_field, validate_webhook_url};
+use validation::{validate_text_field, validate_webhook_url};
 
 use arkenar_core::{
-    installer, read_lines, resolve_domain, run_katana_crawler, run_nuclei_scan, run_subfinder,
-    scan_ports, CompositeSink, ConsoleSink, HttpClient, ResultAggregator, ScanConfig, ScanEngine,
-    ScanResult, ScanState, SinkRef, TargetManager, WebhookNotifier,
+    installer, read_lines, resolve_domain, run_native_crawler, run_subfinder, scan_ports,
+    CompositeSink, ConsoleSink, HttpClient, ResultAggregator, ScanConfig, ScanEngine, ScanResult,
+    ScanState, SinkRef, TargetManager, WebhookNotifier,
 };
 
 #[derive(Parser, Debug)]
@@ -105,25 +105,19 @@ pub struct Args {
     )]
     pub rate_limit: u64,
 
-    #[arg(
-        long,
-        help = "Custom Nuclei tags (e.g. \"cve,jira,panel\"). Overrides default simple mode logic."
-    )]
-    pub tags: Option<String>,
-
     #[arg(long, help = "Update ARKENAR to the latest version")]
     pub update: bool,
 
     #[arg(long, help = "Simulate scan without sending real requests")]
     pub dry_run: bool,
 
-    #[arg(long, default_value_t = 3, help = "Katana crawl depth")]
+    #[arg(long, default_value_t = 3, help = "Crawl depth")]
     pub crawler_depth: u32,
 
-    #[arg(long, default_value_t = 60, help = "Katana crawl timeout in seconds")]
+    #[arg(long, default_value_t = 60, help = "Crawl timeout in seconds")]
     pub crawler_timeout: u64,
 
-    #[arg(long, default_value_t = 50, help = "Max URLs for Katana to discover")]
+    #[arg(long, default_value_t = 50, help = "Max URLs to discover during crawl")]
     pub crawler_max_urls: usize,
 
     #[arg(long, help = "Resume a previously interrupted scan")]
@@ -167,7 +161,7 @@ pub struct Args {
     )]
     pub enable_waf_evasion: bool,
 
-    // ── Fingerprint / Smart Payloads / Scope / Nuclei ─────────────────────
+    // ── Fingerprint / Smart Payloads / Scope ──────────────────────────────
     #[arg(
         long,
         default_value_t = false,
@@ -192,9 +186,6 @@ pub struct Args {
     )]
     pub no_smart_payloads: bool,
 
-    #[arg(long, default_value_t = String::new(), help = "Path to custom Nuclei templates directory")]
-    pub nuclei_templates: String,
-
     #[arg(
         long,
         default_value_t = false,
@@ -202,12 +193,9 @@ pub struct Args {
     )]
     pub allow_insecure_tls: bool,
 
-    // ── Module toggles (parity with GUI) ──────────────────────────────────
-    #[arg(long, default_value_t = false, help = "Skip the Katana crawl phase")]
+    // ── Module toggles ────────────────────────────────────────────────────
+    #[arg(long, default_value_t = false, help = "Skip the native crawl / forced-browse phase")]
     pub no_crawler: bool,
-
-    #[arg(long, default_value_t = false, help = "Skip the Nuclei scan phase")]
-    pub no_nuclei: bool,
 
     #[arg(
         long,
@@ -245,10 +233,6 @@ async fn main() {
         process::exit(0);
     }
 
-    if !args.dry_run {
-        installer::check_and_install_tools().await;
-    }
-
     let sink = ConsoleSink::new_ref();
 
     if args.resume {
@@ -281,7 +265,6 @@ async fn main() {
         ("target", args.target.as_deref().unwrap_or("")),
         ("proxy", args.proxy.as_deref().unwrap_or("")),
         ("scope-regex", args.scope_regex.as_str()),
-        ("nuclei-templates", args.nuclei_templates.as_str()),
         ("headers", &args.headers.join(";")),
         ("auth-token", args.auth_token.as_deref().unwrap_or("")),
         ("auth-cookies", args.auth_cookies.as_deref().unwrap_or("")),
@@ -290,16 +273,6 @@ async fn main() {
     ] {
         if !val.is_empty() {
             if let Err(e) = validate_text_field(name, val) {
-                eprintln!("[!] {}", e);
-                std::process::exit(1);
-            }
-        }
-    }
-
-    // Validate tags (block flag injection)
-    if let Some(ref tags) = args.tags {
-        if !tags.is_empty() {
-            if let Err(e) = validate_tags_field("tags", tags) {
                 eprintln!("[!] {}", e);
                 std::process::exit(1);
             }
@@ -326,13 +299,11 @@ async fn main() {
         output: args.output.clone(),
         proxy: args.proxy.clone().unwrap_or_default(),
         headers: args.headers.join("\n"),
-        tags: args.tags.clone().unwrap_or_default(),
         payloads: args.payloads.clone().unwrap_or_default(),
         verbose: args.verbose,
         scope: args.scope,
         dry_run: args.dry_run,
         enable_crawler: !args.no_crawler,
-        enable_nuclei: !args.no_nuclei,
         enable_param_fuzz: args.enable_param_fuzz,
         webhook_url: args.webhook_url.clone(),
         crawler_depth: args.crawler_depth,
@@ -343,7 +314,6 @@ async fn main() {
         scope_regex: args.scope_regex.clone(),
         waf_evasion_threshold: args.waf_evasion_threshold,
         enable_smart_payloads: !args.no_smart_payloads,
-        nuclei_templates_dir: args.nuclei_templates.clone(),
         // Auth
         auth_token: args.auth_token.clone(),
         auth_cookies: args.auth_cookies.clone(),
@@ -494,9 +464,46 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) ->
     let mut target_manager = TargetManager::new();
     target_manager.add_target(target.to_string());
 
+    let http_client = match HttpClient::new(
+        config.timeout,
+        config.proxy_ref(),
+        &custom_headers,
+        config.allow_insecure_tls,
+    ) {
+        Ok(c) => Arc::new(c),
+        Err(e) => {
+            sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));
+            return Vec::new();
+        }
+    };
+
+    let abort = Arc::new(AtomicBool::new(false));
+
+    // One aggregator spans both phases: it dedups, writes JSONL, and forwards every
+    // finding (crawler secrets included) to the sink.
+    let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
+    let output_path = config.output.clone();
+    let agg_sink = sink.clone();
+    let aggregator =
+        tokio::spawn(
+            async move { ResultAggregator::run(result_rx, &output_path, agg_sink).await },
+        );
+
+    // Phase 1: native crawl + forced browse (pure Rust — no external tools).
     if config.enable_crawler {
-        sink.on_log("phase", "[*] Phase 1: Crawling...");
-        match run_katana_crawler(target, config, sink, Arc::new(AtomicBool::new(false))).await {
+        sink.on_log("phase", "[*] Phase 1: Native crawl + forced browse...");
+        match run_native_crawler(
+            target,
+            config.crawler_depth,
+            config.crawler_max_urls,
+            config.scope,
+            Arc::clone(&http_client),
+            sink.clone(),
+            result_tx.clone(),
+            abort.clone(),
+        )
+        .await
+        {
             Ok(crawled) => {
                 sink.on_log(
                     "success",
@@ -514,40 +521,8 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) ->
         sink.on_log("phase", "[*] Phase 1: Crawling skipped (--no-crawler).");
     }
 
-    if config.enable_nuclei {
-        sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
-        if let Err(e) = run_nuclei_scan(
-            target,
-            &config.mode,
-            config.verbose,
-            config.tags_ref(),
-            config.crawler_timeout,
-            sink,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .await
-        {
-            sink.on_log("error", &format!("[!] Nuclei error: {}", e));
-        }
-    } else {
-        sink.on_log("phase", "[*] Phase 2: Nuclei skipped (--no-nuclei).");
-    }
-
-    sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
-
-    let http_client = match HttpClient::new(
-        config.timeout,
-        config.proxy_ref(),
-        &custom_headers,
-        config.allow_insecure_tls,
-    ) {
-        Ok(c) => Arc::new(c),
-        Err(e) => {
-            sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));
-            return Vec::new();
-        }
-    };
-    let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
+    // Phase 2: ARKENAR engine.
+    sink.on_log("phase", "[*] Phase 2: ARKENAR Engine...");
     let engine = ScanEngine::with_config(
         target_manager,
         Arc::clone(&http_client),
@@ -560,15 +535,11 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) ->
         },
         config,
     );
-    let output_path = config.output.clone();
+    engine.run(result_tx.clone(), abort.clone()).await;
 
-    let (_, results) = tokio::join!(
-        engine.run(
-            result_tx,
-            Arc::new(std::sync::atomic::AtomicBool::new(false))
-        ),
-        ResultAggregator::run(result_rx, &output_path, sink.clone())
-    );
+    // Drop the last sender so the aggregator's receive loop ends, then collect.
+    drop(result_tx);
+    let results = aggregator.await.unwrap_or_default();
 
     ResultAggregator::report_summary(&results, sink);
     results
@@ -694,22 +665,10 @@ fn print_scan_config(target: &str, config: &ScanConfig) {
     if config.scope {
         print!("{}\r\n", "[+] Scope:      Same-domain only".yellow());
     }
-    if !config.tags.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Tags:       {}", config.tags).yellow()
-        );
-    }
     if !config.scope_regex.is_empty() {
         print!(
             "{}\r\n",
             format!("[+] Scope Regex: {}", config.scope_regex).yellow()
-        );
-    }
-    if !config.nuclei_templates_dir.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Nuclei Templates: {}", config.nuclei_templates_dir).yellow()
         );
     }
     if config.enable_waf_evasion {

@@ -27,7 +27,7 @@ impl ThrottleController {
             delay_ms: AtomicU64::new(0),
             consecutive_blocks: AtomicU32::new(0),
             total_throttled: AtomicU64::new(0),
-            min_delay_ms: if max_rps > 0 { 1000 / max_rps } else { 0 },
+            min_delay_ms: 1000u64.checked_div(max_rps).unwrap_or(0),
         }
     }
 

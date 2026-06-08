@@ -26,35 +26,6 @@ pub fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Block flag-injection in comma-separated tag fields (e.g. `--tags`).
-/// Tags must be alphanumeric + hyphens/underscores only.
-pub fn validate_tags_field(name: &str, val: &str) -> Result<(), String> {
-    for tag in val.split(',') {
-        let tag = tag.trim();
-        if tag.is_empty() {
-            continue;
-        }
-
-        if tag.starts_with('-') {
-            return Err(format!(
-                "Argument `{}`: tag `{}` looks like a CLI flag (flag injection blocked).",
-                name, tag
-            ));
-        }
-
-        if !tag
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(format!(
-                "Argument `{}`: tag `{}` contains invalid characters.",
-                name, tag
-            ));
-        }
-    }
-    Ok(())
-}
-
 /// Block SSRF: webhook URL must be HTTPS and must not target private/loopback IPs.
 pub fn validate_webhook_url(raw: &str) -> Result<(), String> {
     let url = Url::parse(raw).map_err(|e| format!("Webhook URL is invalid: {}", e))?;
@@ -107,13 +78,6 @@ mod tests {
     fn blocks_path_traversal() {
         assert!(validate_text_field("file", "../../etc/passwd").is_err());
         assert!(validate_text_field("file", "targets.txt").is_ok());
-    }
-
-    #[test]
-    fn blocks_flag_injection_in_tags() {
-        assert!(validate_tags_field("tags", "-exec,cve").is_err());
-        assert!(validate_tags_field("tags", "--config,panel").is_err());
-        assert!(validate_tags_field("tags", "cve,jira,panel").is_ok());
     }
 
     #[test]

@@ -12,6 +12,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::OnceLock;
+use tokio::sync::mpsc;
 use url::Url;
 
 const CONCURRENCY: usize = 10;
@@ -19,6 +20,7 @@ const CONCURRENCY: usize = 10;
 /// Files probed in every discovered directory.
 const SENSITIVE_FILES: &[&str] = &[".env", ".env.local", ".git/config", "config.json", ".DS_Store"];
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_native_crawler(
     target: &str,
     max_depth: u32,
@@ -26,6 +28,7 @@ pub async fn run_native_crawler(
     same_origin: bool,
     client: Arc<HttpClient>,
     sink: SinkRef,
+    result_tx: mpsc::Sender<ScanResult>,
     abort: Arc<AtomicBool>,
 ) -> anyhow::Result<Vec<String>> {
     let base = Url::parse(target)?;
@@ -45,8 +48,8 @@ pub async fn run_native_crawler(
 
         let batches = stream::iter(frontier.drain(..).map(|u| {
             let client = Arc::clone(&client);
-            let sink = sink.clone();
-            async move { fetch_links(&client, &u, &sink).await }
+            let tx = result_tx.clone();
+            async move { fetch_links(&client, &u, &tx).await }
         }))
         .buffer_unordered(CONCURRENCY)
         .collect::<Vec<_>>()
@@ -74,8 +77,8 @@ pub async fn run_native_crawler(
         let probes = build_probes(&base, &discovered, &visited);
         let found = stream::iter(probes.into_iter().map(|u| {
             let client = Arc::clone(&client);
-            let sink = sink.clone();
-            async move { fetch_probe(&client, &u, &sink).await }
+            let tx = result_tx.clone();
+            async move { fetch_probe(&client, &u, &tx).await }
         }))
         .buffer_unordered(CONCURRENCY)
         .collect::<Vec<_>>()
@@ -96,7 +99,7 @@ pub async fn run_native_crawler(
     Ok(discovered)
 }
 
-async fn fetch_links(client: &HttpClient, url: &str, sink: &SinkRef) -> Vec<String> {
+async fn fetch_links(client: &HttpClient, url: &str, tx: &mpsc::Sender<ScanResult>) -> Vec<String> {
     let parsed = match Url::parse(url) {
         Ok(u) => u,
         Err(_) => return Vec::new(),
@@ -109,7 +112,7 @@ async fn fetch_links(client: &HttpClient, url: &str, sink: &SinkRef) -> Vec<Stri
     );
     match client.send(&req).await {
         Ok(cap) => {
-            emit_secrets(sink, url, cap.status, &cap.secrets);
+            emit_secrets(tx, url, cap.status, &cap.secrets).await;
             extract_links(&cap.body, &cap.final_url)
         }
         Err(_) => Vec::new(),
@@ -117,7 +120,7 @@ async fn fetch_links(client: &HttpClient, url: &str, sink: &SinkRef) -> Vec<Stri
 }
 
 /// Fetches a forced-browse probe; emits secrets and returns the URL if it exists.
-async fn fetch_probe(client: &HttpClient, url: &str, sink: &SinkRef) -> Option<String> {
+async fn fetch_probe(client: &HttpClient, url: &str, tx: &mpsc::Sender<ScanResult>) -> Option<String> {
     let parsed = Url::parse(url).ok()?;
     let req = crate::http::HttpRequest::new(
         reqwest::Method::GET,
@@ -126,7 +129,7 @@ async fn fetch_probe(client: &HttpClient, url: &str, sink: &SinkRef) -> Option<S
         String::new(),
     );
     let cap = client.send(&req).await.ok()?;
-    emit_secrets(sink, url, cap.status, &cap.secrets);
+    emit_secrets(tx, url, cap.status, &cap.secrets).await;
     if cap.status < 400 {
         Some(url.to_string())
     } else {
@@ -134,23 +137,31 @@ async fn fetch_probe(client: &HttpClient, url: &str, sink: &SinkRef) -> Option<S
     }
 }
 
-fn emit_secrets(sink: &SinkRef, url: &str, status: u16, secrets: &[arkenar_secrets::Secret]) {
+/// Forwards each detected secret to the aggregator (dedup + JSONL + summary).
+async fn emit_secrets(
+    tx: &mpsc::Sender<ScanResult>,
+    url: &str,
+    status: u16,
+    secrets: &[arkenar_secrets::Secret],
+) {
     for secret in secrets {
-        sink.on_finding(&ScanResult {
-            url: url.to_string(),
-            vuln_type: format!("Sensitive Exposure [{}]", secret.kind),
-            payload: secret.matched.clone(),
-            timing_ms: 0,
-            status_code: status,
-            server: None,
-            method: "GET".to_string(),
-            request_headers: Vec::new(),
-            request_body: None,
-            tech_stack: Vec::new(),
-            waf_detected: None,
-            verified: true,
-            notes: Some(format!("secret at line {}", secret.line)),
-        });
+        let _ = tx
+            .send(ScanResult {
+                url: url.to_string(),
+                vuln_type: format!("Sensitive Exposure [{}]", secret.kind),
+                payload: secret.matched.clone(),
+                timing_ms: 0,
+                status_code: status,
+                server: None,
+                method: "GET".to_string(),
+                request_headers: Vec::new(),
+                request_body: None,
+                tech_stack: Vec::new(),
+                waf_detected: None,
+                verified: true,
+                notes: Some(format!("secret at line {}", secret.line)),
+            })
+            .await;
     }
 }
 
@@ -238,19 +249,16 @@ fn dir_of(u: &Url) -> String {
 mod tests {
     use super::*;
     use crate::{ScanEventSink, ScanResult};
-    use std::sync::Mutex;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
+    /// Crawler findings now flow through the result channel, so the sink only needs
+    /// to absorb logs.
     #[derive(Default)]
-    struct CaptureSink {
-        findings: Mutex<Vec<ScanResult>>,
-    }
+    struct CaptureSink;
     impl ScanEventSink for CaptureSink {
         fn on_log(&self, _l: &str, _m: &str) {}
-        fn on_finding(&self, r: &ScanResult) {
-            self.findings.lock().unwrap().push(r.clone());
-        }
+        fn on_finding(&self, _r: &ScanResult) {}
         fn on_progress(&self, _p: &str, _c: usize, _t: usize) {}
     }
 
@@ -299,7 +307,8 @@ mod tests {
         });
 
         let client = Arc::new(HttpClient::new(5, None, &[], false).unwrap());
-        let sink = Arc::new(CaptureSink::default());
+        let sink = Arc::new(CaptureSink);
+        let (tx, mut rx) = mpsc::channel::<ScanResult>(100);
         let target = format!("http://{}/", addr);
 
         let urls = run_native_crawler(
@@ -309,6 +318,7 @@ mod tests {
             true,
             client,
             sink.clone(),
+            tx,
             Arc::new(AtomicBool::new(false)),
         )
         .await
@@ -316,7 +326,11 @@ mod tests {
 
         assert!(urls.iter().any(|u| u.ends_with("/page2")));
 
-        let findings = sink.findings.lock().unwrap();
+        // The crawler dropped its sender on return; drain the buffered findings.
+        let mut findings = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            findings.push(f);
+        }
         assert!(findings
             .iter()
             .any(|f| f.vuln_type.contains("OpenAI") && f.url.ends_with("/.env")));
