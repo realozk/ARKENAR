@@ -12,8 +12,8 @@ use validation::{validate_text_field, validate_webhook_url};
 
 use arkenar_core::{
     installer, read_lines, resolve_domain, run_native_crawler, run_subfinder, scan_ports,
-    CompositeSink, ConsoleSink, HttpClient, ResultAggregator, ScanConfig, ScanEngine, ScanResult,
-    ScanState, SinkRef, TargetManager, WebhookNotifier,
+    CompositeSink, ConsoleSink, HttpClient, RenderMode, ResultAggregator, ScanConfig, ScanEngine,
+    ScanResult, ScanState, SinkRef, TargetManager, WebhookNotifier,
 };
 
 #[derive(Parser, Debug)]
@@ -218,6 +218,16 @@ pub struct Args {
 
     #[arg(long, help = "Write a SARIF report to this path (for the GitHub Security tab)")]
     pub sarif: Option<String>,
+
+    // ── Output mode ───────────────────────────────────────────────────────
+    #[arg(long, default_value_t = false, help = "Stream findings as JSON to stdout (for | jq); chrome to stderr")]
+    pub json: bool,
+
+    #[arg(long, default_value_t = false, help = "Findings only — no banner, config, progress, or logs")]
+    pub quiet: bool,
+
+    #[arg(long, default_value_t = false, help = "Show only proven (verified) findings")]
+    pub verified_only: bool,
 }
 
 #[tokio::main]
@@ -225,15 +235,27 @@ async fn main() {
     #[cfg(windows)]
     colored::control::set_virtual_terminal(true).ok();
 
-    print_banner();
     let args = Args::parse();
+
+    // --json wins over --quiet if both are given; otherwise rich.
+    let mode = if args.json {
+        RenderMode::Json
+    } else if args.quiet {
+        RenderMode::Quiet
+    } else {
+        RenderMode::Rich
+    };
+
+    if mode == RenderMode::Rich {
+        print_banner();
+    }
 
     if args.update {
         installer::run_full_update().await;
         process::exit(0);
     }
 
-    let sink = ConsoleSink::new_ref();
+    let sink = ConsoleSink::new_ref(mode, args.verified_only);
 
     if args.resume {
         match ScanState::load(ScanState::default_path()).await {
@@ -248,7 +270,7 @@ async fn main() {
                 );
                 let config = state.config.clone();
                 for target in &state.pending_urls {
-                    run_scan_sequence(target, &config, &sink).await;
+                    run_scan_sequence(target, &config, &sink, mode).await;
                 }
                 ScanState::delete(ScanState::default_path()).await;
                 sink.on_log("success", "[+] Resumed scan complete.");
@@ -333,17 +355,19 @@ async fn main() {
     if !config.list_file.is_empty() {
         match read_lines(&config.list_file) {
             Ok(lines) => {
-                print!(
-                    "{}\r\n",
-                    format!(
-                        "[+] Loaded {} target(s) from {}",
-                        lines.len(),
-                        config.list_file
-                    )
-                    .green()
-                    .bold()
-                );
-                std::io::stdout().flush().ok();
+                if mode == RenderMode::Rich {
+                    print!(
+                        "{}\r\n",
+                        format!(
+                            "[+] Loaded {} target(s) from {}",
+                            lines.len(),
+                            config.list_file
+                        )
+                        .green()
+                        .bold()
+                    );
+                    std::io::stdout().flush().ok();
+                }
                 targets.extend(lines);
             }
             Err(e) => {
@@ -375,6 +399,7 @@ async fn main() {
         for target in &targets {
             run_recon_sequence(target, &sink).await;
         }
+        sink.finish();
         return;
     }
 
@@ -390,9 +415,10 @@ async fn main() {
     };
 
     let total = targets.len();
+    let scan_start = std::time::Instant::now();
     let mut all_results: Vec<ScanResult> = Vec::new();
     for (i, target) in targets.iter().enumerate() {
-        if total > 1 {
+        if total > 1 && mode == RenderMode::Rich {
             print!(
                 "\r\n{}\r\n",
                 format!("━━━ Target {}/{}: {} ━━━", i + 1, total, target)
@@ -401,8 +427,12 @@ async fn main() {
             );
             std::io::stdout().flush().ok();
         }
-        all_results.extend(run_scan_sequence(target, &config, &scan_sink).await);
+        all_results.extend(run_scan_sequence(target, &config, &scan_sink, mode).await);
     }
+
+    // Make sure any live progress UI is torn down before the footer.
+    scan_sink.finish();
+    print_footer(&all_results, scan_start.elapsed(), mode);
 
     // Deliver queued alerts before exit.
     if let Some(n) = &notifier {
@@ -451,13 +481,20 @@ fn print_banner() {
     std::io::stdout().flush().ok();
 }
 
-async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) -> Vec<ScanResult> {
+async fn run_scan_sequence(
+    target: &str,
+    config: &ScanConfig,
+    sink: &SinkRef,
+    mode: RenderMode,
+) -> Vec<ScanResult> {
     if config.dry_run {
         sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", target));
         return Vec::new();
     }
 
-    print_scan_config(target, config);
+    if mode == RenderMode::Rich {
+        print_scan_config(target, config);
+    }
 
     let custom_headers = config.parsed_headers();
 
@@ -611,6 +648,32 @@ async fn run_recon_sequence(target: &str, sink: &SinkRef) {
             total_open
         ),
     );
+}
+
+/// Final one-line tally: verified vs potential findings + elapsed time.
+/// Suppressed in --quiet and --json (those modes emit findings only).
+fn print_footer(results: &[ScanResult], elapsed: std::time::Duration, mode: RenderMode) {
+    if mode != RenderMode::Rich {
+        return;
+    }
+    let findings: Vec<&ScanResult> = results.iter().filter(|r| r.vuln_type != "Safe").collect();
+    let verified = findings.iter().filter(|r| r.verified).count();
+    let potential = findings.len() - verified;
+
+    let secs = elapsed.as_secs();
+    let elapsed_str = if secs >= 60 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else {
+        format!("{}s", secs)
+    };
+
+    print!(
+        "\r\n  {}  ·  {}  ·  {}\r\n",
+        format!("{} verified", verified).green().bold(),
+        format!("{} potential", potential).bright_black(),
+        elapsed_str.dimmed()
+    );
+    std::io::stdout().flush().ok();
 }
 
 fn print_scan_config(target: &str, config: &ScanConfig) {

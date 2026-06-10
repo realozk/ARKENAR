@@ -150,6 +150,9 @@ impl ResultAggregator {
     }
 
     pub fn report_summary(results: &[ScanResult], sink: &SinkRef) {
+        // Tear down any live progress UI before the summary prints.
+        sink.finish();
+
         let vulns: Vec<&ScanResult> = results.iter().filter(|r| r.vuln_type != "Safe").collect();
 
         if vulns.is_empty() {

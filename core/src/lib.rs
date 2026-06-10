@@ -201,95 +201,11 @@ pub trait ScanEventSink: Send + Sync {
     fn on_log(&self, level: &str, message: &str);
     fn on_finding(&self, result: &ScanResult);
     fn on_progress(&self, phase: &str, current: usize, total: usize);
+    /// Called once when all scanning is complete, so renderers can tear down any
+    /// live progress UI before the summary prints. Default no-op for headless sinks.
+    fn finish(&self) {}
 }
 
 pub type SinkRef = Arc<dyn ScanEventSink>;
 
-pub struct ConsoleSink;
-
-impl ConsoleSink {
-    pub fn new_ref() -> SinkRef {
-        Arc::new(Self)
-    }
-}
-
-impl ScanEventSink for ConsoleSink {
-    fn on_log(&self, level: &str, message: &str) {
-        use colored::*;
-        use std::io::Write;
-        let already_tagged = message.starts_with('[') || message.starts_with("──");
-        let prefix = match level {
-            "success" if !already_tagged => "[+] ",
-            "error" if !already_tagged => "[!] ",
-            "warn" if !already_tagged => "[~] ",
-            "phase" if !already_tagged => "[*] ",
-            _ => "",
-        };
-        let combined = format!("{}{}", prefix, message);
-        let colored = match level {
-            "success" => combined.green().to_string(),
-            "error" => combined.red().to_string(),
-            "warn" => combined.yellow().to_string(),
-            "phase" => combined.bright_cyan().bold().to_string(),
-            _ => combined,
-        };
-        print!("{}\r\n", colored);
-        std::io::stdout().flush().ok();
-    }
-
-    fn on_finding(&self, result: &ScanResult) {
-        use colored::*;
-        use std::io::Write;
-        let out = |text: &str| {
-            print!("{}\r\n", text);
-            std::io::stdout().flush().ok();
-        };
-        let vuln_lower = result.vuln_type.to_lowercase();
-        let colored_vuln = if vuln_lower.contains("sql")
-            || vuln_lower.contains("rce")
-            || vuln_lower.contains("command")
-        {
-            result.vuln_type.red().bold().to_string()
-        } else if vuln_lower.contains("xss")
-            || vuln_lower.contains("ssrf")
-            || vuln_lower.contains("path traversal")
-        {
-            result.vuln_type.yellow().to_string()
-        } else if vuln_lower.contains("open redirect") || vuln_lower.contains("sensitive") {
-            result.vuln_type.bright_yellow().to_string()
-        } else {
-            result.vuln_type.cyan().to_string()
-        };
-        out(&format!(
-            "\n{} {} detected!",
-            "[+]".green().bold(),
-            colored_vuln
-        ));
-        out(&format!("    Target:  {}", result.url.white()));
-        out(&format!("    Payload: {}", result.payload.bright_yellow()));
-        out(&format!(
-            "    Info:    Status [{}] | Server [{}] | Time [{}ms]",
-            result.status_code.to_string().cyan(),
-            result.server.as_deref().unwrap_or("N/A").blue(),
-            result.timing_ms.to_string().dimmed()
-        ));
-        out(&format!("    curl:    {}", result.to_curl().dimmed()));
-        out(&"──────────────────────────────────────────"
-            .dimmed()
-            .to_string());
-    }
-
-    fn on_progress(&self, phase: &str, current: usize, total: usize) {
-        use colored::*;
-        use std::io::Write;
-        if total > 0 {
-            print!(
-                "{}\r\n",
-                format!("[*] {} ({}/{})", phase, current, total).bright_cyan()
-            );
-        } else {
-            print!("{}\r\n", format!("[*] {}", phase).bright_cyan());
-        }
-        std::io::stdout().flush().ok();
-    }
-}
+pub use crate::notify::console::{ConsoleSink, RenderMode};

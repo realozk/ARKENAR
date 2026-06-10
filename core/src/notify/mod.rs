@@ -1,5 +1,6 @@
 //! Headless notification sinks: webhook delivery and a fan-out composite.
 
+pub mod console;
 pub mod telegram;
 pub mod webhook;
 
@@ -150,6 +151,12 @@ impl ScanEventSink for CompositeSink {
     fn on_progress(&self, phase: &str, current: usize, total: usize) {
         for s in &self.sinks {
             s.on_progress(phase, current, total);
+        }
+    }
+
+    fn finish(&self) {
+        for s in &self.sinks {
+            s.finish();
         }
     }
 }

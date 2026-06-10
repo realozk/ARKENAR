@@ -4,13 +4,14 @@ use std::io::Write;
 use tempfile::NamedTempFile;
 
 /// Single target with --dry-run should print the dry-run message and exit 0.
+/// Logs are chrome, so they go to stderr (stdout is reserved for findings).
 #[test]
 fn test_single_target_dry_run() {
     cargo_bin_cmd!("arkenar")
         .args(["http://example.com", "--dry-run"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "[DRY RUN] Would scan target: http://example.com",
         ));
 }
@@ -29,13 +30,13 @@ fn test_list_file_dry_run() {
         .args(["-l", &path, "--dry-run"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "[DRY RUN] Would scan target: http://target1.com",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "[DRY RUN] Would scan target: http://target2.com",
         ))
-        .stdout(predicate::str::contains(
+        .stderr(predicate::str::contains(
             "[DRY RUN] Would scan target: http://target3.com",
         ));
 }
