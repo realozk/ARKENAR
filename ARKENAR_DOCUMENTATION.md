@@ -72,7 +72,7 @@ The single source of truth for what a "secret" is. No I/O, no async.
 | `ScanConfig::header_list()` | Splits the raw header string into a list. |
 | `ScanConfig::parsed_headers()` | Parsed, validated header key-value pairs. |
 | `ScanConfig::proxy_ref()` | Proxy URL as `Option<&str>`. |
-| `ScanConfig::auth_headers()` | Builds auth headers for bearer/cookie/custom modes. |
+| `ScanConfig::auth_headers()` | Builds auth headers for bearer/cookie/custom modes; merged into the shared HTTP client so auth applies to both the crawl and engine phases. |
 | `parse_custom_headers()` | Parses headers, rejecting shell metacharacters. |
 | `ConsoleSink::new_ref()` / `on_log` / `on_finding` / `on_progress` | The CLI sink: styled stdout. |
 | `ScanEventSink` (trait) | The only output contract the engine knows. |
@@ -267,7 +267,9 @@ The single source of truth for what a "secret" is. No I/O, no async.
 | `print_banner()` / `print_scan_config()` | Output chrome. |
 
 #### `cli/src/validation.rs`
-`validate_text_field()`, `validate_webhook_url()` — CLI security boundary.
+`validate_data_field()` (rejects control chars in URL/proxy/regex/header/cookie args) and
+`validate_path_field()` (rejects `..` traversal + control chars in file-path args) — the
+CLI security boundary. Webhook SSRF validation lives in `arkenar_core::validation`.
 
 #### `cli/src/report.rs`
 | Item | Description |

@@ -8,7 +8,10 @@ use tokio::sync::mpsc;
 mod report;
 mod validation;
 use report::Severity;
-use validation::{validate_text_field, validate_webhook_url};
+use validation::{validate_data_field, validate_path_field};
+// Webhook SSRF validation lives in core (single source of truth — the typed-Host IPv6
+// handling that blocks `[::1]`, link-local, etc.). Called fully-qualified below to avoid
+// clashing with the local `mod validation`.
 
 use arkenar_core::{
     installer, read_lines, resolve_domain, run_native_crawler, run_subfinder, scan_ports,
@@ -149,14 +152,6 @@ pub struct Args {
     )]
     pub webhook_url: Option<String>,
 
-    // ── Evasion (Market-Killer) ───────────────────────────────────────────
-    #[arg(
-        long,
-        default_value_t = false,
-        help = "Enable WAF evasion mutations on 403 responses"
-    )]
-    pub enable_waf_evasion: bool,
-
     // ── Live verification (1.3) ───────────────────────────────────────────
     #[arg(
         long,
@@ -176,13 +171,6 @@ pub struct Args {
 
     #[arg(long, default_value_t = String::new(), help = "Regex to restrict scan scope (e.g. ^https://example\\.com)")]
     pub scope_regex: String,
-
-    #[arg(
-        long,
-        default_value_t = 5u32,
-        help = "Number of 403 responses before WAF evasion kicks in"
-    )]
-    pub waf_evasion_threshold: u32,
 
     #[arg(
         long,
@@ -292,19 +280,35 @@ async fn main() {
         process::exit(0);
     }
 
-    // Validate free-text fields for shell metacharacters and path traversal
+    // Data fields (URL / regex / header / cookie) — reject only control characters; their
+    // shell-metachar-looking syntax is legal data and is never shell-interpolated.
+    let mut data_fields: Vec<(&str, String)> = vec![
+        ("target", args.target.clone().unwrap_or_default()),
+        ("proxy", args.proxy.clone().unwrap_or_default()),
+        ("scope-regex", args.scope_regex.clone()),
+        ("auth-token", args.auth_token.clone().unwrap_or_default()),
+        ("auth-cookies", args.auth_cookies.clone().unwrap_or_default()),
+    ];
+    for header in &args.headers {
+        data_fields.push(("header", header.clone()));
+    }
+    for (name, val) in &data_fields {
+        if !val.is_empty() {
+            if let Err(e) = validate_data_field(name, val) {
+                eprintln!("[!] {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Filesystem-path fields — keep the conservative shell-metachar + traversal denylist.
     for (name, val) in [
-        ("target", args.target.as_deref().unwrap_or("")),
-        ("proxy", args.proxy.as_deref().unwrap_or("")),
-        ("scope-regex", args.scope_regex.as_str()),
-        ("headers", &args.headers.join(";")),
-        ("auth-token", args.auth_token.as_deref().unwrap_or("")),
-        ("auth-cookies", args.auth_cookies.as_deref().unwrap_or("")),
         ("payloads", args.payloads.as_deref().unwrap_or("")),
         ("output", args.output.as_str()),
+        ("list", args.list.as_deref().unwrap_or("")),
     ] {
         if !val.is_empty() {
-            if let Err(e) = validate_text_field(name, val) {
+            if let Err(e) = validate_path_field(name, val) {
                 eprintln!("[!] {}", e);
                 std::process::exit(1);
             }
@@ -314,7 +318,7 @@ async fn main() {
     // Validate webhook URL (block SSRF)
     if let Some(ref webhook) = args.webhook_url {
         if !webhook.is_empty() {
-            if let Err(e) = validate_webhook_url(webhook) {
+            if let Err(e) = arkenar_core::validation::validate_webhook_url(webhook) {
                 eprintln!("[!] {}", e);
                 std::process::exit(1);
             }
@@ -344,7 +348,6 @@ async fn main() {
         resume: args.resume,
         enable_fingerprint: !args.no_fingerprint,
         scope_regex: args.scope_regex.clone(),
-        waf_evasion_threshold: args.waf_evasion_threshold,
         enable_smart_payloads: !args.no_smart_payloads,
         // Auth
         auth_token: args.auth_token.clone(),
@@ -352,8 +355,6 @@ async fn main() {
         auth_type: args.auth_type.clone(),
         // Discovery
         enable_js_analysis: args.enable_js_analysis,
-        // Evasion
-        enable_waf_evasion: args.enable_waf_evasion,
         allow_insecure_tls: args.allow_insecure_tls,
         // Live verification
         verify_live: args.verify_live,
@@ -521,7 +522,13 @@ async fn run_scan_sequence(
         print_scan_config(target, config);
     }
 
-    let custom_headers = config.parsed_headers();
+    // Custom `-H` headers plus any auth headers derived from --auth-type/--auth-token/
+    // --auth-cookies. Auth is appended last so it wins on a key collision; both the
+    // crawler and the engine share this client, so authenticated scanning covers every
+    // phase. HttpClient inserts into a HeaderMap (dedups by key), so the "custom"
+    // auth-type's echo of the -H headers collapses harmlessly.
+    let mut custom_headers = config.parsed_headers();
+    custom_headers.extend(config.auth_headers());
 
     let mut target_manager = TargetManager::new();
     target_manager.add_target(target.to_string());
@@ -737,9 +744,6 @@ fn print_scan_config(target: &str, config: &ScanConfig) {
     }
     if !config.scope_regex.is_empty() {
         bits.push("scope-regex".to_string());
-    }
-    if config.enable_waf_evasion {
-        bits.push(format!("waf-evasion@{}", config.waf_evasion_threshold));
     }
     if !config.proxy.is_empty() {
         bits.push("proxy".to_string());

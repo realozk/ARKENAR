@@ -169,7 +169,8 @@ core/src/
 cli/src/
 ├── main.rs       # THE CLI. Args (clap), ScanConfig, run_scan_sequence (crawl→engine),
 │                   run_recon_sequence (subfinder→ports/DNS), --update, --resume.
-├── validation.rs # CLI security boundary: validate_text_field, validate_webhook_url.
+├── validation.rs # CLI security boundary: validate_data_field (control-char) +
+│                   validate_path_field (traversal). Webhook SSRF → core's validator.
 └── report.rs     # Severity, SARIF export (--sarif), CI gate (--fail-on).
 cli/tests/cli_tests.rs
 ```
@@ -280,8 +281,7 @@ Carries all configuration from CLI to engine. Selected fields:
 | `scope` / `scope_regex` | `false` / `""` | same-origin / regex scope |
 | `enable_fingerprint` / `enable_smart_payloads` | `true` | engine toggles |
 | `enable_param_fuzz` / `enable_js_analysis` | `false` | discovery toggles |
-| `enable_waf_evasion` / `waf_evasion_threshold` | `false` / `5` | evasion on 403s |
-| `auth_type` / `auth_token` / `auth_cookies` | `"none"` | auth headers |
+| `auth_type` / `auth_token` / `auth_cookies` | `"none"` | auth headers (applied to the shared client, both phases) |
 | `webhook_url` | `None` | SSRF-validated webhook |
 | `allow_insecure_tls` | `false` | accept invalid TLS (dangerous) |
 | `resume` / `dry_run` | `false` | resume from state / simulate |
@@ -318,9 +318,9 @@ here.
 
 | Surface | Where | Mitigation |
 |---|---|---|
-| Target URL / proxy / headers | CLI `Args` | `validate_text_field` (shell-meta + `..`) before use |
-| List file path | CLI `Args` | `validate_text_field` |
-| Webhook URL | CLI + `WebhookNotifier` | `validate_webhook_url`: HTTPS-only, rejects RFC-1918/loopback/`.local`/`.internal` |
+| Target URL / proxy / headers / cookies | CLI `Args` | `validate_data_field`: rejects control chars (CRLF/header injection). Metachars are legal data here — never shell-interpolated |
+| Output / payload / list file paths | CLI `Args` | `validate_path_field`: rejects `..` traversal + control chars (paths go to `std::fs`, not a shell) |
+| Webhook URL | CLI + `WebhookNotifier` | `arkenar_core::validation::validate_webhook_url`: HTTPS-only, rejects RFC-1918/loopback/`.local`/`.internal` and IPv6 loopback (`[::1]`) via typed-Host parsing |
 | Subfinder domain (recon) | `run_subfinder` | last external subprocess; argument is a validated host (being removed) |
 | HTTP response bodies | `HttpClient::send` | passed to `scan_bytes` / `Detector`; never executed; capped at `MAX_RESPONSE_BODY` |
 | Outbound finding payloads | `notify::*` | secret values redacted at egress (`redact_secret`) |

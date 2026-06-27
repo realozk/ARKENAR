@@ -67,10 +67,6 @@ pub struct ScanConfig {
     pub enable_js_analysis: bool,
     pub enable_param_fuzz: bool,
 
-    // ── Evasion (Market-Killer) ───────────────────────────────────────────
-    pub enable_waf_evasion: bool,
-    pub waf_evasion_threshold: u32,
-
     // ── Live verification (1.3) ───────────────────────────────────────────
     /// Opt-in: probe each detected key against its provider's auth endpoint.
     pub verify_live: bool,
@@ -111,9 +107,6 @@ impl Default for ScanConfig {
             // Discovery
             enable_js_analysis: false,
             enable_param_fuzz: false,
-            // Evasion
-            enable_waf_evasion: false,
-            waf_evasion_threshold: 5,
             // Live verification
             verify_live: false,
         }
@@ -214,3 +207,44 @@ pub trait ScanEventSink: Send + Sync {
 pub type SinkRef = Arc<dyn ScanEventSink>;
 
 pub use crate::notify::console::{ConsoleSink, RenderMode};
+
+#[cfg(test)]
+mod auth_header_tests {
+    use super::ScanConfig;
+
+    fn cfg(auth_type: &str) -> ScanConfig {
+        ScanConfig {
+            auth_type: auth_type.to_string(),
+            auth_token: Some("TKN123".to_string()),
+            auth_cookies: Some("session=abc".to_string()),
+            ..ScanConfig::default()
+        }
+    }
+
+    #[test]
+    fn bearer_emits_authorization() {
+        let h = cfg("bearer").auth_headers();
+        assert_eq!(h, vec![("Authorization".into(), "Bearer TKN123".into())]);
+    }
+
+    #[test]
+    fn cookie_emits_cookie_header() {
+        let h = cfg("cookie").auth_headers();
+        assert_eq!(h, vec![("Cookie".into(), "session=abc".into())]);
+    }
+
+    #[test]
+    fn none_emits_nothing() {
+        assert!(cfg("none").auth_headers().is_empty());
+    }
+
+    #[test]
+    fn empty_token_is_not_emitted() {
+        let c = ScanConfig {
+            auth_type: "bearer".into(),
+            auth_token: Some(String::new()),
+            ..ScanConfig::default()
+        };
+        assert!(c.auth_headers().is_empty());
+    }
+}

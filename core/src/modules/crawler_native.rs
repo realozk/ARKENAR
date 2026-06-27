@@ -320,6 +320,13 @@ fn in_scope(url: &str, host: &Option<String>, same_origin: bool) -> bool {
 fn build_probes(base: &Url, discovered: &[String], visited: &HashSet<String>) -> Vec<String> {
     let mut dirs: HashSet<String> = HashSet::new();
     dirs.insert(dir_of(base));
+    // Always probe the origin root, even when seeded at a deep path. Exposed config
+    // (.env / .git/config / backups) almost always sits at the domain root, not the
+    // sub-path the user happened to point at — and on a JS SPA the crawler discovers no
+    // links, so the seed directory would otherwise be the *only* thing probed.
+    if let Ok(root) = base.join("/") {
+        dirs.insert(root.to_string());
+    }
     for u in discovered {
         if let Ok(parsed) = Url::parse(u) {
             dirs.insert(dir_of(&parsed));
@@ -391,6 +398,18 @@ mod tests {
         assert!(has("/app/backup.zip"), "backup archive");
         assert!(has("/app/.gitlab-ci.yml"), "ci/cd config");
         assert!(has("/app/.htpasswd"), "auth artifact");
+    }
+
+    #[test]
+    fn probes_origin_root_from_deep_path() {
+        // Seeded at a deep SPA path, the prober must still hit the domain root — that's
+        // where exposed config usually lives, and the crawler finds no links on an SPA.
+        let base = Url::parse("http://h/ui/students/").unwrap();
+        let probes = build_probes(&base, &[], &HashSet::new());
+        assert!(probes.iter().any(|p| p == "http://h/.env"), "root .env");
+        assert!(probes.iter().any(|p| p == "http://h/.git/config"), "root .git/config");
+        // …and the seed directory is still probed.
+        assert!(probes.iter().any(|p| p == "http://h/ui/students/.env"), "seed-dir .env");
     }
 
     fn respond(path: &str) -> String {

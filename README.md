@@ -1,6 +1,6 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
 
-**Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, active WAF evasion, and a verify-before-report discipline.
+**Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, WAF-aware payload selection, and a verify-before-report discipline.
 
 Its flagship is the **Rapid Extraction Module** — a specialized engine that *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. Each finding carries an **earned** verification tier — `reachable` (live, non-decoy, content-sane) or, with [`--verify-live`](#live-key-verification---verify-live), `live` (proven against the provider). **One static binary. No external tools.**
 
@@ -107,8 +107,7 @@ Run `arkenar --help` for everything. Common flags:
 | :--- | :--- |
 | `--no-crawler` | Skip the native crawl / forced-browse phase |
 | `--enable-param-fuzz` | Enable parameter fuzzing |
-| `--enable-js-analysis` | Enable JS endpoint analysis |
-| `--enable-waf-evasion` | Mutate payloads on 403 responses |
+| `--enable-js-analysis` | Fetch linked scripts and scan their bodies for hardcoded secrets |
 | `--verify-live` | Prove found keys against their provider (opt-in — **read the warning below**) |
 | `--no-fingerprint` | Disable tech-stack fingerprinting |
 | `--no-smart-payloads` | Disable context-aware payload selection |

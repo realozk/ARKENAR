@@ -148,12 +148,12 @@ impl ScanEngine {
                     Ok(req) => req,
                     Err(e) => {
                         warn!("Failed to parse URL {}: {}", target_url, e);
-                        return vec![];
+                        return;
                     }
                 };
 
                 if abort_task.load(Ordering::Relaxed) {
-                    return vec![];
+                    return;
                 }
 
                 let canary_req = mutator::build_canary_request(&request);
@@ -184,8 +184,8 @@ impl ScanEngine {
                     }
                 };
 
-                let mut extra_targets: Vec<String> = Vec::new();
-
+                // JS static analysis: fetch linked scripts so the global secret filter
+                // runs on their bodies (keys are routinely hardcoded in bundled JS).
                 if enable_js_analysis && !page_body.is_empty() {
                     let js_urls = js_analyzer.extract_js_urls(&page_body, &target_url);
                     for js_url in js_urls {
@@ -210,20 +210,12 @@ impl ScanEngine {
                                     ))
                                     .await;
                             }
-                            let endpoints = js_analyzer.extract_endpoints(&js_cap.body);
-                            for path in endpoints {
-                                if let Ok(base) = Url::parse(&target_url) {
-                                    if let Ok(full) = base.join(&path) {
-                                        extra_targets.push(full.to_string());
-                                    }
-                                }
-                            }
                         }
                     }
                 }
 
                 if !reflects {
-                    return extra_targets;
+                    return;
                 }
 
                 let fp_req = match create_request_from_url(&target_url) {
@@ -262,8 +254,6 @@ impl ScanEngine {
                     concurrency_limit,
                 )
                 .await;
-
-                extra_targets
             });
 
             tasks.push(handle);
@@ -272,13 +262,8 @@ impl ScanEngine {
         drop(result_tx);
 
         for result in futures::future::join_all(tasks).await {
-            match result {
-                Ok(extra) => {
-                    for url in extra {
-                        self.target_manager.add_target(url);
-                    }
-                }
-                Err(e) => warn!("Scan task panicked: {}", e),
+            if let Err(e) = result {
+                warn!("Scan task panicked: {}", e);
             }
         }
 
