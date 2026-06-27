@@ -4,11 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    name: Test — ${{ matrix.os }}
+    name: Build & test — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -22,21 +26,26 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-
-      - name: Run tests
-        run: cargo test -p arkenar -p arkenar-core --verbose
+          key: ${{ matrix.os }}
 
       - name: Check formatting
-        run: cargo fmt -p arkenar -p arkenar-core -- --check
+        run: cargo fmt --all -- --check
 
-      - name: Run Clippy
-        run: cargo clippy -p arkenar -p arkenar-core -- -D warnings
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --locked -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      # The precision corpus (secrets/tests/precision_corpus.rs) runs as part of the
+      # workspace test set. A regression in the false-positive / false-negative count
+      # fails this job — that is the gate behind the "Zero-FP" number.
+      - name: Test workspace
+        run: cargo test --workspace --locked

@@ -5,12 +5,18 @@ use std::process;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+mod report;
 mod validation;
-use validation::{validate_tags_field, validate_text_field, validate_webhook_url};
+use report::Severity;
+use validation::{validate_data_field, validate_path_field};
+// Webhook SSRF validation lives in core (single source of truth — the typed-Host IPv6
+// handling that blocks `[::1]`, link-local, etc.). Called fully-qualified below to avoid
+// clashing with the local `mod validation`.
 
 use arkenar_core::{
-    installer, read_lines, run_katana_crawler, run_nuclei_scan, ConsoleSink, HttpClient,
-    ResultAggregator, ScanConfig, ScanEngine, ScanResult, ScanState, SinkRef, TargetManager,
+    installer, read_lines, resolve_domain, run_native_crawler, run_subfinder, scan_ports,
+    verify_live, CompositeSink, ConsoleSink, HttpClient, RenderMode, ResultAggregator, ScanConfig,
+    ScanEngine, ScanResult, ScanState, SinkRef, TargetManager, WebhookNotifier,
 };
 
 #[derive(Parser, Debug)]
@@ -102,25 +108,19 @@ pub struct Args {
     )]
     pub rate_limit: u64,
 
-    #[arg(
-        long,
-        help = "Custom Nuclei tags (e.g. \"cve,jira,panel\"). Overrides default simple mode logic."
-    )]
-    pub tags: Option<String>,
-
     #[arg(long, help = "Update ARKENAR to the latest version")]
     pub update: bool,
 
     #[arg(long, help = "Simulate scan without sending real requests")]
     pub dry_run: bool,
 
-    #[arg(long, default_value_t = 3, help = "Katana crawl depth")]
+    #[arg(long, default_value_t = 3, help = "Crawl depth")]
     pub crawler_depth: u32,
 
-    #[arg(long, default_value_t = 60, help = "Katana crawl timeout in seconds")]
+    #[arg(long, default_value_t = 60, help = "Crawl timeout in seconds")]
     pub crawler_timeout: u64,
 
-    #[arg(long, default_value_t = 50, help = "Max URLs for Katana to discover")]
+    #[arg(long, default_value_t = 50, help = "Max URLs to discover during crawl")]
     pub crawler_max_urls: usize,
 
     #[arg(long, help = "Resume a previously interrupted scan")]
@@ -138,10 +138,6 @@ pub struct Args {
         help = "Authentication type: none, bearer, cookie, custom")]
     pub auth_type: String,
 
-    // ── OAST (Market-Killer) ───────────────────────────────────────────────
-    #[arg(long, help = "Interactsh OAST server URL (e.g. https://oast.pro)")]
-    pub oast_server: Option<String>,
-
     // ── Discovery (v1.3) ──────────────────────────────────────────────────
     #[arg(
         long,
@@ -156,15 +152,16 @@ pub struct Args {
     )]
     pub webhook_url: Option<String>,
 
-    // ── Evasion (Market-Killer) ───────────────────────────────────────────
+    // ── Live verification (1.3) ───────────────────────────────────────────
     #[arg(
         long,
         default_value_t = false,
-        help = "Enable WAF evasion mutations on 403 responses"
+        help = "Probe each detected key against its provider's auth endpoint (opt-in; \
+                authenticates to a third party — see the legal note in --help/README)"
     )]
-    pub enable_waf_evasion: bool,
+    pub verify_live: bool,
 
-    // ── Fingerprint / Smart Payloads / Scope / Nuclei ─────────────────────
+    // ── Fingerprint / Smart Payloads / Scope ──────────────────────────────
     #[arg(
         long,
         default_value_t = false,
@@ -177,20 +174,10 @@ pub struct Args {
 
     #[arg(
         long,
-        default_value_t = 5u32,
-        help = "Number of 403 responses before WAF evasion kicks in"
-    )]
-    pub waf_evasion_threshold: u32,
-
-    #[arg(
-        long,
         default_value_t = false,
         help = "Disable context-aware (smart) payload selection"
     )]
     pub no_smart_payloads: bool,
-
-    #[arg(long, default_value_t = String::new(), help = "Path to custom Nuclei templates directory")]
-    pub nuclei_templates: String,
 
     #[arg(
         long,
@@ -199,12 +186,13 @@ pub struct Args {
     )]
     pub allow_insecure_tls: bool,
 
-    // ── Module toggles (parity with GUI) ──────────────────────────────────
-    #[arg(long, default_value_t = false, help = "Skip the Katana crawl phase")]
+    // ── Module toggles ────────────────────────────────────────────────────
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Skip the native crawl / forced-browse phase"
+    )]
     pub no_crawler: bool,
-
-    #[arg(long, default_value_t = false, help = "Skip the Nuclei scan phase")]
-    pub no_nuclei: bool,
 
     #[arg(
         long,
@@ -212,6 +200,46 @@ pub struct Args {
         help = "Enable experimental parameter fuzzing"
     )]
     pub enable_param_fuzz: bool,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Recon mode: subdomain enumeration + port scan + DNS (instead of a vuln scan)"
+    )]
+    pub recon: bool,
+
+    // ── CI / GitHub Action ────────────────────────────────────────────────
+    #[arg(long, value_parser = ["none", "low", "medium", "high", "critical"],
+        help = "Exit non-zero if a finding at/above this severity is found (CI gate)")]
+    pub fail_on: Option<String>,
+
+    #[arg(
+        long,
+        help = "Write a SARIF report to this path (for the GitHub Security tab)"
+    )]
+    pub sarif: Option<String>,
+
+    // ── Output mode ───────────────────────────────────────────────────────
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Stream findings as JSON to stdout (for | jq); chrome to stderr"
+    )]
+    pub json: bool,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Findings only — no banner, config, progress, or logs"
+    )]
+    pub quiet: bool,
+
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Show only proven (verified) findings"
+    )]
+    pub verified_only: bool,
 }
 
 #[tokio::main]
@@ -219,19 +247,27 @@ async fn main() {
     #[cfg(windows)]
     colored::control::set_virtual_terminal(true).ok();
 
-    print_banner();
     let args = Args::parse();
+
+    // --json wins over --quiet if both are given; otherwise rich.
+    let mode = if args.json {
+        RenderMode::Json
+    } else if args.quiet {
+        RenderMode::Quiet
+    } else {
+        RenderMode::Rich
+    };
+
+    if mode == RenderMode::Rich {
+        print_banner();
+    }
 
     if args.update {
         installer::run_full_update().await;
         process::exit(0);
     }
 
-    if !args.dry_run {
-        installer::check_and_install_tools().await;
-    }
-
-    let sink = ConsoleSink::new_ref();
+    let sink = ConsoleSink::new_ref(mode, args.verified_only, args.verify_live);
 
     if args.resume {
         match ScanState::load(ScanState::default_path()).await {
@@ -245,11 +281,16 @@ async fn main() {
                     ),
                 );
                 let config = state.config.clone();
+                let resume_start = std::time::Instant::now();
+                let mut resumed_results: Vec<ScanResult> = Vec::new();
                 for target in &state.pending_urls {
-                    run_scan_sequence(target, &config, &sink).await;
+                    resumed_results.extend(run_scan_sequence(target, &config, &sink, mode).await);
                 }
                 ScanState::delete(ScanState::default_path()).await;
                 sink.on_log("success", "[+] Resumed scan complete.");
+                // Render the authoritative --json/--quiet stream + Rich summary once the
+                // full (post-verification) result set is known.
+                sink.on_complete(&resumed_results, resume_start.elapsed());
             }
             None => {
                 sink.on_log("error", "[!] No state file found. Nothing to resume.");
@@ -258,30 +299,38 @@ async fn main() {
         process::exit(0);
     }
 
-    // Validate free-text fields for shell metacharacters and path traversal
-    for (name, val) in [
-        ("target", args.target.as_deref().unwrap_or("")),
-        ("proxy", args.proxy.as_deref().unwrap_or("")),
-        ("scope-regex", args.scope_regex.as_str()),
-        ("nuclei-templates", args.nuclei_templates.as_str()),
-        ("headers", &args.headers.join(";")),
-        ("auth-token", args.auth_token.as_deref().unwrap_or("")),
-        ("auth-cookies", args.auth_cookies.as_deref().unwrap_or("")),
-        ("payloads", args.payloads.as_deref().unwrap_or("")),
-        ("output", args.output.as_str()),
-    ] {
+    // Data fields (URL / regex / header / cookie) — reject only control characters; their
+    // shell-metachar-looking syntax is legal data and is never shell-interpolated.
+    let mut data_fields: Vec<(&str, String)> = vec![
+        ("target", args.target.clone().unwrap_or_default()),
+        ("proxy", args.proxy.clone().unwrap_or_default()),
+        ("scope-regex", args.scope_regex.clone()),
+        ("auth-token", args.auth_token.clone().unwrap_or_default()),
+        (
+            "auth-cookies",
+            args.auth_cookies.clone().unwrap_or_default(),
+        ),
+    ];
+    for header in &args.headers {
+        data_fields.push(("header", header.clone()));
+    }
+    for (name, val) in &data_fields {
         if !val.is_empty() {
-            if let Err(e) = validate_text_field(name, val) {
+            if let Err(e) = validate_data_field(name, val) {
                 eprintln!("[!] {}", e);
                 std::process::exit(1);
             }
         }
     }
 
-    // Validate tags (block flag injection)
-    if let Some(ref tags) = args.tags {
-        if !tags.is_empty() {
-            if let Err(e) = validate_tags_field("tags", tags) {
+    // Filesystem-path fields — keep the conservative shell-metachar + traversal denylist.
+    for (name, val) in [
+        ("payloads", args.payloads.as_deref().unwrap_or("")),
+        ("output", args.output.as_str()),
+        ("list", args.list.as_deref().unwrap_or("")),
+    ] {
+        if !val.is_empty() {
+            if let Err(e) = validate_path_field(name, val) {
                 eprintln!("[!] {}", e);
                 std::process::exit(1);
             }
@@ -291,7 +340,7 @@ async fn main() {
     // Validate webhook URL (block SSRF)
     if let Some(ref webhook) = args.webhook_url {
         if !webhook.is_empty() {
-            if let Err(e) = validate_webhook_url(webhook) {
+            if let Err(e) = arkenar_core::validation::validate_webhook_url(webhook) {
                 eprintln!("[!] {}", e);
                 std::process::exit(1);
             }
@@ -308,13 +357,11 @@ async fn main() {
         output: args.output.clone(),
         proxy: args.proxy.clone().unwrap_or_default(),
         headers: args.headers.join("\n"),
-        tags: args.tags.clone().unwrap_or_default(),
         payloads: args.payloads.clone().unwrap_or_default(),
         verbose: args.verbose,
         scope: args.scope,
         dry_run: args.dry_run,
         enable_crawler: !args.no_crawler,
-        enable_nuclei: !args.no_nuclei,
         enable_param_fuzz: args.enable_param_fuzz,
         webhook_url: args.webhook_url.clone(),
         crawler_depth: args.crawler_depth,
@@ -323,20 +370,16 @@ async fn main() {
         resume: args.resume,
         enable_fingerprint: !args.no_fingerprint,
         scope_regex: args.scope_regex.clone(),
-        waf_evasion_threshold: args.waf_evasion_threshold,
         enable_smart_payloads: !args.no_smart_payloads,
-        nuclei_templates_dir: args.nuclei_templates.clone(),
         // Auth
         auth_token: args.auth_token.clone(),
         auth_cookies: args.auth_cookies.clone(),
         auth_type: args.auth_type.clone(),
-        // OAST
-        oast_server: args.oast_server.clone(),
         // Discovery
         enable_js_analysis: args.enable_js_analysis,
-        // Evasion
-        enable_waf_evasion: args.enable_waf_evasion,
         allow_insecure_tls: args.allow_insecure_tls,
+        // Live verification
+        verify_live: args.verify_live,
         ..ScanConfig::default()
     };
 
@@ -345,17 +388,19 @@ async fn main() {
     if !config.list_file.is_empty() {
         match read_lines(&config.list_file) {
             Ok(lines) => {
-                print!(
-                    "{}\r\n",
-                    format!(
-                        "[+] Loaded {} target(s) from {}",
-                        lines.len(),
-                        config.list_file
-                    )
-                    .green()
-                    .bold()
-                );
-                std::io::stdout().flush().ok();
+                if mode == RenderMode::Rich {
+                    eprint!(
+                        "{}\r\n",
+                        format!(
+                            "[+] Loaded {} target(s) from {}",
+                            lines.len(),
+                            config.list_file
+                        )
+                        .green()
+                        .bold()
+                    );
+                    std::io::stderr().flush().ok();
+                }
                 targets.extend(lines);
             }
             Err(e) => {
@@ -382,90 +427,136 @@ async fn main() {
         process::exit(1);
     }
 
-    let total = targets.len();
-    for (i, target) in targets.iter().enumerate() {
-        if total > 1 {
-            print!(
-                "\r\n{}\r\n",
-                format!("━━━ Target {}/{}: {} ━━━", i + 1, total, target)
-                    .bright_white()
-                    .bold()
-            );
-            std::io::stdout().flush().ok();
+    // Recon mode: subdomains + ports + DNS (the former GUI recon workspace, now CLI).
+    if args.recon {
+        for target in &targets {
+            run_recon_sequence(target, &sink).await;
         }
-        run_scan_sequence(target, &config, &sink).await;
-    }
-}
-
-fn print_banner() {
-    let banner = r#"
-             :::     :::::::::  :::    ::: :::::::::: ::::    :::     :::     :::::::::
-          :+: :+:   :+:    :+: :+:   :+:  :+:        :+:+:   :+:   :+: :+:   :+:    :+:
-        +:+   +:+  +:+    +:+ +:+  +:+   +:+        :+:+:+  +:+  +:+   +:+  +:+    +:+
-      +#++:++#++: +#++:++#:  +#++:++    +#++:++#   +#+ +:+ +#+ +#++:++#++: +#++:++#:
-     +#+     +#+ +#+    +#+ +#+  +#+   +#+        +#+  +#+#+# +#+     +#+ +#+    +#+
-    #+#     #+# #+#    #+# #+#   #+#  #+#        #+#   #+#+# #+#     #+# #+#    #+#
-   ###     ### ###    ### ###    ### ########## ###    #### ###     ### ###    ###
-
-    "#;
-    print!("{}\r\n", banner.bright_cyan().bold());
-    print!("{}\r\n", "──────".dimmed());
-    std::io::stdout().flush().ok();
-}
-
-async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
-    if config.dry_run {
-        sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", target));
+        sink.finish();
         return;
     }
 
-    print_scan_config(target, config);
+    // Console + optional webhook notifier (URL already SSRF-validated above).
+    let notifier = config
+        .webhook_url
+        .as_ref()
+        .filter(|u| !u.is_empty())
+        .map(|u| WebhookNotifier::new(u.clone()));
+    let scan_sink: SinkRef = match &notifier {
+        Some(n) => CompositeSink::new_ref(vec![sink.clone(), n.clone() as SinkRef]),
+        None => sink.clone(),
+    };
 
-    let custom_headers = config.parsed_headers();
+    let total = targets.len();
+    let scan_start = std::time::Instant::now();
+    let mut all_results: Vec<ScanResult> = Vec::new();
+    for (i, target) in targets.iter().enumerate() {
+        if total > 1 && mode == RenderMode::Rich {
+            eprint!(
+                "\r\n{}\r\n",
+                format!("  target {}/{}  ·  {}", i + 1, total, target).dimmed()
+            );
+            std::io::stderr().flush().ok();
+        }
+        all_results.extend(run_scan_sequence(target, &config, &scan_sink, mode).await);
+    }
+
+    // Render the end-of-scan summary (cards for verified findings + tally).
+    // The renderer tears down the live spinner first; no-op in quiet/json.
+    scan_sink.on_complete(&all_results, scan_start.elapsed());
+
+    // Deliver queued alerts before exit.
+    if let Some(n) = &notifier {
+        scan_sink.on_log("info", "[*] Flushing webhook notifications…");
+        n.flush().await;
+    }
+
+    if let Some(path) = &args.sarif {
+        match serde_json::to_string_pretty(&report::to_sarif(&all_results)) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(path, json) {
+                    scan_sink.on_log("error", &format!("[!] Failed to write SARIF: {}", e));
+                } else {
+                    scan_sink.on_log("success", &format!("[+] SARIF written to {}", path));
+                }
+            }
+            Err(e) => scan_sink.on_log("error", &format!("[!] SARIF serialize failed: {}", e)),
+        }
+    }
+
+    // CI gate: exit non-zero if findings meet the threshold.
+    if let Some(level) = args.fail_on.as_deref().and_then(Severity::parse) {
+        if report::gate(&all_results, level) {
+            scan_sink.on_log(
+                "error",
+                &format!(
+                    "[!] Gate failed: findings at/above '{}' severity.",
+                    args.fail_on.unwrap()
+                ),
+            );
+            process::exit(1);
+        }
+    }
+}
+
+/// Compact human duration: `412ms` under a second, else `1.4s`.
+fn human(d: std::time::Duration) -> String {
+    let ms = d.as_millis();
+    if ms < 1000 {
+        format!("{}ms", ms)
+    } else {
+        format!("{:.1}s", d.as_secs_f64())
+    }
+}
+
+/// The ASCII-art identity, shown once at the top in rich mode (to stderr, so it
+/// never pollutes piped findings). Swap the art below to rebrand.
+fn print_banner() {
+    let banner = r#"
+ █████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗ █████╗ ██████╗ 
+██╔══██╗██╔══██╗██║ ██╔╝██╔════╝████╗  ██║██╔══██╗██╔══██╗
+███████║██████╔╝█████╔╝ █████╗  ██╔██╗ ██║███████║██████╔╝
+██╔══██║██╔══██╗██╔═██╗ ██╔══╝  ██║╚██╗██║██╔══██║██╔══██╗
+██║  ██║██║  ██║██║  ██╗███████╗██║ ╚████║██║  ██║██║  ██║
+╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝
+                                                                                                                
+"#;
+
+    // Brand accent – keep in sync with `ACCENT` in core/src/notify/console.rs.
+    eprintln!("{}", banner.truecolor(0x0E, 0x74, 0x90).bold());
+    eprint!(
+        "     {}  {}\r\n\r\n",
+        "prove which secrets are leaking".dimmed(),
+        format!("v{}", env!("CARGO_PKG_VERSION")).dimmed()
+    );
+    std::io::stderr().flush().ok();
+}
+
+async fn run_scan_sequence(
+    target: &str,
+    config: &ScanConfig,
+    sink: &SinkRef,
+    mode: RenderMode,
+) -> Vec<ScanResult> {
+    if config.dry_run {
+        sink.on_log("warn", &format!("[DRY RUN] Would scan target: {}", target));
+        return Vec::new();
+    }
+
+    if mode == RenderMode::Rich {
+        print_scan_config(target, config);
+    }
+
+    // Custom `-H` headers plus any auth headers derived from --auth-type/--auth-token/
+    // --auth-cookies. Auth is appended last so it wins on a key collision; both the
+    // crawler and the engine share this client, so authenticated scanning covers every
+    // phase. HttpClient inserts into a HeaderMap (dedups by key), so the "custom"
+    // auth-type's echo of the -H headers collapses harmlessly.
+    let mut custom_headers = config.parsed_headers();
+    custom_headers.extend(config.auth_headers());
 
     let mut target_manager = TargetManager::new();
     target_manager.add_target(target.to_string());
-
-    if config.enable_crawler {
-        sink.on_log("phase", "[*] Phase 1: Crawling...");
-        match run_katana_crawler(target, config, sink, Arc::new(AtomicBool::new(false))).await {
-            Ok(crawled) => {
-                sink.on_log(
-                    "success",
-                    &format!("[+] Discovered {} URL(s).", crawled.len()),
-                );
-                for u in crawled {
-                    target_manager.add_target(u);
-                }
-            }
-            Err(e) => {
-                sink.on_log("error", &format!("[!] Crawler error: {}", e));
-            }
-        }
-    } else {
-        sink.on_log("phase", "[*] Phase 1: Crawling skipped (--no-crawler).");
-    }
-
-    if config.enable_nuclei {
-        sink.on_log("phase", "[*] Phase 2: Running Nuclei Scanner...");
-        if let Err(e) = run_nuclei_scan(
-            target,
-            &config.mode,
-            config.verbose,
-            config.tags_ref(),
-            config.crawler_timeout,
-            sink,
-            Arc::new(AtomicBool::new(false)),
-        )
-        .await
-        {
-            sink.on_log("error", &format!("[!] Nuclei error: {}", e));
-        }
-    } else {
-        sink.on_log("phase", "[*] Phase 2: Nuclei skipped (--no-nuclei).");
-    }
-
-    sink.on_log("phase", "[*] Phase 3: ARKENAR Engine...");
 
     let http_client = match HttpClient::new(
         config.timeout,
@@ -476,10 +567,63 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
         Ok(c) => Arc::new(c),
         Err(e) => {
             sink.on_log("error", &format!("[!] Failed to build HTTP client: {}", e));
-            return;
+            return Vec::new();
         }
     };
+
+    let abort = Arc::new(AtomicBool::new(false));
+
+    // One aggregator spans both phases: it dedups and forwards every finding (crawler
+    // secrets included) to the sink as a live preview. The JSONL is written later, after
+    // optional --verify-live, so the file reflects final verification tiers.
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
+    let agg_sink = sink.clone();
+    let aggregator = tokio::spawn(async move { ResultAggregator::run(result_rx, agg_sink).await });
+
+    // Phase 1: native crawl + forced browse (pure Rust — no external tools).
+    // Each phase drives the spinner ("phase") and prints a `✓ … · time` ribbon
+    // line on completion ("done").
+    let mut n_discovered = 0usize;
+    if config.enable_crawler {
+        let t = std::time::Instant::now();
+        sink.on_log("phase", "crawling + forced browse");
+        match run_native_crawler(
+            target,
+            config.crawler_depth,
+            config.crawler_max_urls,
+            config.scope,
+            Arc::clone(&http_client),
+            sink.clone(),
+            result_tx.clone(),
+            abort.clone(),
+        )
+        .await
+        {
+            Ok(crawled) => {
+                n_discovered = crawled.len();
+                sink.on_log(
+                    "done",
+                    &format!("crawl · {} urls · {}", n_discovered, human(t.elapsed())),
+                );
+                for u in crawled {
+                    target_manager.add_target(u);
+                }
+            }
+            Err(e) => {
+                sink.on_log("error", &format!("[!] Crawler error: {}", e));
+            }
+        }
+    } else {
+        sink.on_log("info", "crawl skipped (--no-crawler)");
+    }
+
+    // Capture before `config` is moved into the engine — used by the post-scan
+    // live-verification pass below.
+    let do_verify_live = config.verify_live;
+
+    // Phase 2: ARKENAR engine.
+    let t_engine = std::time::Instant::now();
+    sink.on_log("phase", "probing endpoints");
     let engine = ScanEngine::with_config(
         target_manager,
         Arc::clone(&http_client),
@@ -492,105 +636,166 @@ async fn run_scan_sequence(target: &str, config: &ScanConfig, sink: &SinkRef) {
         },
         config,
     );
-    let output_path = config.output.clone();
+    engine.run(result_tx.clone(), abort.clone()).await;
 
-    let (_, results) = tokio::join!(
-        engine.run(
-            result_tx,
-            Arc::new(std::sync::atomic::AtomicBool::new(false))
+    // Drop the last sender so the aggregator's receive loop ends, then collect.
+    drop(result_tx);
+    let mut results = aggregator.await.unwrap_or_default();
+    sink.on_log(
+        "done",
+        &format!(
+            "probe · {} endpoints · {}",
+            n_discovered + 1,
+            human(t_engine.elapsed())
         ),
-        ResultAggregator::run(result_rx, &output_path, sink.clone())
     );
 
-    ResultAggregator::report_summary(&results, sink);
+    // Opt-in live key verification — upgrades/drops findings before the summary renders.
+    if do_verify_live {
+        sink.on_log(
+            "warn",
+            "[!] --verify-live: probing found keys against their providers. This \
+             AUTHENTICATES to a third party — many bug-bounty programs forbid using \
+             found credentials, and it may be illegal without authorization. Check your \
+             program's rules and the law before relying on this.",
+        );
+        let t = std::time::Instant::now();
+        sink.on_log("phase", "live key verification");
+        let stats = verify_live(&mut results, std::time::Duration::from_secs(10)).await;
+        sink.on_log(
+            "done",
+            &format!(
+                "verify-live · {} probed · {} live · {} rejected · {} inconclusive · {}",
+                stats.probed,
+                stats.live,
+                stats.rejected,
+                stats.inconclusive,
+                human(t.elapsed())
+            ),
+        );
+    }
+
+    // Persist the final, post-verification result set to disk (JSONL). Done here — not
+    // mid-scan in the aggregator — so --verify-live upgrades/drops are reflected in the
+    // output file, matching the summary and --json/--quiet stdout.
+    ResultAggregator::write_results_file(&config.output, &results, sink).await;
+
+    // Per-target findings already previewed live via the sink; the global summary
+    // (cards + tally) and the authoritative --json/--quiet stream are rendered once by
+    // `on_complete` in main().
+    results
 }
 
-fn print_scan_config(target: &str, config: &ScanConfig) {
-    let mode_label = if config.mode == "advanced" {
-        "Advanced (deeper)"
-    } else {
-        "Simple (fast)"
-    };
-    let verbose_label = if config.verbose { "ON" } else { "OFF" };
+/// Recon: subdomain enumeration (subfinder) → per-host port scan + DNS.
+/// The capability that used to live only in the GUI recon workspace.
+async fn run_recon_sequence(target: &str, sink: &SinkRef) {
+    // Accept a URL or a bare domain — extract the host.
+    let domain = url::Url::parse(target)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_string()))
+        .unwrap_or_else(|| target.trim().to_string());
 
-    print!(
-        "{}\r\n",
-        format!("[+] Target:     {}", target).green().bold()
+    let abort = Arc::new(AtomicBool::new(false));
+
+    sink.on_log(
+        "phase",
+        "[*] Recon Phase 1: subdomain enumeration (subfinder)...",
     );
-    print!(
-        "{}\r\n",
-        format!("[+] Threads:    {}", config.threads).blue()
+    let subs = match run_subfinder(&domain, sink.clone(), abort.clone()).await {
+        Ok(h) => h,
+        Err(e) => {
+            sink.on_log("error", &format!("[!] subfinder error: {}", e));
+            Vec::new()
+        }
+    };
+
+    // Dedup root + subdomains (DNS is case-insensitive); keep original case.
+    let mut seen = std::collections::HashSet::new();
+    seen.insert(domain.to_ascii_lowercase());
+    let mut hosts = vec![domain.clone()];
+    for h in subs {
+        if seen.insert(h.to_ascii_lowercase()) {
+            hosts.push(h);
+        }
+    }
+    sink.on_log(
+        "success",
+        &format!("[+] {} host(s) discovered.", hosts.len()),
     );
-    print!(
-        "{}\r\n",
-        format!("[+] Timeout:    {}s", config.timeout).blue()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Mode:       {}", mode_label).magenta().bold()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Verbose:    {}", verbose_label).magenta()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Output:     {}", config.output).blue()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Rate Limit: {} req/s", config.rate_limit).blue()
-    );
-    if !config.proxy.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Proxy:      {}", config.proxy).yellow()
+
+    sink.on_log("phase", "[*] Recon Phase 2: port scan + DNS per host...");
+    let mut total_open = 0usize;
+    for host in &hosts {
+        let (ports_res, dns_res) = tokio::join!(
+            scan_ports(host, abort.clone(), sink.clone()),
+            resolve_domain(host)
+        );
+
+        let ports = ports_res.unwrap_or_default();
+        total_open += ports.len();
+        let ports_str = if ports.is_empty() {
+            "—".to_string()
+        } else {
+            ports
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        let ip_str = match dns_res {
+            Ok(d) if !d.a_records.is_empty() => d.a_records.join(", "),
+            _ => "—".to_string(),
+        };
+        sink.on_log(
+            "success",
+            &format!("[+] {}  ports[{}]  ip[{}]", host, ports_str, ip_str),
         );
     }
-    let header_list = config.header_list();
-    if !header_list.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Headers:    {} custom", header_list.len()).yellow()
-        );
-    }
+
+    sink.on_log(
+        "success",
+        &format!(
+            "[+] Recon complete: {} host(s), {} open port(s).",
+            hosts.len(),
+            total_open
+        ),
+    );
+}
+
+/// Compact one-glance scan config, to stderr (chrome, not data). The target on
+/// its own line, then the knobs as a dim `·`-separated strip. Only the toggles
+/// that are actually on get listed — silence is the default.
+fn print_scan_config(target: &str, config: &ScanConfig) {
+    let mut bits = vec![
+        format!("{} threads", config.threads),
+        format!("{}s timeout", config.timeout),
+        format!("{} req/s", config.rate_limit),
+        if config.mode == "advanced" {
+            "advanced".to_string()
+        } else {
+            "simple".to_string()
+        },
+    ];
     if config.scope {
-        print!("{}\r\n", "[+] Scope:      Same-domain only".yellow());
-    }
-    if !config.tags.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Tags:       {}", config.tags).yellow()
-        );
+        bits.push("same-domain".to_string());
     }
     if !config.scope_regex.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Scope Regex: {}", config.scope_regex).yellow()
-        );
+        bits.push("scope-regex".to_string());
     }
-    if !config.nuclei_templates_dir.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Nuclei Templates: {}", config.nuclei_templates_dir).yellow()
-        );
+    if !config.proxy.is_empty() {
+        bits.push("proxy".to_string());
     }
-    if config.enable_waf_evasion {
-        print!(
-            "{}\r\n",
-            format!(
-                "[+] WAF Evasion: ON (threshold: {})",
-                config.waf_evasion_threshold
-            )
-            .yellow()
-        );
+    if !config.header_list().is_empty() {
+        bits.push(format!("{} headers", config.header_list().len()));
     }
     if !config.enable_fingerprint {
-        print!("{}\r\n", "[+] Fingerprint: DISABLED".dimmed());
+        bits.push("no-fingerprint".to_string());
     }
     if !config.enable_smart_payloads {
-        print!("{}\r\n", "[+] Smart Payloads: DISABLED".dimmed());
+        bits.push("no-smart-payloads".to_string());
     }
-    print!("{}\r\n", "──────".dimmed());
-    std::io::stdout().flush().ok();
+
+    eprint!("  {}\r\n", target.white().bold());
+    eprint!("  {}\r\n\r\n", bits.join("  ·  ").dimmed());
+    std::io::stderr().flush().ok();
 }

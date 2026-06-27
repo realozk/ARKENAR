@@ -1,19 +1,34 @@
-//! Input validation for the CLI — mirrors the GUI's `validate_scan_config`.
-//! Every user-supplied string is untrusted. Call these immediately after
-//! `Args::parse()` and before building `ScanConfig`.
+//! Input validation for the CLI. Every user-supplied string is untrusted; call these
+//! immediately after `Args::parse()` and before building `ScanConfig`.
+//!
+//! Webhook SSRF validation deliberately lives in `arkenar_core::validation` (one source
+//! of truth, with the typed-Host IPv6 handling) — don't reintroduce a copy here.
 
-use std::net::IpAddr;
-use url::Url;
-
-const FORBIDDEN: &[char] = &[
-    ';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\\', '\n', '\r', '\0',
-];
-
-/// Block shell metacharacters and path-traversal sequences.
-pub fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
-    if val.chars().any(|c| FORBIDDEN.contains(&c)) {
+/// Validates a *data* field — a URL, proxy, regex, header, or cookie. These are never
+/// passed through a shell (reqwest sends them as request data; subfinder takes argv
+/// directly), so shell metacharacters are harmless here and are legal URL/regex/cookie
+/// syntax — `?a=1&b=2`, `^https://x$`, `session=a; csrf=b` must all be accepted. The one
+/// real risk is control characters, which enable CRLF header injection and log forging,
+/// so those stay rejected.
+pub fn validate_data_field(name: &str, val: &str) -> Result<(), String> {
+    if val.chars().any(|c| c.is_control()) {
         return Err(format!(
-            "Argument `{}` contains a forbidden shell metacharacter.",
+            "Argument `{}` contains a control character (newline/CR/NUL not allowed).",
+            name
+        ));
+    }
+    Ok(())
+}
+
+/// Validates a *filesystem path* field (output, payload file, target list). These go
+/// straight to `std::fs`, never a shell, so shell metacharacters are irrelevant — and a
+/// metachar denylist would wrongly reject legitimate paths (Windows `\`, `C:\Program
+/// Files (x86)\…`). The meaningful guards are: no NUL/control bytes (invalid in a path)
+/// and no `..` traversal.
+pub fn validate_path_field(name: &str, val: &str) -> Result<(), String> {
+    if val.chars().any(|c| c.is_control()) {
+        return Err(format!(
+            "Argument `{}` contains a control character (not a valid path).",
             name
         ));
     }
@@ -26,107 +41,37 @@ pub fn validate_text_field(name: &str, val: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Block flag-injection in comma-separated tag fields (e.g. `--tags`).
-/// Tags must be alphanumeric + hyphens/underscores only.
-pub fn validate_tags_field(name: &str, val: &str) -> Result<(), String> {
-    for tag in val.split(',') {
-        let tag = tag.trim();
-        if tag.is_empty() {
-            continue;
-        }
-
-        if tag.starts_with('-') {
-            return Err(format!(
-                "Argument `{}`: tag `{}` looks like a CLI flag (flag injection blocked).",
-                name, tag
-            ));
-        }
-
-        if !tag
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(format!(
-                "Argument `{}`: tag `{}` contains invalid characters.",
-                name, tag
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Block SSRF: webhook URL must be HTTPS and must not target private/loopback IPs.
-pub fn validate_webhook_url(raw: &str) -> Result<(), String> {
-    let url = Url::parse(raw).map_err(|e| format!("Webhook URL is invalid: {}", e))?;
-
-    if url.scheme() != "https" {
-        return Err("Webhook URL must use HTTPS.".to_string());
-    }
-
-    let host = url
-        .host_str()
-        .ok_or_else(|| "Webhook URL has no host.".to_string())?;
-
-    if host == "localhost" || host.ends_with(".local") || host.ends_with(".internal") {
-        return Err(format!(
-            "Webhook URL host `{}` is a private/loopback hostname (SSRF blocked).",
-            host
-        ));
-    }
-
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_private_ip(ip) {
-            return Err(format!(
-                "Webhook URL `{}` resolves to a private IP (SSRF blocked).",
-                ip
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn is_private_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
-        IpAddr::V6(v6) => v6.is_loopback(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn blocks_shell_metachar() {
-        assert!(validate_text_field("target", "http://x.com;rm -rf /").is_err());
-        assert!(validate_text_field("target", "http://x.com").is_ok());
+    fn data_field_allows_url_and_cookie_syntax() {
+        // Regression: these are legal data, never shell-interpolated. They must pass.
+        assert!(validate_data_field("target", "http://x.com/?a=1&b=2").is_ok());
+        assert!(validate_data_field("auth-cookies", "session=abc; csrf=xyz").is_ok());
+        assert!(validate_data_field("scope-regex", "^https://example\\.com$").is_ok());
+        assert!(validate_data_field("header", "Authorization: Bearer ab.cd$ef").is_ok());
     }
 
     #[test]
-    fn blocks_path_traversal() {
-        assert!(validate_text_field("file", "../../etc/passwd").is_err());
-        assert!(validate_text_field("file", "targets.txt").is_ok());
+    fn data_field_rejects_control_chars() {
+        // CRLF injection into a header is the real risk — keep blocking it.
+        assert!(validate_data_field("header", "X: y\r\nEvil: 1").is_err());
+        assert!(validate_data_field("target", "http://x\n.com").is_err());
     }
 
     #[test]
-    fn blocks_flag_injection_in_tags() {
-        assert!(validate_tags_field("tags", "-exec,cve").is_err());
-        assert!(validate_tags_field("tags", "--config,panel").is_err());
-        assert!(validate_tags_field("tags", "cve,jira,panel").is_ok());
+    fn path_field_blocks_traversal_and_control() {
+        assert!(validate_path_field("list", "../../etc/passwd").is_err());
+        assert!(validate_path_field("output", "out\0.json").is_err());
+        assert!(validate_path_field("list", "targets.txt").is_ok());
     }
 
     #[test]
-    fn webhook_requires_https() {
-        assert!(validate_webhook_url("http://hooks.slack.com/x").is_err());
-        assert!(validate_webhook_url("https://hooks.slack.com/x").is_ok());
-    }
-
-    #[test]
-    fn webhook_blocks_private_ip() {
-        assert!(validate_webhook_url("https://192.168.1.1/hook").is_err());
-        assert!(validate_webhook_url("https://10.0.0.1/hook").is_err());
-        assert!(validate_webhook_url("https://127.0.0.1/hook").is_err());
-        assert!(validate_webhook_url("https://localhost/hook").is_err());
+    fn path_field_allows_real_os_paths() {
+        // Regression: native OS paths must pass — they go to std::fs, not a shell.
+        assert!(validate_path_field("output", r"C:\Program Files (x86)\arkenar\out.json").is_ok());
+        assert!(validate_path_field("output", "/var/log/arkenar/out.json").is_ok());
     }
 }

@@ -3,6 +3,7 @@ pub mod core;
 pub mod deep_hunter;
 pub mod http;
 pub mod modules;
+pub mod notify;
 pub mod utils;
 pub mod validation;
 
@@ -10,12 +11,18 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub use crate::core::engine::ScanEngine;
-pub use crate::core::result_aggregator::{ResultAggregator, ScanResult};
+pub use crate::core::result_aggregator::{
+    classify_exposure, ResultAggregator, ScanResult, Verification, SCHEMA_VERSION,
+};
 pub use crate::core::state::ScanState;
 pub use crate::core::target_manager::TargetManager;
-pub use crate::http::HttpClient;
-pub use crate::modules::crawler::run_katana_crawler;
-pub use crate::modules::nuclei::run_nuclei_scan;
+pub use crate::http::{HttpClient, HttpRequest};
+pub use crate::modules::crawler_native::run_native_crawler;
+pub use crate::modules::dns_lookup::{resolve_domain, DnsResult};
+pub use crate::modules::key_verifier::{verify_live, VerifyStats};
+pub use crate::modules::port_scanner::scan_ports;
+pub use crate::modules::subfinder::run_subfinder;
+pub use crate::notify::{CompositeSink, TelegramNotifier, WebhookNotifier};
 pub use crate::utils::installer;
 pub use crate::utils::read_lines;
 
@@ -32,13 +39,11 @@ pub struct ScanConfig {
     pub output: String,
     pub proxy: String,
     pub headers: String,
-    pub tags: String,
     pub payloads: String,
     pub verbose: bool,
     pub scope: bool,
     pub dry_run: bool,
     pub enable_crawler: bool,
-    pub enable_nuclei: bool,
     pub crawler_depth: u32,
     pub crawler_max_urls: usize,
     pub crawler_timeout: u64,
@@ -47,7 +52,6 @@ pub struct ScanConfig {
     pub resume: bool,
     pub enable_fingerprint: bool,
     pub scope_regex: String,
-    pub nuclei_templates_dir: String,
     pub enable_smart_payloads: bool,
 
     /// If true, accept invalid TLS certificates. Defaults to false.
@@ -63,13 +67,9 @@ pub struct ScanConfig {
     pub enable_js_analysis: bool,
     pub enable_param_fuzz: bool,
 
-    // ── OAST (Market-Killer) ──────────────────────────────────────────────
-    pub oast_server: Option<String>,
-    pub oast_token: Option<String>,
-
-    // ── Evasion (Market-Killer) ───────────────────────────────────────────
-    pub enable_waf_evasion: bool,
-    pub waf_evasion_threshold: u32,
+    // ── Live verification (1.3) ───────────────────────────────────────────
+    /// Opt-in: probe each detected key against its provider's auth endpoint.
+    pub verify_live: bool,
 }
 
 impl Default for ScanConfig {
@@ -85,13 +85,11 @@ impl Default for ScanConfig {
             output: "scan_results.json".to_string(),
             proxy: String::new(),
             headers: String::new(),
-            tags: String::new(),
             payloads: String::new(),
             verbose: false,
             scope: false,
             dry_run: false,
             enable_crawler: true,
-            enable_nuclei: true,
             crawler_depth: 3,
             crawler_max_urls: 50,
             crawler_timeout: 60,
@@ -100,7 +98,6 @@ impl Default for ScanConfig {
             resume: false,
             enable_fingerprint: true,
             scope_regex: String::new(),
-            nuclei_templates_dir: String::new(),
             enable_smart_payloads: true,
             allow_insecure_tls: false,
             // Auth
@@ -110,12 +107,8 @@ impl Default for ScanConfig {
             // Discovery
             enable_js_analysis: false,
             enable_param_fuzz: false,
-            // OAST
-            oast_server: None,
-            oast_token: None,
-            // Evasion
-            enable_waf_evasion: false,
-            waf_evasion_threshold: 5,
+            // Live verification
+            verify_live: false,
         }
     }
 }
@@ -142,14 +135,6 @@ impl ScanConfig {
             None
         } else {
             Some(&self.proxy)
-        }
-    }
-
-    pub fn tags_ref(&self) -> Option<&str> {
-        if self.tags.is_empty() {
-            None
-        } else {
-            Some(&self.tags)
         }
     }
 
@@ -211,95 +196,55 @@ pub trait ScanEventSink: Send + Sync {
     fn on_log(&self, level: &str, message: &str);
     fn on_finding(&self, result: &ScanResult);
     fn on_progress(&self, phase: &str, current: usize, total: usize);
+    /// Called once when all scanning is complete, so renderers can tear down any
+    /// live progress UI before the summary prints. Default no-op for headless sinks.
+    fn finish(&self) {}
+    /// Called once after all scanning completes, with the full result set, so a
+    /// renderer can print a final summary. Default no-op for headless sinks.
+    fn on_complete(&self, _results: &[ScanResult], _elapsed: std::time::Duration) {}
 }
 
 pub type SinkRef = Arc<dyn ScanEventSink>;
 
-pub struct ConsoleSink;
+pub use crate::notify::console::{ConsoleSink, RenderMode};
 
-impl ConsoleSink {
-    pub fn new_ref() -> SinkRef {
-        Arc::new(Self)
-    }
-}
+#[cfg(test)]
+mod auth_header_tests {
+    use super::ScanConfig;
 
-impl ScanEventSink for ConsoleSink {
-    fn on_log(&self, level: &str, message: &str) {
-        use colored::*;
-        use std::io::Write;
-        let already_tagged = message.starts_with('[') || message.starts_with("──");
-        let prefix = match level {
-            "success" if !already_tagged => "[+] ",
-            "error" if !already_tagged => "[!] ",
-            "warn" if !already_tagged => "[~] ",
-            "phase" if !already_tagged => "[*] ",
-            _ => "",
-        };
-        let combined = format!("{}{}", prefix, message);
-        let colored = match level {
-            "success" => combined.green().to_string(),
-            "error" => combined.red().to_string(),
-            "warn" => combined.yellow().to_string(),
-            "phase" => combined.bright_cyan().bold().to_string(),
-            _ => combined,
-        };
-        print!("{}\r\n", colored);
-        std::io::stdout().flush().ok();
-    }
-
-    fn on_finding(&self, result: &ScanResult) {
-        use colored::*;
-        use std::io::Write;
-        let out = |text: &str| {
-            print!("{}\r\n", text);
-            std::io::stdout().flush().ok();
-        };
-        let vuln_lower = result.vuln_type.to_lowercase();
-        let colored_vuln = if vuln_lower.contains("sql")
-            || vuln_lower.contains("rce")
-            || vuln_lower.contains("command")
-        {
-            result.vuln_type.red().bold().to_string()
-        } else if vuln_lower.contains("xss")
-            || vuln_lower.contains("ssrf")
-            || vuln_lower.contains("path traversal")
-        {
-            result.vuln_type.yellow().to_string()
-        } else if vuln_lower.contains("open redirect") || vuln_lower.contains("sensitive") {
-            result.vuln_type.bright_yellow().to_string()
-        } else {
-            result.vuln_type.cyan().to_string()
-        };
-        out(&format!(
-            "\n{} {} detected!",
-            "[+]".green().bold(),
-            colored_vuln
-        ));
-        out(&format!("    Target:  {}", result.url.white()));
-        out(&format!("    Payload: {}", result.payload.bright_yellow()));
-        out(&format!(
-            "    Info:    Status [{}] | Server [{}] | Time [{}ms]",
-            result.status_code.to_string().cyan(),
-            result.server.as_deref().unwrap_or("N/A").blue(),
-            result.timing_ms.to_string().dimmed()
-        ));
-        out(&format!("    curl:    {}", result.to_curl().dimmed()));
-        out(&"──────────────────────────────────────────"
-            .dimmed()
-            .to_string());
-    }
-
-    fn on_progress(&self, phase: &str, current: usize, total: usize) {
-        use colored::*;
-        use std::io::Write;
-        if total > 0 {
-            print!(
-                "{}\r\n",
-                format!("[*] {} ({}/{})", phase, current, total).bright_cyan()
-            );
-        } else {
-            print!("{}\r\n", format!("[*] {}", phase).bright_cyan());
+    fn cfg(auth_type: &str) -> ScanConfig {
+        ScanConfig {
+            auth_type: auth_type.to_string(),
+            auth_token: Some("TKN123".to_string()),
+            auth_cookies: Some("session=abc".to_string()),
+            ..ScanConfig::default()
         }
-        std::io::stdout().flush().ok();
+    }
+
+    #[test]
+    fn bearer_emits_authorization() {
+        let h = cfg("bearer").auth_headers();
+        assert_eq!(h, vec![("Authorization".into(), "Bearer TKN123".into())]);
+    }
+
+    #[test]
+    fn cookie_emits_cookie_header() {
+        let h = cfg("cookie").auth_headers();
+        assert_eq!(h, vec![("Cookie".into(), "session=abc".into())]);
+    }
+
+    #[test]
+    fn none_emits_nothing() {
+        assert!(cfg("none").auth_headers().is_empty());
+    }
+
+    #[test]
+    fn empty_token_is_not_emitted() {
+        let c = ScanConfig {
+            auth_type: "bearer".into(),
+            auth_token: Some(String::new()),
+            ..ScanConfig::default()
+        };
+        assert!(c.auth_headers().is_empty());
     }
 }

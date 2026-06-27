@@ -93,11 +93,8 @@ impl VulnerabilityDetector {
             }
         }
 
-        // Sensitive exposure (root:x:0:0 removed — now PathTraversal)
-        if self.has_sensitive_patterns(body) {
-            return Some(VulnerabilityType::SensitiveExposure);
-        }
-
+        // Secret detection is NOT here — it runs through `arkenar_secrets::scan_bytes`
+        // at the `HttpClient::send` choke point. A second matcher would reintroduce FPs.
         None
     }
 
@@ -131,20 +128,6 @@ impl VulnerabilityDetector {
             || pl.contains("example.com")
     }
 
-    fn has_sensitive_patterns(&self, body: &str) -> bool {
-        const PATTERNS: &[&str] = &[
-            "DB_PASSWORD",
-            "DB_USERNAME",
-            "API_KEY=",
-            "SECRET_KEY=",
-            "-----BEGIN RSA PRIVATE KEY-----",
-            "-----BEGIN PRIVATE KEY-----",
-            "aws_access_key_id",
-            "aws_secret_access_key",
-        ];
-        PATTERNS.iter().any(|p| body.contains(p))
-    }
-
     pub fn is_sql_vulnerable(&self, body: &str) -> bool {
         STRONG_SQL.iter().any(|p| body.contains(*p))
     }
@@ -163,14 +146,63 @@ impl VulnerabilityDetector {
         }
         false
     }
-
-    pub fn is_sensitive_file_found(&self, _status_code: Option<u16>, body: &str) -> bool {
-        self.has_sensitive_patterns(body)
-    }
 }
 
 impl Default for VulnerabilityDetector {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `detect()` must not flag prose that merely mentions secret keywords — the FP the
+    /// deleted substring matcher produced.
+    #[test]
+    fn detect_does_not_flag_substring_secrets() {
+        let d = VulnerabilityDetector::new();
+        let bodies = [
+            "To authenticate, set API_KEY= from your dashboard before running.",
+            "DB_PASSWORD and DB_USERNAME are read from the vault at boot.",
+            "Configure aws_access_key_id and aws_secret_access_key in your profile.",
+            "SECRET_KEY= <redacted in logs>",
+        ];
+        for body in bodies {
+            assert_eq!(
+                d.detect(body, "", Some("text/html"), 0, Some(200), None),
+                None,
+                "detect() must not flag a substring secret in: {body}"
+            );
+        }
+    }
+
+    /// The real vuln signals `detect()` still owns must keep working after the cut.
+    #[test]
+    fn detect_still_finds_sql_and_path_traversal() {
+        let d = VulnerabilityDetector::new();
+        assert_eq!(
+            d.detect(
+                "root:x:0:0:root:/root:/bin/bash",
+                "",
+                None,
+                0,
+                Some(200),
+                None
+            ),
+            Some(VulnerabilityType::PathTraversal),
+        );
+        assert_eq!(
+            d.detect(
+                "You have an error in your SQL syntax",
+                "'",
+                None,
+                0,
+                Some(200),
+                None
+            ),
+            Some(VulnerabilityType::SqlInjection),
+        );
     }
 }

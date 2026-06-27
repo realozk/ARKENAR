@@ -1,7 +1,9 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
-**Arkenar is a web scanner I built that ties together Katana and Nuclei with a custom mutation engine. The goal is to find injection flaws and logic bugs that static templates tend to miss.**
 
-It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same core engine — pick whichever fits your workflow.
+**Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, WAF-aware payload selection, and a verify-before-report discipline.
+
+Its flagship is the **Rapid Extraction Module** — a specialized engine that *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. Each finding carries an **earned** verification tier — `reachable` (live, non-decoy, content-sane) or, with [`--verify-live`](#live-key-verification---verify-live), `live` (proven against the provider). **One static binary — the scan engine is pure Rust with no external tools or Go subprocesses.**
+
 
 <p align="center">
 
@@ -13,25 +15,19 @@ It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same
 </p>
 
 <p align="center">
-  <a href="https://github.com/projectdiscovery/katana">
-    <img src="https://img.shields.io/badge/Katana-ProjectDiscovery?style=for-the-badge&labelColor=1f6feb&color=0b1220&logo=github&logoColor=white">
-  </a>
-  <a href="https://github.com/projectdiscovery/nuclei">
-    <img src="https://img.shields.io/badge/Nuclei-ProjectDiscovery?style=for-the-badge&labelColor=dc2626&color=0b1220&logo=github&logoColor=white">
-  </a>
+  <img src="https://img.shields.io/badge/built%20with-Rust-orange?style=for-the-badge&logo=rust&logoColor=white">
   <a href="https://crates.io/crates/arkenar">
     <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
   </a>
   <a href="https://www.bestpractices.dev/projects/12728">
     <img src="https://www.bestpractices.dev/projects/12728/badge">
-    </a>
+  </a>
 </p>
 
 ## Table of Contents
 
 - [Preview](#preview)
 - [Installation](#installation)
-- [GUI Features](#gui-features)
 - [CLI Usage](#cli-usage)
 - [Troubleshooting](#troubleshooting)
 - [Architecture & Docs](#architecture--docs)
@@ -49,119 +45,23 @@ It comes as a desktop app (GUI) and a command-line tool (CLI). Both use the same
 
 ## Installation
 
-### GUI Desktop App
+Arkenar is a terminal-native scanner. One command installs it.
 
-Download the installer from [GitHub Releases](https://github.com/realozk/ARKENAR/releases/latest):
-
-| Platform | File |
-|----------|------|
-| **Windows** | `Arkenar_*_x64-setup.exe` — double-click, no admin required |
-| **Linux** | `arkenar_*_amd64.AppImage` (portable) or `arkenar_*_amd64.deb` |
-| **macOS** | `Arkenar_*_universal.dmg` — works on both Intel and Apple Silicon |
-
-The app auto-downloads Katana and Nuclei on first launch.
-
-### CLI — Windows
-```powershell
-iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
-```
-
-### CLI — Linux & macOS
+### Linux & macOS
 ```bash
 curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bash
 ```
 
----
+### Windows
+```powershell
+iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
+```
 
-## GUI Features
+Arkenar is a single static Rust binary — the scan engine pulls in no external tools, no Go subprocesses, and downloads nothing on first use. (The one exception is the optional `--recon` subdomain enumeration, which shells out to an external `subfinder` binary.)
 
-The desktop app has four main workspaces: **Scanner**, **Studio**, **Recon**, and **History**.
-
-### Basic Scanner
-
-This is the main scanning interface. You set a target, pick your options, and watch it run.
-
-**Targets**
-- Single URL or a list file (drag-drop or browse)
-- Scan queue — add multiple targets and run them one after another
-- Paste from clipboard
-
-**Scan Modes**
-- `Simple` — runs a fast crawl + Nuclei pass
-- `Advanced` — adds WAF evasion, deeper fuzzing, and more Nuclei coverage
-
-**Module toggles**
-- Katana crawler — discovers URLs before scanning
-- Nuclei scanner — runs CVE/panel/tech templates
-- JS endpoint analysis — finds hidden API paths in JavaScript
-- Parameter fuzzing — tests query params with contextual payloads
-- Tech fingerprinting — detects the stack and routes payloads accordingly
-- Smart payloads — picks payload types based on parameter names (e.g. `id` → SQLi)
-- WAF evasion — mutates payloads when it hits 403s
-
-**Performance**
-- Threads (1–500), timeout (1–120s), rate limit (1–5000 req/s)
-- Crawler depth, max URLs, and crawl timeout
-- Proxy, custom headers, scope regex
-
-**Auth**
-- Bearer token, cookie string, or custom headers
-
-**During a scan**
-- Live terminal output with `[+]` / `[!]` / `[~]` / `[*]` prefixes
-- Findings tab updates in real time with severity labels
-- Top bar shows targets, URLs found, critical/medium/safe counts, RPS, and elapsed time
-- Ctrl+Enter to start, Esc to stop
-
-**After a scan**
-- Export a self-contained HTML report
-- Export scan history as CSV
-- Findings stay in the History tab across sessions (up to 50 scans)
-
-**Keyboard shortcuts**
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+K` | Command palette |
-| `Ctrl+Enter` | Start scan |
-| `Esc` | Stop scan |
-| `T` / `F` / `H` | Switch to Terminal / Findings / History |
-| `Ctrl+B` | Toggle sidebar |
-| `Ctrl+,` | Settings |
-
----
-
-### Studio
-
-A manual HTTP request builder for testing individual endpoints.
-
-- Build requests with any method (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
-- Tabs for headers, body, query params, and environment variables
-- Response viewer with body, headers, cookies, and diff view
-- Syntax highlighting, response timing, and size display
-- Session history — search and reload previous requests
-- PoC export — one click generates cURL, Python Requests, or Raw HTTP
-- Smart Auto-Login — give it a login URL and credentials, it handles GET → parse CSRF → POST automatically and injects the session cookies
-
----
-
-### Recon
-
-Reconnaissance workspace for mapping a target before you scan it.
-
-- **Subdomain enumeration** via Subfinder
-- **Port scanning** — async TCP connect scan of the top 1000 ports
-- **DNS records** — A, MX, TXT, CNAME, and raw WHOIS
-- **JS secrets detection** — scans fetched JS files for AWS keys, GitHub tokens, JWTs, and other patterns
-- Host board with filters: all hosts / high-risk (open ports) / alive / hosts with secrets
-- Add any discovered host directly to the scan queue or send it to Studio
-
----
-
-### History & Settings
-
-- **History** — full list of past scans with timestamps, finding counts, and CSV export
-- **Settings** — global defaults for threads/timeout/rate-limit, webhook URL (Discord, Slack, or custom JSON), output path, UI scale, and audio notifications
+> **Legacy desktop app:** the 1.2 GUI is still available on
+> [GitHub Releases](https://github.com/realozk/ARKENAR/releases) but is no longer
+> actively developed — development is CLI-first from 1.3 onward.
 
 ---
 
@@ -176,6 +76,9 @@ arkenar -l targets.txt -o results.json --rate-limit 150
 
 # full example
 arkenar https://example.com -m advanced -t 100 --enable-js-analysis --proxy http://127.0.0.1:8080
+
+# recon: subdomains + ports + DNS
+arkenar example.com --recon
 ```
 
 Run `arkenar --help` for everything. Common flags:
@@ -185,10 +88,13 @@ Run `arkenar --help` for everything. Common flags:
 | :--- | :--- | :--- |
 | `-l`, `--list <FILE>` | File of target URLs (one per line) | — |
 | `-o`, `--output <FILE>` | JSON output path | `scan_results.json` |
+| `--json` | Stream findings as JSON to stdout (for `\| jq`) | — |
+| `--quiet` | Findings only, no progress/log chrome | — |
+| `--verified-only` | Show only proven (verified) findings | — |
 | `-p`, `--payloads <FILE>` | Extra payload file to merge in | — |
 | `--dry-run` | Print targets without sending requests | — |
 | `--resume` | Resume from `.arkenar-state.json` | — |
-| `--update` | Update Arkenar + Katana + Nuclei | — |
+| `--update` | Update Arkenar to the latest version | — |
 
 ### Scan profile
 | Flag | Description | Default |
@@ -202,26 +108,35 @@ Run `arkenar --help` for everything. Common flags:
 ### Modules
 | Flag | Description |
 | :--- | :--- |
-| `--no-crawler` | Skip the Katana crawl phase |
-| `--no-nuclei` | Skip the Nuclei scan phase |
+| `--no-crawler` | Skip the native crawl / forced-browse phase |
 | `--enable-param-fuzz` | Enable parameter fuzzing |
-| `--enable-js-analysis` | Enable JS endpoint analysis |
-| `--enable-waf-evasion` | Mutate payloads on 403 responses |
+| `--enable-js-analysis` | Fetch linked scripts and scan their bodies for hardcoded secrets |
+| `--verify-live` | Prove found keys against their provider (opt-in — **read the warning below**) |
 | `--no-fingerprint` | Disable tech-stack fingerprinting |
 | `--no-smart-payloads` | Disable context-aware payload selection |
 
-### Crawler
+#### Live key verification (`--verify-live`)
+
+Turns *"a string shaped like a key"* into *"a **working** key."* For each detected key
+with a supported provider (OpenAI, Anthropic, Stripe, GitHub), Arkenar makes **one
+non-mutating** read call to that provider's own auth endpoint: a `200` marks the finding
+**VERIFIED-LIVE**, a `401` drops it as dead, anything else leaves it as "potential." Keys
+are deduped — one probe per unique key — and a key is only ever sent to its own provider.
+
+> ⚠️ **Legal / scope warning.** Verifying a found key **authenticates to a third party**.
+> Many bug-bounty programs forbid using found credentials even read-only, and doing so may
+> be illegal without authorization. This is why it is **opt-in and off by default**. Check
+> your program's rules and the law before using `--verify-live`.
+>
+> *(AWS is intentionally not verified: a leaked `AKIA…` is only the access-key ID, and
+> proving it live would require the paired secret key we never have — so we don't claim to.)*
+
+### Crawler (native, pure Rust)
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `--crawler-depth <N>` | Katana crawl depth | `3` |
+| `--crawler-depth <N>` | Crawl depth | `3` |
 | `--crawler-max-urls <N>` | Cap on discovered URLs | `50` |
 | `--crawler-timeout <N>` | Crawl timeout per target (seconds) | `60` |
-
-### Nuclei
-| Flag | Description |
-| :--- | :--- |
-| `--tags <TAGS>` | Comma-separated Nuclei tags (e.g. `cve,jira`) |
-| `--nuclei-templates <DIR>` | Custom templates directory |
 
 ### Network & headers
 | Flag | Description |
@@ -232,30 +147,17 @@ Run `arkenar --help` for everything. Common flags:
 | `--scope` | Restrict crawl to same domain |
 | `--scope-regex <REGEX>` | Restrict URLs by regex |
 
-### Auth & OAST
+### Auth
 | Flag | Description |
 | :--- | :--- |
 | `--auth-type` | `none` / `bearer` / `cookie` / `custom` |
 | `--auth-token <TOKEN>` | Bearer token |
 | `--auth-cookies <COOKIES>` | Raw cookie string |
-| `--oast-server <URL>` | Interactsh server for blind detection |
 | `--webhook-url <URL>` | HTTPS webhook for findings |
 
 ---
 
 ## Troubleshooting
-
-### Nuclei permission denied on macOS / Linux
-
-```bash
-# macOS
-sudo chown -R $(whoami) ~/Library/Application\ Support/nuclei/
-sudo chown -R $(whoami) ~/Library/Application\ Support/uncover/
-
-# Linux
-sudo chown -R $(whoami) ~/.config/nuclei/
-sudo chown -R $(whoami) ~/.config/uncover/
-```
 
 ### Self-update permission denied
 
@@ -272,15 +174,7 @@ sudo arkenar --update
 
 ## Contributing
 
-### Running Tests
-
-```bash
-cargo test -p arkenar -p arkenar-core
-```
-
-Tests use Rust's built-in test harness with [`assert_cmd`](https://crates.io/crates/assert_cmd), [`predicates`](https://crates.io/crates/predicates), and [`tempfile`](https://crates.io/crates/tempfile) (all MIT/Apache-2.0). The CI runs the full suite on Linux, Windows, and macOS on every push and pull request.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full test policy and contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

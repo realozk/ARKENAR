@@ -1,6 +1,11 @@
 # ARKENAR Project Documentation
 
-This document covers the structure of the ARKENAR project. ARKENAR is a web security scanner made up of three parts: the GUI, the CLI, and the Rust backend (Core).
+ARKENAR is a pure-Rust, terminal-native offensive web scanner (DAST). It is a Cargo
+workspace of **three crates**: `arkenar-secrets` (pure secret detection), `arkenar-core`
+(all scan logic), and `arkenar` (the CLI). There is **no GUI** and **no external tools**
+— the Tauri desktop app and the Katana/Nuclei subprocesses were removed in 1.3.
+`subfinder` is the last external wrapper (recon only) and is being replaced by a native
+enumerator.
 
 ---
 
@@ -8,297 +13,271 @@ This document covers the structure of the ARKENAR project. ARKENAR is a web secu
 
 ```mermaid
 graph TD
-    User([User]) --> GUI[React/Tauri GUI]
-    User --> CLI[Rust CLI]
-    
-    GUI -- IPC Calls --> CORE{Core Engine}
-    CLI -- System Calls --> CORE
-    
+    User([User]) --> CLI[arkenar CLI]
+    CLI -- builds ScanConfig + Sink --> CORE{arkenar-core}
+
+    CORE --> Crawl[Native Crawler]
     CORE --> Engine[Scanner Engine]
-    CORE --> ExtTools[External Tools]
-    CORE --> NetOps[Network Operations]
-    
+    CORE --> Recon[Recon: subfinder/ports/DNS]
+
     Engine --> Mutator[Payload Mutator]
-    Engine --> HTTP[HTTP Client & Throttle]
+    Engine --> HTTP[HttpClient + Throttle]
     Engine --> Detector[Vulnerability Detector]
-    
-    ExtTools --> Katana[Katana Crawler]
-    ExtTools --> Nuclei[Nuclei Scanner]
-    
-    NetOps --> Subfinder[Subfinder]
-    NetOps --> PortScan[Port Scanner]
-    NetOps --> DNS[DNS & WHOIS]
-    
-    HTTP -- Scans --> Target[Target Web Server]
-    Detector -- Findings --> Aggregator[(Result Aggregator)]
+
+    Crawl --> HTTP
+    HTTP -- every body --> Secrets[arkenar-secrets::scan_bytes]
+    Detector --> Aggregator[(Result Aggregator)]
+    Secrets --> Sink
+    Aggregator --> Sink[ScanEventSink]
+    Sink --> Console[Console]
+    Sink --> Webhook[Webhook/Telegram]
 ```
 
-### 1.1 GUI (Graphical User Interface)
-The GUI is the frontend client for the application.
-- **Technology Stack**: React, TypeScript, Vite, TailwindCSS, and Tauri.
-- **Location**: `gui/`
-- **Key Components**:
-  - `src/App.tsx / main.tsx`: Application entry points holding top-level state and routing.
-  - `src/components/`: React components organizing the interface into panels (Basic Workspace, Recon Workspace, Studio Workspace).
-  - `src/store.ts`: State management layer.
-- **Purpose**: Uses Tauri IPC to talk to the Rust core, providing real-time log streaming, scan actions, and interactive recon boards.
+### 1.1 CLI (`arkenar`, `cli/`)
+The single entry point. Rust + Clap.
+- `src/main.rs` — parses args, validates, builds `ScanConfig`, wires a `ScanEventSink`,
+  runs the scan or recon sequence; handles `--update` and `--resume`.
+- `src/validation.rs` — input validation (shell-meta/traversal, webhook SSRF).
+- `src/report.rs` — severity model, SARIF export (`--sarif`), CI gate (`--fail-on`).
 
-### 1.2 CLI (Command-Line Interface)
-The CLI is the headless entry point for ARKENAR, useful for CI/CD pipelines and automation.
-- **Technology Stack**: Rust, Clap.
-- **Location**: `cli/`
-- **Key Components**:
-  - `src/main.rs`: Parses terminal arguments, builds a `ScanConfig`, starts a tokio runtime, and calls the core engine.
-  - `src/validation.rs`: Input validation (shell injection and path traversal checks) applied before anything hits the core.
+### 1.2 Core (`arkenar-core`, `core/`)
+All scan logic, async Rust on tokio + reqwest. Detailed below.
+
+### 1.3 Secrets (`arkenar-secrets`, `secrets/`)
+Pure, I/O-free secret detection — shared by the crawler and the engine through the
+`HttpClient` choke point.
 
 ---
 
-## 2. CORE (Rust Backend Engine)
+## 2. SECRETS crate (`secrets/src/lib.rs`)
 
-The Core is where all the real work happens. It's written in async Rust using tokio and reqwest, and handles crawling, fingerprinting, payload mutation, and vulnerability detection.
+The single source of truth for what a "secret" is. No I/O, no async.
 
-Below is a breakdown of every file and function in `core/src/`.
+| Item | Description |
+| :--- | :--- |
+| `Secret` | `{ kind, matched, line, col }` — a single detected secret. |
+| `scan_bytes(body, content_type)` | Scans a body for secrets. Content-type gates out binary; a `RegexSet` pre-filters; each match is placeholder-filtered and entropy-gated per its `Spec`. Returns deduped `Vec<Secret>`. |
+| `SPECS` (internal) | The pattern table: AI/cloud keys first (OpenAI, Anthropic, HF, Stripe, AWS, GitHub, Google, Slack…), private keys, JWTs, generic hardcoded secrets — each with an optional min-entropy. |
 
-### 2.1 Core Orchestration & Logic
+---
 
-```mermaid
-flowchart LR
-    TargetManager --> Engine
-    PayloadLoader --> Engine
-    Engine --> Mutator
-    Mutator --> HTTPClient
-    Throttle -. Limits .- HTTPClient
-    HTTPClient --> Fingerprint
-    HTTPClient --> Detector
-    Detector --> ResultAggregator
-```
+## 3. CORE crate (`arkenar-core`)
+
+### 3.1 Orchestration & Config
 
 #### `lib.rs`
-System-wide config and event handling definitions.
 | Function | Description |
 | :--- | :--- |
-| `ScanConfig::default()` | Returns a ScanConfig with default values. |
-| `ScanConfig::header_list()` | Parses the raw header string into a list of key-value pairs. |
-| `ScanConfig::parsed_headers()` | Returns parsed headers after running validation. |
-| `ScanConfig::proxy_ref()` | Returns the proxy URL as an `Option<&str>`. |
-| `ScanConfig::tags_ref()` | Returns the tags string as an `Option<&str>`. |
-| `ScanConfig::auth_headers()` | Builds HTTP auth headers for bearer, cookie, or custom auth modes. |
-| `parse_custom_headers()` | Parses raw header strings and rejects any containing shell metacharacters. |
-| `ConsoleSink::new_ref()` | Creates an Arc-wrapped ConsoleSink instance. |
-| `ConsoleSink::on_log()` | Prints a styled log line to stdout. |
-| `ConsoleSink::on_finding()` | Prints a finding with severity color to stdout. |
-| `ConsoleSink::on_progress()` | Prints a progress line to stdout. |
+| `ScanConfig::default()` | Default config values. |
+| `ScanConfig::header_list()` | Splits the raw header string into a list. |
+| `ScanConfig::parsed_headers()` | Parsed, validated header key-value pairs. |
+| `ScanConfig::proxy_ref()` | Proxy URL as `Option<&str>`. |
+| `ScanConfig::auth_headers()` | Builds auth headers for bearer/cookie/custom modes; merged into the shared HTTP client so auth applies to both the crawl and engine phases. |
+| `parse_custom_headers()` | Parses headers, rejecting shell metacharacters. |
+| `ConsoleSink::new_ref()` / `on_log` / `on_finding` / `on_progress` | The CLI sink: styled stdout. |
+| `ScanEventSink` (trait) | The only output contract the engine knows. |
+
+> `tags_ref()` was removed in 1.3 along with Nuclei.
 
 #### `validation.rs`
-Input validation before anything reaches system calls.
 | Function | Description |
 | :--- | :--- |
-| `validate_text_field()` | Rejects strings containing shell metacharacters or path traversal sequences. |
-| `validate_tags_field()` | Rejects strings that look like CLI flags (e.g. `--config`). |
-| `validate_webhook_url()` | Ensures the webhook URL is HTTPS and not pointing at a private or loopback address. |
+| `validate_text_field()` | Rejects shell metacharacters / path traversal. |
+| `validate_tags_field()` | Rejects flag-injection in comma lists (helper; retained). |
+| `validate_webhook_url()` | Requires HTTPS; rejects private/loopback hosts (SSRF). Used by the webhook notifier. |
 
 #### `core/mod.rs`
-Defines vulnerability structures and module paths.
 | Function | Description |
 | :--- | :--- |
-| `VulnerabilityType::fmt()` | Maps each variant to its human-readable label (e.g. `SQLi`, `XSS`). |
+| `VulnerabilityType::fmt()` | Maps each of the 10 variants to its label (e.g. `SQLi`). |
 
 #### `core/engine.rs`
-The main scan loop.
 | Function | Description |
 | :--- | :--- |
-| `ScanEngine::new()` | Creates a ScanEngine with explicit parameters. |
-| `ScanEngine::with_config()` | Creates a ScanEngine from a ScanConfig. |
-| `ScanEngine::run()` | Main scan loop. Iterates the target queue, spawns async tasks, and returns the total URL count. |
-| `ScanEngine::scan_request()` | Injects a custom HttpRequest directly into the test pipeline. |
-| `create_request_from_url()` | Builds a basic GET HttpRequest from a URL string. |
-| `extract_server()` | Pulls the Server header value from a response. |
-| `headers_to_vec()` | Converts a reqwest HeaderMap to a `Vec<(String, String)>`. |
-| `read_body_capped()` | Reads the response body up to a size cap to avoid OOM issues. |
-| `scan_single_request()` | Builds injection points for a request and fires all payload variants concurrently. |
-| `format_vuln_type()` | Formats a finding with its injection point, e.g. `SQLi [param: id]`. |
-| `basic_scan()` | Sends the request unchanged to collect a baseline response. |
+| `ScanEngine::new()` / `with_config()` | Construct the engine (explicit / from `ScanConfig`). |
+| `ScanEngine::run()` | Main loop: iterate targets, spawn tasks, return URL count. |
+| `ScanEngine::scan_request()` | Inject a custom `HttpRequest` into the pipeline. |
+| `scan_single_request()` | Builds injection points and fires payload variants concurrently. |
+| `basic_scan()` | Sends a request unchanged (baseline); still runs the secret filter. |
+| `secret_to_result()` | Wraps a detected `Secret` into a `ScanResult`. |
+| `format_vuln_type()` | Formats a finding with its injection point. |
+| `create_request_from_url()` / `extract_server()` / `headers_to_vec()` | Helpers. |
 
 #### `core/mutator.rs`
-Mutates request structures to inject payloads.
 | Function | Description |
 | :--- | :--- |
-| `build_canary_request()` | Appends a canary query param to detect reflected input before firing real payloads. |
-| `get_blacklisted_headers()` | Returns headers that should never be fuzzed (Host, Content-Length, etc.). |
-| `extract_json_paths_recursive()` | Recursively walks a JSON value to collect all leaf node paths. |
-| `extract_injection_points()` | Maps all injectable spots in a request: URL params, headers, form body, JSON fields. |
-| `tokenize_json_path()` | Converts a dot-path string into a list of access keys or indices. |
-| `inject_into_json()` | Entry point for JSON injection — resolves the path and inserts the payload. |
-| `inject_into_json_recursive()` | Recursively traverses JSON to replace the target leaf. |
-| `inject_payload_into_value()` | Replaces a JSON leaf value with the payload regardless of its original type. |
-| `mutate_request()` | Routes a mutation to the right handler based on injection point type. |
-| `mutate_url_param()` | Replaces a specific URL query parameter value with the payload. |
-| `mutate_header()` | Replaces a specific request header value with the payload. |
-| `mutate_json_field()` | Parses the body as JSON and injects the payload at the specified path. |
-| `mutate_form_param()` | Replaces a form-urlencoded parameter value with the payload. |
-| `update_content_length()` | Recalculates Content-Length after the body has been mutated. |
+| `extract_injection_points()` | Finds all injectable spots: URL params, headers, form, JSON. |
+| `mutate_request()` + `mutate_url_param/header/json_field/form_param()` | Apply a payload at a point. |
+| `build_canary_request()` | Reflection canary before real payloads. |
+| `extract_json_paths_recursive()` / `tokenize_json_path()` / `inject_into_json*()` / `inject_payload_into_value()` | Recursive JSON injection. |
+| `get_blacklisted_headers()` / `update_content_length()` | Safety + bookkeeping helpers. |
 
 #### `core/result_aggregator.rs`
-Handles and catalogs findings from the scan channel.
 | Function | Description |
 | :--- | :--- |
-| `ScanResult::to_curl()` | Converts a finding into a copy-pasteable curl command. |
-| `shell_quote()` | Shell-quotes a string to prevent terminal injection. |
-| `build_dedup_key()` | Produces a deduplication key from URL base and vuln type. |
-| `ResultAggregator::run()` | Reads from the finding channel, deduplicates, writes JSONL to disk, and calls `sink.on_finding()`. |
-| `ResultAggregator::report_summary()` | Prints a count summary grouped by severity. |
+| `ScanResult` (struct) | The finding record (see ARCHITECTURE §6). |
+| `ScanResult::to_curl()` | Renders a copy-pasteable curl. |
+| `shell_quote()` | Shell-quotes to prevent terminal injection. |
+| `build_dedup_key()` | Dedup key from URL base + vuln type. |
+| `ResultAggregator::run()` | Reads the channel, dedups, previews each finding live via `sink.on_finding()`. |
+| `ResultAggregator::write_results_file()` | Persists the final result set to JSONL — called *after* `--verify-live`, so the file reflects final verification tiers. |
 
 #### `core/state.rs`
-Crash-resume state persistence.
 | Function | Description |
 | :--- | :--- |
-| `ScanState::new()`, `default_path()`, `delete()`, `exists()` | Standard constructors and helpers for scan state. |
-| `ScanState::save()` | Writes state to disk atomically via a temp file and rename. |
-| `ScanState::load()` | Reads and deserializes state from disk. |
-| `ScanState::checkpoint()` | Appends the current target to the visited list and saves. |
-| `now_iso()` | Returns the current time as an ISO 8601 string. |
+| `ScanState::new/default_path/delete/exists` | State helpers. |
+| `ScanState::save()` | Atomic write (tmp → rename). |
+| `ScanState::load()` | Deserialize from disk. |
+| `ScanState::checkpoint()` | Append visited target + save. |
+| `now_iso()` | Current time as ISO 8601. |
 
 #### `core/target_manager.rs`
-Deduplicating URL queue.
 | Function | Description |
 | :--- | :--- |
-| `TargetManager::new()` | Creates an empty target queue. |
-| `TargetManager::add_target()` | Adds a URL to the queue, skipping it if already seen. |
-| `TargetManager::pop_next()` | Pops the next URL from the queue, or `None` if empty. |
-| `TargetManager::len()`, `total_seen()`, `is_empty()` | Queue length and state helpers. |
+| `TargetManager::new/add_target/pop_next/len/total_seen/is_empty` | Deduplicating FIFO URL queue. |
 
 #### `core/throttle.rs`
-Lock-free request rate control.
 | Function | Description |
 | :--- | :--- |
-| `ThrottleController::new()` | Creates a rate controller with the specified requests-per-second limit. |
-| `ThrottleController::wait()` | Sleeps until the minimum inter-request delay has elapsed. |
-| `ThrottleController::record_response()` | Updates backoff state based on the HTTP status code — backs off on 429/403, decays on success. |
-| `ThrottleController::current_delay_ms()`, `total_throttled()` | Returns current delay and total throttle time stats. |
+| `ThrottleController::new()` | Rate controller for a given req/s. |
+| `ThrottleController::wait()` | Sleep the minimum inter-request delay. |
+| `ThrottleController::record_response()` | Backoff on 429/403, decay on success. |
+| `current_delay_ms()` / `total_throttled()` | Stats. |
 
----
+### 3.2 HTTP (`http/`)
 
-### 2.2 Intelligence & Fingerprinting
+#### `http/mod.rs`
+| Item | Description |
+| :--- | :--- |
+| `HttpRequest`, `BodyType` | Request model and body-type enum. |
 
-```mermaid
-graph TD
-    HTTP[HTTP Client] --> Detector
-    HTTP --> FP[Tech Fingerprinter]
-    Detector --> Rules((Detection Rules))
-    FP --> ExtHeaders((Header Signatures))
-```
+#### `http/client.rs`
+| Function | Description |
+| :--- | :--- |
+| `CapturedResponse` (struct) | `{ status, headers, final_url, body, secrets }`. |
+| `HttpClient::new()` | Builds the reqwest client (timeout, proxy, headers, TLS, UA rotation). |
+| `HttpClient::send_request()` | Sends a request, returns the raw `Response`. |
+| `HttpClient::send()` | **Choke point:** sends, reads the capped body once, runs `scan_bytes`, returns `CapturedResponse`. |
+| `get()` / `get_with_user_agent()` / `get_with_custom_headers()` | Convenience GETs. |
+
+### 3.3 Detection & Intelligence (`utils/`)
 
 #### `utils/detector.rs`
-Pattern matching on HTTP responses to classify vulnerabilities.
 | Function | Description |
 | :--- | :--- |
-| `VulnerabilityDetector::new()` | Creates a detector with compiled detection patterns. |
-| `VulnerabilityDetector::detect()` | Checks a response for SQL errors, XSS reflection, redirects, timing anomalies, and sensitive content. |
-| `VulnerabilityDetector::is_xss_payload()` | Returns true if the payload string looks like an XSS vector. |
-| `VulnerabilityDetector::is_open_redirect_payload()` | Returns true if the payload is a redirect test string. |
-| `VulnerabilityDetector::has_sensitive_patterns()` | Checks the response body for known sensitive data patterns. |
-| `VulnerabilityDetector::is_sql_vulnerable()`, `is_xss_vulnerable()`, `is_sensitive_file_found()` | Individual checks for SQL errors, XSS reflection, and sensitive file exposure in a response. |
+| `VulnerabilityDetector::new()` | Construct the detector. |
+| `VulnerabilityDetector::detect()` | Classifies a response: SQL errors, XSS reflection, open redirect, blind timing, path traversal. Secret/sensitive-exposure detection is **not** here — it goes through `arkenar_secrets::scan_bytes` at the HTTP choke point. |
+| `is_xss_payload()` / `is_open_redirect_payload()` | Predicate helpers. |
+| `is_sql_vulnerable()` / `is_xss_vulnerable()` | Individual checks. |
 
 #### `utils/fingerprint.rs`
-Identifies the tech stack and WAFs from response headers and body.
 | Function | Description |
 | :--- | :--- |
-| `FingerprintResult::summary()` | Returns a short string listing detected technologies. |
-| `FingerprintResult::is_empty()` | Returns true if no technologies were detected. |
-| `TechFingerprinter::new()` | Creates a fingerprinter with compiled header signature rules. |
-| `TechFingerprinter::analyze()` | Inspects response headers and body to identify the tech stack and WAFs. |
-| `push_unique()` | Appends a value to a vec only if it isn't already present. |
-
-#### `deep-hunter/brain.rs`
-Extracts JS URLs and API endpoints from page source.
-| Function | Description |
-| :--- | :--- |
-| `re_js_src()`, `re_js_import()`, `re_fetch()`, `re_axios()`, `re_route()` | Compiled regex patterns for matching JS source URLs, imports, fetch calls, axios calls, and routes. Cached via `OnceLock`. |
-| `JsAnalyzer::new()` | Creates a JS analyzer for a given base URL. |
-| `JsAnalyzer::extract_js_urls()` | Finds all script src references in a page. |
-| `JsAnalyzer::extract_endpoints()` | Extracts API endpoints from JS source using regex patterns. |
-
----
-
-### 2.3 External Dependency Management
-
-#### `utils/installer.rs`
-Downloads and manages Katana, Nuclei, and Arkenar itself.
-| Function | Description |
-| :--- | :--- |
-| `get_arkenar_asset_name()`, `get_arkenar_binary_name()`, `get_tool_binary_name()` | Returns the expected file and binary names for the current platform. |
-| `expected_hash_for()` | Returns the expected SHA-256 hash for a tool binary on the current platform. |
-| `sha256_hex()` | Computes the SHA-256 hex digest of a byte slice. |
-| `get_tool_download_url()` | Builds the GitHub release download URL for a tool on the current platform. |
-| `get_arkenar_home()`, `get_plugin_dir()`, `default_nuclei_templates_dir()` | Returns paths to the Arkenar home and plugin directories. |
-| `ensure_plugin_dirs()` | Creates the plugin directories if they don't already exist. |
-| `check_and_install_tools()` | Checks whether Katana and Nuclei are installed and downloads them if not. |
-| `run_full_update()`, `update_nuclei()`, `update_nuclei_templates()`, `update_katana()` | Update routines for Arkenar and its external tools. |
-| `self_update()` | Downloads the latest Arkenar release binary and replaces the running one. |
-| `extract_binary_from_tar_gz()`, `extract_binary_from_zip()` | Extracts the target binary from a tar.gz or zip archive. |
-| `download_and_extract()` | Downloads a tool release archive and extracts the binary. |
+| `TechFingerprinter::new()` / `analyze()` | Identify tech stack + WAF from headers/body. |
+| `FingerprintResult::summary()` / `is_empty()` / `push_unique()` | Result helpers. |
 
 #### `utils/payload_loader.rs`
-Loads payloads from disk and selects them contextually.
 | Function | Description |
 | :--- | :--- |
-| `PayloadLoader::new()`, `load()`, `load_with_extra()`, `load_from_paths()` | Constructors that load payload lists from disk. |
-| `xss_payloads()`, `sqli_payloads()`, `path_traversal_payloads()`, `all_payloads()` | Returns the payload list for the given category. |
-| `contextual_payloads()` | Picks payloads based on the parameter name (e.g., `id` → SQLi payloads). |
-| `get_payloads_for_point()`, `get_payloads_for_point_tech_aware()` | Returns payloads for an injection point, optionally filtered by detected tech stack. |
-| `get_all_polyglots()`, `payload_count()`, `total_payload_count()` | Returns polyglot payloads and payload count stats. |
-| `load_list_from_file()` | Reads a payload list from a file on disk. |
+| `PayloadLoader::new/load/load_with_extra/load_from_paths` | Load payload lists from disk. |
+| `xss_payloads/sqli_payloads/path_traversal_payloads/all_payloads` | Category accessors. |
+| `contextual_payloads()` | Picks payloads by parameter name. |
+| `get_payloads_for_point()` / `get_payloads_for_point_tech_aware()` | Per-injection-point selection. |
+| `get_all_polyglots()` / `payload_count()` / `total_payload_count()` | Stats. |
 
----
-
-### 2.4 Extensible Modules (`core/src/modules/`)
-
-```mermaid
-graph LR
-    Core[Scanner Core] --> Crawler[Katana Module]
-    Core --> Secrets[JS Secrets Module]
-    Core --> Vulnerability[Nuclei Module]
-    Core --> PortScan[Port Scanner Module]
-    Core --> SubDomain[Subfinder Module]
-```
-
-#### `modules/crawler.rs`
-Wraps Katana to discover URLs.
+#### `utils/installer.rs` — self-update only
 | Function | Description |
 | :--- | :--- |
-| `KatanaOutput::extract_url()` | Parses a URL from a Katana JSON output line. |
-| `katana_binary()` | Returns the path to the Katana binary. |
-| `run_katana_crawler()` | Spawns Katana and feeds discovered URLs into the target manager. |
+| `run_full_update()` | Entry for `--update`; runs the self-update. |
+| `self_update()` | Downloads the latest ARKENAR release (size-capped), atomically replaces the binary, rolls back on failure. **Unsigned — warns.** |
+| `get_arkenar_asset_name()` / `get_arkenar_binary_name()` | Platform asset/binary names. |
+| `extract_binary_from_tar_gz()` / `extract_binary_from_zip()` | Archive extraction. |
+
+> All Katana/Nuclei download + update routines and hash-pinning were removed in 1.3.
+
+#### `deep-hunter/brain.rs`
+| Function | Description |
+| :--- | :--- |
+| `JsAnalyzer::new/extract_js_urls/extract_endpoints` | Find script srcs and API endpoints in page/JS source. |
+| `re_js_src/re_js_import/re_fetch/re_axios/re_route` | Cached regex patterns. |
+
+### 3.4 Modules (`core/src/modules/`) — all native except `subfinder`
+
+#### `modules/crawler_native.rs` — replaces Katana
+| Function | Description |
+| :--- | :--- |
+| `run_native_crawler()` | Same-origin BFS over `href/src` + forced browse + `*.js.map` probing; emits secrets per body via the sink; returns discovered URLs. |
+| `fetch_links()` / `fetch_probe()` | Fetch a page (collect links) / a forced-browse probe. |
+| `emit_secrets()` | Emits `CapturedResponse.secrets` as findings. |
+| `extract_links()` / `in_scope()` / `build_probes()` / `dir_of()` | Link parsing, scoping, probe-set construction. |
 
 #### `modules/dns_lookup.rs`
 | Function | Description |
 | :--- | :--- |
-| `resolve_domain()` | Resolves A, MX, TXT, CNAME records and fetches WHOIS for a domain. |
-| `fetch_whois()` | Makes a raw TCP connection to a WHOIS server and returns the response. |
+| `resolve_domain()` | Resolves A/MX/TXT/CNAME + WHOIS. |
+| `fetch_whois()` | Raw TCP WHOIS query. |
 
 #### `modules/js_secrets.rs`
-| Function | Description |
+| Item | Description |
 | :--- | :--- |
-| `patterns()` | Compiles regex patterns for detecting AWS keys, GitHub tokens, JWTs, and other secrets. |
-| `scan_js_secrets()` | Downloads a JS URL and runs secret patterns against its content. |
-
-#### `modules/nuclei.rs`
-| Function | Description |
-| :--- | :--- |
-| `validate_path_field()` | Rejects template paths containing traversal sequences. |
-| `parse_template()` | Parses a Nuclei template YAML path. |
-| `run_nuclei_scan()` | Spawns a Nuclei subprocess and streams its output through the event sink. |
+| `JsSecret` (struct) | `{ url, secret_type, matched_value, line_number }`. |
+| `scan_js_secrets()` | Fetches `.js` URLs and runs the shared `arkenar_secrets::scan_bytes` on each (already delegates to the secrets crate — only the `JsSecret` wrapper type is local). |
 
 #### `modules/port_scanner.rs`
 | Function | Description |
 | :--- | :--- |
-| `scan_ports()` | Concurrently tries TCP connections to the top 1000 ports and returns the open ones. |
+| `scan_ports()` | Concurrent top-1000 TCP connect scan (recon). |
 
-#### `modules/subfinder.rs`
+#### `modules/subfinder.rs` — last external wrapper
 | Function | Description |
 | :--- | :--- |
-| `run_subfinder()` | Spawns Subfinder and feeds discovered subdomains into the target manager. |
+| `run_subfinder()` | Spawns `subfinder` for passive subdomain enumeration (recon only). Being replaced by a native passive enumerator. |
 
---- 
+### 3.5 Notifications (`notify/`)
 
-*This documentation should be updated as the architecture evolves.*
+#### `notify/mod.rs`
+| Function | Description |
+| :--- | :--- |
+| `WebhookNotifier::new()` / `flush()` | A `ScanEventSink` that queues findings and POSTs them async; `flush` drains before exit. |
+| `TelegramNotifier::new()` / `flush()` | Same pattern for Telegram. **Dormant — not wired into the CLI yet.** |
+| `CompositeSink::new_ref()` | Fan-out sink (e.g. console + webhook). |
+
+#### `notify/webhook.rs`
+| Function | Description |
+| :--- | :--- |
+| `build_payload()` | Formats Discord embeds / Slack blocks / generic JSON by host. |
+| `redact_secret()` | Redacts secret values before egress. |
+| `send_webhook()` | POSTs the payload. |
+
+#### `notify/telegram.rs`
+| Function | Description |
+| :--- | :--- |
+| `send_telegram()` | Sends a finding to a Telegram chat via bot. |
+
+---
+
+## 4. CLI crate (`arkenar`)
+
+#### `cli/src/main.rs`
+| Item | Description |
+| :--- | :--- |
+| `Args` | Clap argument model. |
+| `run_scan_sequence()` | Phase 1 native crawl → Phase 2 engine → aggregate. |
+| `run_recon_sequence()` | subfinder → per-host ports + DNS. |
+| `print_banner()` / `print_scan_config()` | Output chrome. |
+
+#### `cli/src/validation.rs`
+`validate_data_field()` (rejects control chars in URL/proxy/regex/header/cookie args) and
+`validate_path_field()` (rejects `..` traversal + control chars in file-path args) — the
+CLI security boundary. Webhook SSRF validation lives in `arkenar_core::validation`.
+
+#### `cli/src/report.rs`
+| Item | Description |
+| :--- | :--- |
+| `Severity` (+ `parse`) | Severity model for findings. |
+| `to_sarif()` | Builds a SARIF report (`--sarif`, GitHub Security tab). |
+| `gate()` | CI gate: true if any finding is at/above the `--fail-on` threshold. |
+
+---
+
+*Update this as the architecture evolves.*

@@ -1,6 +1,11 @@
 # ARCHITECTURE.md — Arkenar
 
-> **Purpose of this document:** This is my single source of truth for how Arkenar is structured, how data moves through it, and what the design rules are. Read this before touching any code.
+> **Purpose:** single source of truth for how Arkenar is structured, how data moves
+> through it, and the design rules. Read this before touching any code.
+>
+> **State:** 1.3-era. Pure-Rust, CLI-only, single static binary. The Tauri GUI and the
+> Katana/Nuclei external tools were removed. `subfinder` is the **last** external-tool
+> wrapper and is being replaced by a native passive enumerator (see `docs/V1.3.md`).
 
 ---
 
@@ -9,7 +14,7 @@
 1. [High-Level Overview](#1-high-level-overview)
 2. [Data Flow Diagram](#2-data-flow-diagram)
 3. [Directory Structure Breakdown](#3-directory-structure-breakdown)
-4. [The Scan Pipeline (3 Phases)](#4-the-scan-pipeline-3-phases)
+4. [The Scan Pipeline](#4-the-scan-pipeline)
 5. [The Golden Rules](#5-the-golden-rules)
 6. [Key Data Types Reference](#6-key-data-types-reference)
 7. [Security Surfaces](#7-security-surfaces)
@@ -18,344 +23,202 @@
 
 ## 1. High-Level Overview
 
-Arkenar is a **Rust workspace** with three crates. Think of them as three different faces of the same product:
+Arkenar is a **Rust workspace** with three crates:
 
 | Crate | Path | What it is |
 |---|---|---|
-| `arkenar-core` | `core/` | The brain. All scan logic lives here. No UI, no CLI parsing. |
-| `arkenar-cli` | `cli/` | A thin terminal wrapper. It parses args, builds a `ScanConfig`, and calls `core`. |
-| `arkenar-gui` (Tauri) | `gui/src-tauri/` | A thin desktop wrapper. It exposes `core` to a React frontend via IPC commands. |
+| `arkenar-secrets` | `secrets/` | Pure, I/O-free secret detection (regex + entropy + placeholder filtering). The one place secret patterns live. No deps on the other crates. |
+| `arkenar-core` | `core/` | The brain. All scan logic: crawling, the engine, detection, throttling, persistence, notifications. No CLI parsing, no UI. |
+| `arkenar` (CLI) | `cli/` | The only face. Parses args, builds a `ScanConfig`, wires a `ScanEventSink`, calls `core`. |
 
-The React frontend (`gui/src/`) is **not** a Rust crate — it communicates with `arkenar-gui` exclusively through Tauri's IPC bridge.
+Dependency direction: `cli` → `core` → `secrets`. Nothing depends on `cli`.
+
+**No external tools.** Arkenar spawns no Go subprocesses (Katana/Nuclei are gone). The
+crawler is native Rust. `subfinder` (recon only) is the sole remaining external wrapper,
+pending its native replacement.
 
 ---
 
 ## 2. Data Flow Diagram
 
-This diagram shows the exact path of a scan from user input to final results, for both the CLI and GUI entry points.
-
 ```mermaid
 flowchart TD
-    subgraph USER[" User Entry Points"]
-        CLI_INPUT["CLI: arkenar http://target.com -m advanced"]
-        GUI_INPUT["GUI: User fills Sidebar form in React"]
-    end
+    CLI_INPUT["CLI: arkenar https://target.com"] --> CLI_ARGS["clap::Parser → Args"]
+    CLI_ARGS --> VALIDATE["cli validation\n(shell-meta, traversal, SSRF)"]
+    VALIDATE --> CLI_CONFIG["Build ScanConfig"]
+    CLI_CONFIG --> SINK["ConsoleSink (+ optional WebhookNotifier)\nvia CompositeSink"]
 
-    subgraph CLI_LAYER[" CLI Crate (cli/src/main.rs)"]
-        CLI_ARGS["clap::Parser parses Args"]
-        CLI_CONFIG["Builds ScanConfig"]
-        CONSOLE_SINK["Creates ConsoleSink\n(colored terminal output)"]
-    end
-
-    subgraph GUI_LAYER[" GUI/Tauri Backend (gui/src-tauri/src/lib.rs)"]
-        APP_TSX["App.tsx\ninvoke('start_scan', { config })"]
-        VALIDATE["validate_scan_config()\nblocks shell injection,\npath traversal, SSRF"]
-        TAURI_SINK["Creates TauriSink\n(emits Tauri IPC events)"]
-        SCAN_RUNNING["AtomicBool: SCAN_RUNNING\nprevents double-start"]
-    end
+    CLI_CONFIG --> SEQ["run_scan_sequence()"]
 
     subgraph CORE[" Core Crate (core/src/)"]
-        TARGET_MGR["TargetManager\nDeduplicating VecDeque of URLs"]
-        
-        subgraph MODULES["External Tool Orchestration"]
-            KATANA["run_katana_crawler()\nSpawns Katana subprocess\nFeeds discovered URLs → TargetManager"]
-            NUCLEI["run_nuclei_scan()\nSpawns Nuclei subprocess\nTemplate-based vuln detection"]
-            SUBFINDER["run_subfinder()\nSpawns Subfinder\nFeeds subdomains → TargetManager"]
-            PORTSCAN["scan_ports()\nScans top 1000 ports asynchronously"]
-            DNS["resolve_domain()\nAsync DNS & WHOIS queries"]
+        SEQ --> HTTP["HttpClient::new()\n(timeout, proxy, headers, TLS)"]
+
+        subgraph P1["Phase 1: Native Crawl"]
+            CRAWL["run_native_crawler()\nsame-origin BFS over href/src\n+ forced browse (.env/.git/...)\n+ *.js.map probing"]
         end
 
-        subgraph PIPELINE["Phase 3: ARKENAR Engine"]
-            ENGINE["ScanEngine::run()\nIterates TargetManager"]
-            SEMAPHORE["Semaphore\nCaps concurrent tasks\n= config.threads"]
-            MUTATOR["mutator::extract_injection_points()\nFinds URL params, headers,\nJSON fields, form params"]
-            PAYLOAD_LOADER["PayloadLoader\nContext-aware payloads\nper InjectionPoint type"]
-            STREAM["stream::iter(scan_tasks)\n.buffer_unordered(N)\nConcurrent async HTTP fire"]
-            THROTTLE["ThrottleController\nLock-free AtomicU64/AtomicU32\nAuto-backoff on 429/403\nDecays on success"]
-            HTTP_CLIENT["HttpClient::send_request()"]
-            DETECTOR["VulnerabilityDetector::detect()\nMatches body/timing/content-type\n→ SQLi / XSS / Sensitive / Blind"]
+        subgraph P2["Phase 2: ARKENAR Engine"]
+            ENGINE["ScanEngine::run()\niterates TargetManager"]
+            SEM["Semaphore (= threads)"]
+            MUT["mutator::extract_injection_points()"]
+            PAY["PayloadLoader (context/tech-aware)"]
+            THR["ThrottleController\n(atomics; backoff on 429/403)"]
+            DET["VulnerabilityDetector::detect()"]
         end
 
-        RESULT_TX["mpsc::Sender<ScanResult>\nasync channel (capacity 200)"]
-        AGGREGATOR["ResultAggregator::run()\nDeduplicates by URL+vuln base\nWrites JSONL to output file\nCalls sink.on_finding()"]
+        HTTPCLIENT["HttpClient::send()\n⮕ reads body (capped)\n⮕ runs arkenar_secrets::scan_bytes\n⮕ CapturedResponse{body,secrets,...}"]
+
+        SEQ --> CRAWL
+        CRAWL --> TM["TargetManager (dedup queue)"]
+        TM --> ENGINE
+        ENGINE --> SEM --> MUT --> PAY --> THR --> HTTPCLIENT --> DET
+        CRAWL --> HTTPCLIENT
+
+        DET --> TX["mpsc::Sender<ScanResult>"]
+        CRAWL -. "secrets → result channel" .-> AGG
+        TX --> AGG["ResultAggregator::run()\nspans both phases\ndedup → sink.on_finding() (live preview)\nJSONL written post-scan (after --verify-live)"]
     end
 
-    subgraph SINK_IMPL[" ScanEventSink (trait)"]
-        SINK_LOG["on_log(level, msg)"]
-        SINK_FINDING["on_finding(result)"]
-        SINK_PROGRESS["on_progress(phase, n, total)"]
-    end
-
-    subgraph OUTPUT[" Outputs"]
-        TERMINAL["Terminal: colored stdout"]
-        TAURI_EVENTS["Tauri Events emitted to React:\n• scan-log\n• scan-finding\n• scan-complete"]
-        REACT_UI["React UI updates:\n• TerminalView (logs)\n• TopStats (counters)\n• Findings tab"]
-        JSON_FILE["scan_results.json\nJSONL appended per finding"]
-        WEBHOOK["Webhook POST\n(Discord/Slack/custom)\non each finding"]
-        HTML_REPORT["HTML Report\ngenerate_report command\n→ Downloads folder"]
-    end
-
-    CLI_INPUT --> CLI_ARGS --> CLI_CONFIG --> CONSOLE_SINK
-    GUI_INPUT --> APP_TSX --> VALIDATE --> SCAN_RUNNING --> TAURI_SINK
-
-    CLI_CONFIG --> TARGET_MGR
-    TAURI_SINK --> TARGET_MGR
-
-    TARGET_MGR --> MODULES
-    TARGET_MGR --> ENGINE
-
-    ENGINE --> SEMAPHORE --> MUTATOR
-    MUTATOR --> PAYLOAD_LOADER --> STREAM
-    STREAM --> THROTTLE --> HTTP_CLIENT --> DETECTOR
-    DETECTOR --> RESULT_TX --> AGGREGATOR
-
-    AGGREGATOR --> SINK_FINDING
-    ENGINE -.->|logs via| SINK_LOG
-    MODULES -.->|logs via| SINK_LOG
-
-    CONSOLE_SINK --> SINK_LOG --> TERMINAL
-    CONSOLE_SINK --> SINK_FINDING --> TERMINAL
-
-    TAURI_SINK --> SINK_LOG --> TAURI_EVENTS --> REACT_UI
-    TAURI_SINK --> SINK_FINDING --> TAURI_EVENTS --> REACT_UI
-    TAURI_SINK --> SINK_FINDING --> WEBHOOK
-    AGGREGATOR --> JSON_FILE
-    APP_TSX -->|"invoke('generate_report')"| HTML_REPORT
+    AGG --> SINK
+    SINK --> TERMINAL["colored stdout"]
+    SINK --> WEBHOOK["webhook POST (Discord/Slack/generic)\nsecret values redacted at egress"]
+    AGG --> JSONL["output file (JSONL)"]
+    SEQ --> SARIF["optional: SARIF report + --fail-on CI gate"]
 ```
+
+> Note: one `ResultAggregator` is spawned **before Phase 1** and runs across both phases,
+> so secrets found during the crawl flow through the same channel — deduped, written to
+> the output file, counted in the summary, and printed in near-real-time (the aggregator
+> consumes concurrently). The channel closes when both the crawler and engine senders drop.
 
 ---
 
 ## 3. Directory Structure Breakdown
 
-> **Rule of thumb used here:** _"If I delete this file, what breaks?"_
-
 ### Root
-
 ```text
-arkenr_pr/
-├── Cargo.toml            # Workspace definition. Lists the 3 member crates.
-├── Cargo.lock            # Pinned dependency versions. Check this in.
-├── payloads/             # Payload files loaded by PayloadLoader at runtime.
-├── install.sh / .ps1     # One-line installers for end users.
-└── tools/                # Bundled tool binaries (Katana, Nuclei) included at build.
+ARKENAR/
+├── Cargo.toml          # Workspace: members = core, cli, secrets
+├── Cargo.lock
+├── payloads/           # Payload files loaded by PayloadLoader at runtime
+├── install.sh / .ps1   # One-line installers
+└── docs/V1.3.md        # The current release plan / north star
 ```
 
----
+### `secrets/` — Secret Detection (pure)
+```text
+secrets/src/lib.rs      # scan_bytes(body, content_type) → Vec<Secret>
+                        #   SPECS: regex + optional min-entropy per pattern (AI/cloud
+                        #   keys first), RegexSet pre-filter, placeholder rejection,
+                        #   content-type gating. No I/O, no async.
+                        # ⚠️ The single source of truth for what a "secret" is.
+```
 
 ### `core/` — The Brain
-
 ```text
 core/src/
-├── lib.rs                # Public API surface of the core crate.
-│                           Exports: ScanConfig, ScanEventSink, ConsoleSink,
-│                           ScanEngine, ResultAggregator, ScanState, etc.
-│                           ⚠️  DELETE THIS → Everything stops compiling.
+├── lib.rs              # Public API: ScanConfig, ScanEventSink, SinkRef, ConsoleSink,
+│                         and re-exports. ⚠️ DELETE → nothing compiles.
+├── validation.rs       # SSRF/shell/traversal validators (validate_webhook_url is used
+│                         by the webhook notifier). Shared validation helpers.
 │
 ├── core/
-│   ├── mod.rs            # Defines the VulnerabilityType enum (SQLi, XSS, etc.)
-│   │                       ⚠️  DELETE THIS → No vulnerability classification possible.
-│   │
-│   ├── engine.rs         # 🔴 THE CORE ENGINE. Owns the scan loop.
-│   │                       Creates Semaphore, iterates TargetManager,
-│   │                       spawns tokio tasks, uses stream::buffer_unordered
-│   │                       for concurrency. Calls mutator → PayloadLoader →
-│   │                       ThrottleController → HttpClient → Detector.
-│   │                       ⚠️  DELETE THIS → No scanning happens at all.
-│   │
-│   ├── mutator.rs        # Dissects HTTP requests into InjectionPoints.
-│   │                       Handles URL params, headers, JSON fields (recursive),
-│   │                       and form-urlencoded params. Produces mutated copies
-│   │                       of requests with the payload injected.
-│   │                       ⚠️  DELETE THIS → Engine sends no mutated requests.
-│   │
-│   ├── throttle.rs       # Lock-free rate controller. Uses AtomicU64/AtomicU32
-│   │                       exclusively — no Mutex, no contention.
-│   │                       Exponential backoff on 429/403, linear decay on success.
-│   │                       ⚠️  DELETE THIS → No rate limiting; target servers get flooded.
-│   │
-│   ├── result_aggregator.rs  # Receives ScanResults from the mpsc channel.
-│   │                           Deduplicates (URL base + vuln type as key),
-│   │                           calls sink.on_finding(), appends JSONL to disk.
-│   │                           ⚠️  DELETE THIS → Findings are never stored or reported.
-│   │
-│   ├── state.rs          # Crash-resume persistence. Saves ScanState to
-│   │                       .arkenar-state.json using atomic write (tmp→rename)
-│   │                       to prevent corruption on kill.
-│   │                       ⚠️  DELETE THIS → --resume flag stops working.
-│   │
-│   └── target_manager.rs # Deduplicating FIFO queue (VecDeque + HashSet).
-│                           Prevents the same URL from being scanned twice
-│                           even when crawler + direct target both report it.
-│                           ⚠️  DELETE THIS → Duplicate scans, infinite loops possible.
+│   ├── mod.rs          # VulnerabilityType enum (the canonical finding classes).
+│   ├── engine.rs       # 🔴 THE ENGINE. Semaphore + buffer_unordered concurrency;
+│   │                     mutator → PayloadLoader → Throttle → HttpClient → Detector.
+│   ├── mutator.rs      # Dissects requests into InjectionPoints (URL/header/JSON/form).
+│   ├── throttle.rs     # Lock-free rate controller (AtomicU64/U32; backoff/decay).
+│   ├── result_aggregator.rs  # ScanResult type; dedup; JSONL write; sink.on_finding().
+│   ├── state.rs        # Crash-resume persistence (atomic tmp→rename write).
+│   └── target_manager.rs     # Dedup FIFO URL queue (VecDeque + HashSet).
 │
-├── http/                 # HttpClient wrapper around reqwest.
-│   │                       Handles timeout, proxy, custom headers.
-│   │                       ⚠️  DELETE THIS → No HTTP requests can be sent.
-│   └── (mod.rs, client.rs)
+├── http/
+│   ├── mod.rs          # HttpRequest, BodyType.
+│   └── client.rs       # HttpClient. send() is the GLOBAL CHOKE POINT: reads the body
+│                         once (capped at MAX_RESPONSE_BODY) and runs the secret filter,
+│                         returning CapturedResponse{status,headers,final_url,body,secrets}.
 │
 ├── modules/
-│   ├── crawler.rs        # Wraps Katana (subprocess). Feeds URLs back.
-│   │                       ⚠️  DELETE THIS → Missing crawler discovery loop.
-│   ├── dns_lookup.rs     # Async DNS/WHOIS resolution logic (trust-dns).
-│   │                       ⚠️  DELETE THIS → Domains fail to resolve records in Recon.
-│   ├── js_secrets.rs     # Regex-driven secrets scanning over downloaded JS bodies.
-│   │                       ⚠️  DELETE THIS → No AWS/GitHub token leak detection.
-│   ├── nuclei.rs         # Wraps Nuclei (subprocess). Template-based scanning.
-│   │                       ⚠️  DELETE THIS → Template scanning is gone.
-│   ├── port_scanner.rs   # Async concurrent TCP connection checks on Top-1000 ports.
-│   │                       ⚠️  DELETE THIS → Cannot enumerate open services during Recon.
-│   └── subfinder.rs      # Wraps Subfinder. Enumerable domain footprinting.
-│                           ⚠️  DELETE THIS → Recon domain branching breaks.
+│   ├── crawler_native.rs # Native async crawler: same-origin BFS + forced browse of
+│   │                       sensitive paths + *.js.map probing. Replaces Katana.
+│   ├── dns_lookup.rs   # Async A/MX/TXT/CNAME + raw WHOIS (recon).
+│   ├── js_secrets.rs   # Fetches *.js URLs and runs the shared secrets crate on each
+│   │                     (already delegates to arkenar_secrets; only JsSecret is local).
+│   ├── port_scanner.rs # Async top-1000 TCP connect scan (recon).
+│   └── subfinder.rs    # ⚠️ LAST external-tool wrapper (subfinder). Recon only.
+│                         Being replaced by native passive enum (V1.3 §2).
 │
-└── utils/
-    ├── detector.rs       # Pattern matching on HTTP response body, timing,
-    │                       and content-type to classify vulnerabilities.
-    │                       ⚠️  DELETE THIS → Engine fires requests but never detects anything.
-    │
-    ├── fingerprint.rs    # Determines exact tech-stack backend / WAFs from headers.
-    │                       ⚠️  DELETE THIS → Engine loses contextual tech-awareness payloads.
-    │
-    ├── installer.rs      # Downloads and installs Katana + Nuclei binaries.
-    │                       Also handles self-update (--update flag).
-    │                       ⚠️  DELETE THIS → Tool dependency management breaks.
-    │
-    ├── payload_loader.rs # Loads payload files from disk. Selects payloads
-    │                       contextually per InjectionPoint type.
-    │                       ⚠️  DELETE THIS → Engine has no payloads to inject.
-    │
-    ├── mod.rs            # Exports read_lines() helper used by CLI/GUI.
-    │
-    └── deep-hunter/brain.rs  # Extracts JS URLs and API endpoints via regex.
-                            ⚠️  DELETE THIS → Missing API endpoint spidering logic.
+├── notify/
+│   ├── mod.rs          # WebhookNotifier + TelegramNotifier (dormant; not wired into
+│   │                     the CLI yet) + CompositeSink (fan-out to multiple sinks).
+│   ├── webhook.rs      # build_payload (Discord/Slack/generic), redact_secret, send_webhook.
+│   └── telegram.rs     # send_telegram.
+│
+├── utils/
+│   ├── detector.rs     # VulnerabilityDetector: body/timing/content-type/header matching.
+│   ├── fingerprint.rs  # TechFingerprinter: tech-stack + WAF from headers/body.
+│   ├── installer.rs    # SELF-UPDATE ONLY now (downloads no external tools).
+│   ├── payload_loader.rs # Loads + selects payloads per InjectionPoint (tech-aware).
+│   └── mod.rs          # read_lines() helper.
+│
+└── deep-hunter/brain.rs  # JsAnalyzer: extract JS URLs + API endpoints via regex.
 ```
-
----
 
 ### `cli/` — The Terminal Face
-
 ```text
 cli/src/
-├── main.rs               # THE ENTIRE CLI.
-│                           Parses Args with clap, builds ScanConfig, creates
-│                           ConsoleSink, calls run_scan_sequence() (3 phases).
-│                           Also handles --update and --resume.
-│                           ⚠️  DELETE THIS → arkenar binary doesn't exist.
-└── validation.rs         # CLI security boundary. Mirrors GUI's input validators.
+├── main.rs       # THE CLI. Args (clap), ScanConfig, run_scan_sequence (crawl→engine),
+│                   run_recon_sequence (subfinder→ports/DNS), --update, --resume.
+├── validation.rs # CLI security boundary: validate_data_field (control-char) +
+│                   validate_path_field (traversal). Webhook SSRF → core's validator.
+└── report.rs     # Severity, SARIF export (--sarif), CI gate (--fail-on).
+cli/tests/cli_tests.rs
 ```
 
 ---
 
-### `gui/` — The Desktop Face
+## 4. The Scan Pipeline
+
+Every scan runs the **same sequence** in `core`; only the `ScanEventSink` differs.
 
 ```text
-gui/src-tauri/src/
-├── lib.rs                # THE ENTIRE TAURI BACKEND.
-│                           Defines: TauriSink, start_scan, stop_scan,
-│                           check_tools, generate_report, test_webhook commands.
-│                           Handles input validation, SSRF blocking, AtomicBool guards.
-│                           ⚠️  DELETE THIS → GUI has no backend; all IPC calls fail.
-│
-├── event_sink.rs         # TauriSink: implements ScanEventSink for the GUI.
-│                           Bridges core events (on_log, on_finding, on_progress)
-│                           to Tauri IPC events emitted to the React frontend.
-│                           ⚠️  DELETE THIS → Scan output never reaches the UI.
-│
-├── studio.rs             # Smart Auto-Login engine (Exploit Studio feature).
-│                           CSRF-aware GET→parse→POST handshake that captures
-│                           session cookies. Validates credentials are never
-│                           logged; fresh cookie jar per request.
-│                           ⚠️  DELETE THIS → Studio auto-login command fails.
-│
-├── reporting.rs          # Generates self-contained HTML report from findings.
-│                           Embedded CSS/JS, severity chart, filterable table.
-│                           ⚠️  DELETE THIS → "Export Report" button fails.
-│
-└── notifications.rs      # send_webhook() — POSTs finding JSON to Discord/Slack.
-                            ⚠️  DELETE THIS → Webhook alerts stop working.
+Phase 1: NATIVE CRAWL  (skippable with --no-crawler)
+  run_native_crawler(target, depth, max_urls, same_origin, client, sink, result_tx, abort)
+    → same-origin BFS over href/src links
+    → forced browse of sensitive paths (.env, .git/config, config.json, .DS_Store, ...)
+    → *.js.map probing for each discovered .js
+    → every body goes through HttpClient::send() → secret filter
+    → secrets → result_tx → ResultAggregator (same channel as the engine)
+    → discovered URLs → TargetManager
 
-gui/src/
-├── App.tsx               # ROOT REACT COMPONENT. Sets up Tauri IPC listeners,
-│                           manages all active workspaces/panels and logic.
-│                           ⚠️  DELETE THIS → GUI renders nothing.
-│
-├── types.ts              # Shared TypeScript type definitions mapping Rust Structs.
-│                           ⚠️  DELETE THIS → Typescript loses all strict contracts.
-│
-└── components/
-    ├── Sidebar.tsx       # Basic target inputs + Start/Stop buttons.
-    ├── TerminalView.tsx  # Terminal UI and active scanning logs.
-    ├── TopStats.tsx      # Header statistics overview.
-    └── recon/            # Visual map/board components for DNS and Host discovery.
-```
+Phase 2: ARKENAR ENGINE
+  ScanEngine::with_config(target_manager, http_client, threads, rate_limit, payloads, config)
+  engine.run(result_tx, abort)
+    → for each URL: acquire Semaphore permit (cap = threads)
+    → extract_injection_points() → [InjectionPoint]
+    → for each (point, payload): mutate → Throttle::wait → HttpClient::send
+      → secret filter runs on the body; Detector::detect classifies → ScanResult
+    → payload tasks run concurrently via stream::buffer_unordered(N)
+  ResultAggregator::run(result_rx, sink)
+    → dedup (URL base + vuln type) → sink.on_finding() (live preview)
+  [optional] verify_live(&mut results)  → upgrade/drop/demote secret findings
+  ResultAggregator::write_results_file(output, results, sink) → append JSONL (final tiers)
+  sink.on_complete(results) → Rich summary, or authoritative --json/--quiet stream
 
----
-
-## 4. The Scan Pipeline (3 Phases)
-
-Every scan — whether launched from CLI or GUI — runs through the **same 3-phase sequence** in `core`. The only difference is the `ScanEventSink` implementation that receives the output.
-
-```text
-Phase 1: CRAWL
-  run_katana_crawler(target, config, sink)
-    → spawns Katana subprocess
-    → captures discovered URLs
-    → adds all URLs to TargetManager
-
-Phase 2: NUCLEI
-  run_nuclei_scan(target, mode, verbose, tags, sink)
-    → spawns Nuclei subprocess
-    → uses template-based CVE/panel/tech detection
-    → results logged via sink.on_log()
-
-Phase 3: ARKENAR ENGINE
-  ScanEngine::new(target_manager, http_client, threads, rate_limit, payloads)
-  engine.run(result_tx)
-    → Loop over TargetManager URLs
-    → For each URL, acquire Semaphore permit (caps concurrency = threads)
-    → extract_injection_points() → list of InjectionPoints
-    → For each (InjectionPoint, Payload) pair:
-        → mutate_request() → new mutated HttpRequest
-        → ThrottleController::wait() → adaptive delay
-        → HttpClient::send_request() → HTTP response
-        → ThrottleController::record_response() → update backoff
-        → VulnerabilityDetector::detect() → Option<VulnerabilityType>
-        → If vulnerability found: send ScanResult via mpsc channel
-    → All payload tasks run concurrently via stream::buffer_unordered(N)
-  
-  ResultAggregator::run(result_rx, output_path, sink)
-    → Receives ScanResults from channel
-    → Deduplicates
-    → Calls sink.on_finding() (CLI: colored print / GUI: Tauri event)
-    → Appends JSONL to output file
+Recon mode (--recon): run_recon_sequence(target, sink)
+  → subfinder (subdomains) → per-host scan_ports() + resolve_domain()
 ```
 
 ---
 
 ## 5. The Golden Rules
 
-These are the laws of Arkenar. Violate them and the codebase becomes unmaintainable.
-
----
-
 ### Rule 1: Core is the Only Source of Truth
-
-> **"All new features go into `core`. The GUI and CLI are just wrappers."**
-
-- The `arkenar-core` crate contains **all business logic**: scanning, detection, throttling, persistence, crawling, and reporting.
-- `cli/` and `gui/src-tauri/` are **thin adapters**. Their only job is to build a `ScanConfig` and wire up a `ScanEventSink`.
-- **If you're adding a new scan technique, a new vulnerability type, a new detection pattern, or a new output format** → it goes in `core/`.
-- The validation guards in `gui/src-tauri/src/lib.rs` are a **GUI-only security boundary**, not business logic. They stay in the GUI.
-
-**Test:** Ask yourself — "Could the CLI use this feature too?" If yes, it belongs in `core/`.
-
----
+All business logic lives in `arkenar-core`; secret patterns live in `arkenar-secrets`.
+`cli/` is a thin adapter (build a `ScanConfig`, wire a `ScanEventSink`). New scan
+technique / detection / output format → it goes in `core` (or `secrets` for patterns).
 
 ### Rule 2: The ScanEventSink Contract Is Sacred
-
-> **"The engine never prints to stdout. It never emits Tauri events. It only calls the sink."**
-
-The `ScanEventSink` trait in `core/src/lib.rs` is the only output mechanism the engine knows about:
-
 ```rust
 pub trait ScanEventSink: Send + Sync {
     fn on_log(&self, level: &str, message: &str);
@@ -363,134 +226,108 @@ pub trait ScanEventSink: Send + Sync {
     fn on_progress(&self, phase: &str, current: usize, total: usize);
 }
 ```
+The engine **never** prints to stdout. It only calls the sink. New output (e.g. a new
+alert channel) = a new `ScanEventSink` impl, composed via `CompositeSink` — never a
+`println!` in engine code. Implementations: `ConsoleSink`, `WebhookNotifier`,
+`TelegramNotifier`, `CompositeSink`.
 
-- `ConsoleSink` → CLI implementation (colored stdout)
-- `TauriSink` → GUI Tauri implementation (IPC events to React)
-
-**Never** import Tauri types into `core/`. **Never** use `println!` in engine code.  
-If you want a new output (e.g., a webhook from CLI), **implement a new `ScanEventSink`** — don't touch the engine.
-
----
-
-### Rule 3: Concurrency is Managed in Three Distinct Layers — Don't Confuse Them
-
-| Layer | Mechanism | What it controls |
+### Rule 3: Concurrency is Three Distinct Layers
+| Layer | Mechanism | Controls |
 |---|---|---|
-| **Task cap** | `tokio::sync::Semaphore` | Max number of concurrent tokio tasks targeting URLs |
-| **Payload parallelism** | `stream::buffer_unordered(N)` | Max concurrent HTTP requests per URL (payload × injection point) |
-| **Rate / backoff** | `ThrottleController` (atomics) | Min time between requests; auto-pauses on 429/403 |
+| Task cap | `tokio::sync::Semaphore` | concurrent tasks (= `config.threads`) |
+| Payload parallelism | `stream::buffer_unordered(N)` | concurrent requests per URL |
+| Rate / backoff | `ThrottleController` (atomics only) | inter-request delay; pause on 429/403 |
 
-- The `Semaphore` is created in `engine.rs` with capacity = `config.threads`.
-- `ThrottleController` uses only `AtomicU64` and `AtomicU32` — **no Mutex, no lock**. This keeps the hot path contention-free.
-- **Do not add `Mutex` to `ThrottleController`** — if you need new stats, add an `Atomic`.
-
----
+Do **not** add a `Mutex` to `ThrottleController` — add an `Atomic`.
 
 ### Rule 4: Atomic Write for All State Files
+`ScanState::save()` writes `.tmp` then renames. Never write a state/output file in
+place. A crash leaves the previous complete file intact.
 
-> **"Never write directly to a state/output file. Always write to `.tmp`, then rename."**
+### Rule 5: One Sovereign Binary — Pure Rust, No External Tools
+Arkenar must run a full scan with **no external binary present**. Do not reintroduce a
+subprocess dependency (Katana/Nuclei are gone; `subfinder` is the last holdout and is
+being removed). New discovery/detection must be native Rust.
 
-`ScanState::save()` does this by design:
+### Rule 6: The Secret Filter Has One Home, and Redacts at Egress
+All response-body secret detection goes through `arkenar_secrets::scan_bytes`, invoked at
+the single choke point `HttpClient::send()`. Don't add ad-hoc secret regexes elsewhere.
+Outbound notifications must redact secret values (`notify::redact_secret`).
 
-```rust
-let tmp = format!("{}.tmp", path);
-fs::write(&tmp, &json)?;
-fs::rename(&tmp, path)?;  // atomic on most OS
-```
-
-On a crash or kill signal, the previous complete file survives. Only a successful full write results in a rename.  
-**Never bypass this pattern** when adding new persistence.
-
----
-
-### Rule 5: The GUI Backend is a Security Boundary
-
-The Tauri backend (`lib.rs`) performs strict input validation **before** any subprocess is spawned or network call is made:
-
-- `validate_text_field()` — blocks shell metacharacters (`;`, `|`, `&`, backticks, etc.) and path traversal (`../`).
-- `validate_tags_field()` — blocks CLI flag injection (`-exec`, `--config`).
-- `validate_webhook_url()` — blocks SSRF by requiring HTTPS and rejecting RFC-1918, loopback, and `.local` hosts.
-- `AtomicBool SCAN_RUNNING` — prevents a second scan from starting if one is active (compare-and-swap).
-- `AtomicBool SCAN_ABORT` — signals the running scan to stop gracefully on `stop_scan` command.
-
-**Do not add new Tauri commands without input validation.** Every user-supplied string is untrusted.
+### Rule 7: Live Verification Is Opt-In and Provider-Scoped
+`--verify-live` (`modules/key_verifier.rs`) runs as a post-detection pass: it dedups
+detected keys and makes **one non-mutating** call per unique key to that key's **own**
+provider auth endpoint (`ProviderProbe` trait — OpenAI/Anthropic/Stripe/GitHub). `200` →
+`Verification::Live`; `401` → dropped; anything else → demoted to "potential." A key is
+never sent anywhere but its provider, and a dead provider never fails the run. New
+providers are added in `default_probes()`.
 
 ---
 
 ## 6. Key Data Types Reference
 
 ### `ScanConfig` (`core/src/lib.rs`)
-
-The single struct that carries all configuration from the user to the engine. Both CLI and GUI build one of these and pass it to `core`.
+Carries all configuration from CLI to engine. Selected fields:
 
 | Field | Default | Purpose |
 |---|---|---|
-| `target` | `""` | Single URL to scan |
-| `list_file` | `""` | Path to a file of URLs (one per line) |
+| `target` / `list_file` | `""` | single URL / file of URLs |
 | `mode` | `"simple"` | `"simple"` or `"advanced"` |
-| `threads` | `50` | Semaphore capacity / concurrency cap |
-| `timeout` | `5` | Per-request timeout in seconds |
-| `rate_limit` | `100` | Max requests/sec (enforced by `ThrottleController`) |
-| `enable_crawler` | `true` | Toggle Phase 1 (Katana). CLI flag: `--no-crawler` |
-| `enable_nuclei` | `true` | Toggle Phase 2 (Nuclei). CLI flag: `--no-nuclei` |
-| `enable_param_fuzz` | `false` | Add fuzzed parameters from the URL query. CLI flag: `--enable-param-fuzz` |
-| `enable_js_analysis` | `false` | Static analysis of JS endpoints. CLI flag: `--enable-js-analysis` |
-| `webhook_url` | `None` | HTTPS URL for finding alerts (Discord/Slack/custom). CLI flag: `--webhook-url` |
-| `resume` | `false` | Load `.arkenar-state.json` and continue aborted scan |
-| `dry_run` | `false` | Log targets without sending real requests |
+| `threads` | `50` | Semaphore capacity |
+| `timeout` | `5` | per-request timeout (s) |
+| `rate_limit` | `100` | max req/s (ThrottleController) |
+| `enable_crawler` | `true` | Phase 1 toggle (`--no-crawler`) |
+| `crawler_depth` / `crawler_max_urls` / `crawler_timeout` | `3` / `50` / `60` | crawl bounds |
+| `scope` / `scope_regex` | `false` / `""` | same-origin / regex scope |
+| `enable_fingerprint` / `enable_smart_payloads` | `true` | engine toggles |
+| `enable_param_fuzz` / `enable_js_analysis` | `false` | discovery toggles |
+| `auth_type` / `auth_token` / `auth_cookies` | `"none"` | auth headers (applied to the shared client, both phases) |
+| `webhook_url` | `None` | SSRF-validated webhook |
+| `allow_insecure_tls` | `false` | accept invalid TLS (dangerous) |
+| `resume` / `dry_run` | `false` | resume from state / simulate |
+
+> Removed in 1.3: `tags`, `enable_nuclei`, `nuclei_templates_dir` (Nuclei is gone).
 
 ### `ScanResult` (`core/src/core/result_aggregator.rs`)
-
-What the engine produces for every confirmed finding. Gets deduplicated, written to disk, and forwarded to the sink.
-
 | Field | Description |
 |---|---|
-| `url` | The exact URL with injected payload |
-| `vuln_type` | E.g. `"SQLi [param: id]"`, `"XSS [json: user.name]"` |
-| `payload` | The injected string that triggered the finding |
-| `timing_ms` | Response time (used for blind injection detection) |
-| `status_code` | HTTP response code |
-| `server` | Server header value if present |
-| `method` | HTTP method (GET/POST/etc.) |
-| `request_headers` | Full request headers at injection time |
-| `request_body` | Request body if non-empty |
+| `url` | URL of the finding (with payload, if any) |
+| `vuln_type` | e.g. `"SQLi [param: id]"`, `"Sensitive Exposure [OpenAI API Key]"` |
+| `payload` | the injected string / matched secret |
+| `timing_ms`, `status_code`, `server`, `method` | response metadata |
+| `request_headers`, `request_body` | request at finding time |
+| `tech_stack`, `waf_detected` | fingerprint context |
+| `verification` | earned proof tier: `unverified` / `reachable` / `live` (1.3 §3). `reachable` = live 200, not a soft-404 sink, content-type sane; `live` = proven against the provider (§4, `--verify-live`); injection stays `unverified` until 1.5 |
+| `notes` | extra context (e.g. `"secret at line 12"`) |
+| `loot` | captured artifact for a proven finding (e.g. the fetched `.env` / config body) |
+
+Each `--json` / JSONL line also carries a top-level `schema_version` (currently `1`) so downstream `jq` consumers can detect shape changes.
+
+### `Secret` (`secrets/src/lib.rs`)
+`{ kind, matched, line, col }` — produced by `scan_bytes`.
 
 ### `VulnerabilityType` (`core/src/core/mod.rs`)
-
-The canonical enum returned by VulnerabilityDetector. Contains 10 variants (9 active + Safe). This is the ONLY place where new vulnerability classes should be added.
-
-| Variant | Display | Notes |
-|---|---|---|
-| `SqlInjection` | `SQLi` | Error-based / response-diff detection |
-| `BlindSqlInjection` | `Blind SQLi` | Time-based detection |
-| `Xss` | `XSS` | Reflected XSS |
-| `SensitiveExposure` | `Sensitive Exposure` | Leaked secrets, stack traces |
-| `OpenRedirect` | `Open Redirect` | Location header manipulation |
-| `Ssrf` | `SSRF` | Out-of-band or error-based |
-| `PathTraversal` | `Path Traversal` | `../` file read patterns |
-| `CommandInjection` | `Command Injection` | OS command execution evidence |
-| `Rce` | `RCE` | Remote code execution evidence |
-| `Safe` | `Safe` | Filtered out — never reported to sink |
+10 variants: `SqlInjection` (SQLi), `BlindSqlInjection` (Blind SQLi), `Xss` (XSS),
+`SensitiveExposure` (Sensitive Exposure), `OpenRedirect`, `Ssrf`, `PathTraversal`,
+`CommandInjection`, `Rce`, `Safe` (filtered — never reported). New classes go **only**
+here.
 
 ---
 
 ## 7. Security Surfaces
 
-Understanding where untrusted input enters the system is critical for maintenance.
-
 | Surface | Where | Mitigation |
 |---|---|---|
-| **User-supplied target URL** | GUI `start_scan` command | `validate_text_field()` + HTTP scheme check |
-| **User-supplied list file path** | GUI `start_scan` command | Relative paths only, no leading `/`, `~`, `\` |
-| **User-supplied proxy URL** | GUI + CLI | Passed to `reqwest` which handles it; shell injection blocked by validation |
-| **User-supplied custom headers** | GUI + CLI | `validate_text_field()` blocks metacharacters |
-| **Webhook URL** | GUI `start_scan` + `test_webhook` | `validate_webhook_url()` blocks SSRF, non-HTTPS, and RFC-1918 |
-| **Nuclei/Katana tags** | GUI + CLI | `validate_tags_field()` blocks flag injection |
-| **HTML report output path** | GUI `generate_report` | Sanitized, canonicalized, must stay inside downloads directory |
-| **Payload files** | CLI `--payloads` / GUI `payloads` field | Read from disk by `PayloadLoader`; no shell execution |
-| **HTTP response bodies** | Engine `scan_single_request` | Passed to `VulnerabilityDetector` for matching; never executed |
-| Scope regex | CLI / GUI | Passed to `regex` crate — must be validated before compile to avoid ReDoS |
+| Target URL / proxy / headers / cookies | CLI `Args` | `validate_data_field`: rejects control chars (CRLF/header injection). Metachars are legal data here — never shell-interpolated |
+| Output / payload / list file paths | CLI `Args` | `validate_path_field`: rejects `..` traversal + control chars (paths go to `std::fs`, not a shell) |
+| Webhook URL | CLI + `WebhookNotifier` | `arkenar_core::validation::validate_webhook_url`: HTTPS-only, rejects RFC-1918/loopback/`.local`/`.internal` and IPv6 loopback (`[::1]`) via typed-Host parsing |
+| Subfinder domain (recon) | `run_subfinder` | last external subprocess; argument is a validated host (being removed) |
+| HTTP response bodies | `HttpClient::send` | passed to `scan_bytes` / `Detector`; never executed; capped at `MAX_RESPONSE_BODY` |
+| Outbound finding payloads | `notify::*` | secret values redacted at egress (`redact_secret`) |
+| Scope regex | CLI | compiled by `regex` crate — validate to avoid ReDoS |
+| TLS | `HttpClient` | `allow_insecure_tls` defaults false; warns loudly when enabled |
+| Self-update | `installer.rs` | size-capped download; atomic replace + rollback; **unsigned (warns)** |
 
 ---
 
-*Keep this updated when you add new files, new IPC commands, or new `core` modules.*
+*Keep this updated when you add files, modules, or `core` types.*

@@ -1,5 +1,6 @@
 pub mod client;
 
+pub use client::CapturedResponse;
 pub use client::HttpClient;
 pub use client::MAX_RESPONSE_BODY;
 
@@ -59,5 +60,10 @@ impl HttpRequest {
             body,
             body_type,
         }
+    }
+
+    /// A bare `GET` for `url`.
+    pub fn get(url: Url) -> Self {
+        Self::new(Method::GET, url, HeaderMap::new(), String::new())
     }
 }

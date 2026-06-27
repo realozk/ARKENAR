@@ -2,6 +2,15 @@
 members = [
     "core",
     "cli",
-    "gui/src-tauri",
+    "secrets",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "socks", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+url = "2.5"
+anyhow = "1"

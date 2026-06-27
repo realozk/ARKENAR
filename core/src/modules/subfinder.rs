@@ -31,7 +31,7 @@ pub async fn run_subfinder(
 
     let binary = match utils::get_binary_path("subfinder") {
         Some(p) => p,
-        None => anyhow::bail!("'subfinder' binary not found. Run the scanner once to auto install, or use the CLI to trigger auto installation."),
+        None => anyhow::bail!("'subfinder' binary not found. Recon needs subfinder on your PATH or in ./tools — install it from https://github.com/projectdiscovery/subfinder. Arkenar no longer auto-installs it."),
     };
 
     sink.on_log(

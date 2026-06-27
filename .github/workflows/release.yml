@@ -9,215 +9,64 @@ permissions:
   contents: write
 
 jobs:
-  # ── 1. Build GUI installers ────────────────────────────────────────────────
-  build-tauri:
-    name: Build GUI — ${{ matrix.platform }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows
-            os: windows-latest
-          - platform: linux
-            os: ubuntu-22.04
-          - platform: macos
-            os: macos-latest
-
+  # ── 0. Gate: build + test before anything is published ────────────────────
+  # A tagged commit must pass the same build + test set as CI (precision corpus
+  # included) before any release is created or any binary is built/uploaded.
+  test:
+    name: Build & test (release gate)
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Sync version from tag
-        shell: bash
-        run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          echo "Setting version to $VERSION"
-          # tauri.conf.json
-          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION}\"/" gui/src-tauri/tauri.conf.json
-          # gui Cargo.toml (first version = line only)
-          sed -i.bak "0,/^version = \"[^\"]*\"/ s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" gui/src-tauri/Cargo.toml
-          rm -f gui/src-tauri/tauri.conf.json.bak gui/src-tauri/Cargo.toml.bak
-
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+      - name: Build workspace
+        run: cargo build --workspace --locked
 
-      - name: Use Node.js LTS
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: gui/pnpm-lock.yaml
+      - name: Test workspace (incl. precision corpus)
+        run: cargo test --workspace --locked
 
-      - name: Install frontend dependencies
-        working-directory: gui
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Linux build dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev \
-            pkg-config
-
-      - name: Install macOS build dependencies
-        if: matrix.platform == 'macos'
-        run: brew install create-dmg
-
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        with:
-          projectPath: gui
-          tagName: ${{ github.ref_name }}
-          releaseName: "Arkenar ${{ github.ref_name }}"
-          releaseBody: |
-            ## Arkenar ${{ github.ref_name }}
-
-            ### Downloads
-
-            #### GUI (Desktop App)
-            | Platform | File |
-            |----------|------|
-            | Windows  | `Arkenar_*_x64-setup.exe` (NSIS installer, no admin required) |
-            | Linux    | `arkenar_*_amd64.AppImage` or `arkenar_*_amd64.deb` |
-            | macOS    | `Arkenar_*_universal.dmg` |
-
-            #### CLI (Command Line)
-            | Platform | One-command install |
-            |----------|---------------------|
-            | Windows  | `irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 \| iex` |
-            | Linux / macOS | `curl -sL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh \| bash` |
-
-            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-
-  # ── 2. Upload latest.json as a release asset, plus commit it to main ──────
-  # The release-asset upload is the canonical source: 1.2.0+ installs read
-  # https://github.com/<owner>/<repo>/releases/latest/download/latest.json
-  # The commit-to-main step is a bridge for installs from <1.2.0 that still
-  # have the old raw.githubusercontent.com/.../main/latest.json URL baked in.
-  # Once those legacy installs have updated to 1.2.0+, the commit step can
-  # be removed.
-  upload-latest-json:
-    name: Upload latest.json
+  # ── 1. Create the GitHub Release ──────────────────────────────────────────
+  create-release:
+    name: Create GitHub Release
     runs-on: ubuntu-22.04
-    needs: build-tauri
-
-    permissions:
-      contents: write
-
+    needs: test
     steps:
-      - name: Checkout main
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build, upload, and commit latest.json
+      - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
         run: |
-          VERSION="${TAG#v}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat > notes.md <<'EOF'
+          ## Arkenar ${{ github.ref_name }}
 
-          fetch_sig() {
-            local asset="$1"
-            gh release download "$TAG" --repo "$REPO" --pattern "${asset}.sig" --output - 2>/dev/null || echo ""
-          }
+          ### Install (CLI)
+          - **Linux / macOS:** `curl -sL https://raw.githubusercontent.com/REPO/main/install.sh | bash`
+          - **Windows:** `irm https://raw.githubusercontent.com/REPO/main/install.ps1 | iex`
 
-          WIN_ASSET="Arkenar_${VERSION}_x64-setup.exe"
-          LINUX_ASSET="Arkenar_${VERSION}_amd64.AppImage"
-          # Tauri updater on macOS requires .app.tar.gz, NOT .dmg
-          # .dmg is for first-time install only; the updater cannot use it
-          MAC_X64_ASSET="Arkenar_${VERSION}_x64.app.tar.gz"
-          MAC_ARM_ASSET="Arkenar_${VERSION}_aarch64.app.tar.gz"
-
-          WIN_SIG=$(fetch_sig "$WIN_ASSET")
-          LINUX_SIG=$(fetch_sig "$LINUX_ASSET")
-          MAC_X64_SIG=$(fetch_sig "$MAC_X64_ASSET")
-          MAC_ARM_SIG=$(fetch_sig "$MAC_ARM_ASSET")
-
-          # Fail loudly if signatures are missing — empty sigs mean updater always rejects
-          if [ -z "$WIN_SIG" ] || [ -z "$LINUX_SIG" ]; then
-            echo "ERROR: Missing signatures. Is TAURI_PRIVATE_KEY set in GitHub secrets?"
-            echo "  WIN_SIG is empty: $([ -z "$WIN_SIG" ] && echo yes || echo no)"
-            echo "  LINUX_SIG is empty: $([ -z "$LINUX_SIG" ] && echo yes || echo no)"
-            echo "  MAC_X64_SIG is empty: $([ -z "$MAC_X64_SIG" ] && echo yes || echo no)"
-            echo "  MAC_ARM_SIG is empty: $([ -z "$MAC_ARM_SIG" ] && echo yes || echo no)"
-            exit 1
-          fi
-
-          BASE="https://github.com/${REPO}/releases/download/${TAG}"
-
-          cat > latest.json <<EOF
-          {
-            "version": "${VERSION}",
-            "notes": "See the CHANGELOG for details.",
-            "pub_date": "${DATE}",
-            "platforms": {
-              "windows-x86_64": {
-                "signature": "${WIN_SIG}",
-                "url": "${BASE}/${WIN_ASSET}"
-              },
-              "linux-x86_64": {
-                "signature": "${LINUX_SIG}",
-                "url": "${BASE}/${LINUX_ASSET}"
-              },
-              "darwin-x86_64": {
-                "signature": "${MAC_X64_SIG}",
-                "url": "${BASE}/${MAC_X64_ASSET}"
-              },
-              "darwin-aarch64": {
-                "signature": "${MAC_ARM_SIG}",
-                "url": "${BASE}/${MAC_ARM_ASSET}"
-              }
-            }
-          }
+          See the [CHANGELOG](https://github.com/REPO/blob/main/CHANGELOG.md) for what's new.
           EOF
+          sed -i "s|REPO|${{ github.repository }}|g" notes.md
+          PRE=""
+          case "${{ github.ref_name }}" in *-beta*|*-rc*) PRE="--prerelease";; esac
+          gh release create "${{ github.ref_name }}" \
+            --title "Arkenar ${{ github.ref_name }}" \
+            --notes-file notes.md $PRE || echo "release may already exist"
 
-          gh release upload "$TAG" latest.json --clobber --repo "$REPO"
-
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add latest.json
-          if git diff --cached --quiet; then
-            echo "latest.json unchanged; nothing to commit."
-          else
-            git commit -m "chore: update latest.json for ${TAG}"
-            git push origin main
-          fi
-
-  # ── 3. Build CLI binaries ─────────────────────────────────────────────────
+  # ── 2. Build CLI binaries ─────────────────────────────────────────────────
   build-cli:
     name: Build CLI — ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    needs: build-tauri
+    needs: create-release
 
     strategy:
       fail-fast: false
@@ -302,4 +151,3 @@ jobs:
         run: gh release upload ${{ github.ref_name }} ${{ matrix.asset_name }} --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
