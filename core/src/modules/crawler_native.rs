@@ -455,9 +455,22 @@ mod tests {
             loop {
                 if let Ok((mut sock, _)) = listener.accept().await {
                     tokio::spawn(async move {
-                        let mut buf = [0u8; 1024];
-                        let n = sock.read(&mut buf).await.unwrap_or(0);
-                        let req = String::from_utf8_lossy(&buf[..n]);
+                        // A single read() can return a partial segment (notably on
+                        // macOS loopback), so loop until the request line is complete.
+                        let mut buf = Vec::new();
+                        let mut chunk = [0u8; 1024];
+                        loop {
+                            match sock.read(&mut chunk).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => {
+                                    buf.extend_from_slice(&chunk[..n]);
+                                    if buf.contains(&b'\n') {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        let req = String::from_utf8_lossy(&buf);
                         let path = req
                             .lines()
                             .next()
@@ -539,9 +552,22 @@ mod tests {
             loop {
                 if let Ok((mut sock, _)) = listener.accept().await {
                     tokio::spawn(async move {
-                        let mut buf = [0u8; 1024];
-                        let n = sock.read(&mut buf).await.unwrap_or(0);
-                        let req = String::from_utf8_lossy(&buf[..n]);
+                        // A single read() can return a partial segment (notably on
+                        // macOS loopback), so loop until the request line is complete.
+                        let mut buf = Vec::new();
+                        let mut chunk = [0u8; 1024];
+                        loop {
+                            match sock.read(&mut chunk).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => {
+                                    buf.extend_from_slice(&chunk[..n]);
+                                    if buf.contains(&b'\n') {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        let req = String::from_utf8_lossy(&buf);
                         let path = req
                             .lines()
                             .next()
