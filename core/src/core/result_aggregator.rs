@@ -212,6 +212,15 @@ impl ResultAggregator {
                 ),
             }
         }
+
+        // tokio::fs::File does not flush on drop (unlike std), so an explicit flush is
+        // required or buffered writes can be lost when this function returns.
+        if let Err(e) = file.flush().await {
+            sink.on_log(
+                "error",
+                &format!("[!] Failed to flush output file '{}': {}", output_path, e),
+            );
+        }
     }
 }
 
