@@ -2,7 +2,7 @@
 
 **Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, WAF-aware payload selection, and a verify-before-report discipline.
 
-Its flagship is the **Rapid Extraction Module** — a specialized engine that *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. Each finding carries an **earned** verification tier — `reachable` (live, non-decoy, content-sane) or, with [`--verify-live`](#live-key-verification---verify-live), `live` (proven against the provider). **One static binary. No external tools.**
+Its flagship is the **Rapid Extraction Module** — a specialized engine that *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. Each finding carries an **earned** verification tier — `reachable` (live, non-decoy, content-sane) or, with [`--verify-live`](#live-key-verification---verify-live), `live` (proven against the provider). **One static binary — the scan engine is pure Rust with no external tools or Go subprocesses.**
 
 
 <p align="center">
@@ -54,7 +54,7 @@ curl -sL https://raw.githubusercontent.com/realozk/ARKENAR/main/install.sh | bas
 iwr -useb https://raw.githubusercontent.com/realozk/ARKENAR/main/install.ps1 | iex
 ```
 
-Arkenar is a single static Rust binary — no external tools, no Go subprocesses, nothing to download on first use.
+Arkenar is a single static Rust binary — the scan engine pulls in no external tools, no Go subprocesses, and downloads nothing on first use. (The one exception is the optional `--recon` subdomain enumeration, which shells out to an external `subfinder` binary.)
 
 > **Legacy desktop app:** the 1.2 GUI is still available on
 > [GitHub Releases](https://github.com/realozk/ARKENAR/releases) but is no longer

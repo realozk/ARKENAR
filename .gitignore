@@ -8,6 +8,10 @@ debug/
 # Binaries
 *.exe
 *.dll
+*.old
+
+# External Go tool binaries (subfinder/katana/nuclei) — not part of the pure-Rust build
+tools/
 
 # Secrets
 *.pem
@@ -45,5 +49,4 @@ repomix-output.xml
 # Claude Code (AI tooling — never commit)
 .claude/
 
-# Strategy / vision / build-plan docs — internal only, keep out of the public OSS repo
 docs/
