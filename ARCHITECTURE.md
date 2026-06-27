@@ -76,7 +76,7 @@ flowchart TD
 
         DET --> TX["mpsc::Sender<ScanResult>"]
         CRAWL -. "secrets → result channel" .-> AGG
-        TX --> AGG["ResultAggregator::run()\nspans both phases\ndedup → JSONL → sink.on_finding()"]
+        TX --> AGG["ResultAggregator::run()\nspans both phases\ndedup → sink.on_finding() (live preview)\nJSONL written post-scan (after --verify-live)"]
     end
 
     AGG --> SINK
@@ -198,8 +198,11 @@ Phase 2: ARKENAR ENGINE
     → for each (point, payload): mutate → Throttle::wait → HttpClient::send
       → secret filter runs on the body; Detector::detect classifies → ScanResult
     → payload tasks run concurrently via stream::buffer_unordered(N)
-  ResultAggregator::run(result_rx, output_path, sink)
-    → dedup (URL base + vuln type) → sink.on_finding() → append JSONL
+  ResultAggregator::run(result_rx, sink)
+    → dedup (URL base + vuln type) → sink.on_finding() (live preview)
+  [optional] verify_live(&mut results)  → upgrade/drop/demote secret findings
+  ResultAggregator::write_results_file(output, results, sink) → append JSONL (final tiers)
+  sink.on_complete(results) → Rich summary, or authoritative --json/--quiet stream
 
 Recon mode (--recon): run_recon_sequence(target, sink)
   → subfinder (subdomains) → per-host scan_ports() + resolve_domain()
@@ -250,6 +253,14 @@ All response-body secret detection goes through `arkenar_secrets::scan_bytes`, i
 the single choke point `HttpClient::send()`. Don't add ad-hoc secret regexes elsewhere.
 Outbound notifications must redact secret values (`notify::redact_secret`).
 
+### Rule 7: Live Verification Is Opt-In and Provider-Scoped
+`--verify-live` (`modules/key_verifier.rs`) runs as a post-detection pass: it dedups
+detected keys and makes **one non-mutating** call per unique key to that key's **own**
+provider auth endpoint (`ProviderProbe` trait — OpenAI/Anthropic/Stripe/GitHub). `200` →
+`Verification::Live`; `401` → dropped; anything else → demoted to "potential." A key is
+never sent anywhere but its provider, and a dead provider never fails the run. New
+providers are added in `default_probes()`.
+
 ---
 
 ## 6. Key Data Types Reference
@@ -286,8 +297,11 @@ Carries all configuration from CLI to engine. Selected fields:
 | `timing_ms`, `status_code`, `server`, `method` | response metadata |
 | `request_headers`, `request_body` | request at finding time |
 | `tech_stack`, `waf_detected` | fingerprint context |
-| `verified` | proof flag (being made real in 1.3 §3) |
+| `verification` | earned proof tier: `unverified` / `reachable` / `live` (1.3 §3). `reachable` = live 200, not a soft-404 sink, content-type sane; `live` = proven against the provider (§4, `--verify-live`); injection stays `unverified` until 1.5 |
 | `notes` | extra context (e.g. `"secret at line 12"`) |
+| `loot` | captured artifact for a proven finding (e.g. the fetched `.env` / config body) |
+
+Each `--json` / JSONL line also carries a top-level `schema_version` (currently `1`) so downstream `jq` consumers can detect shape changes.
 
 ### `Secret` (`secrets/src/lib.rs`)
 `{ kind, matched, line, col }` — produced by `scan_bytes`.

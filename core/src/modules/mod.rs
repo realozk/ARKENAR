@@ -4,5 +4,6 @@
 pub mod crawler_native;
 pub mod dns_lookup;
 pub mod js_secrets;
+pub mod key_verifier;
 pub mod port_scanner;
 pub mod subfinder;

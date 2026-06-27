@@ -9,10 +9,35 @@ permissions:
   contents: write
 
 jobs:
+  # ── 0. Gate: build + test before anything is published ────────────────────
+  # A tagged commit must pass the same build + test set as CI (precision corpus
+  # included) before any release is created or any binary is built/uploaded.
+  test:
+    name: Build & test (release gate)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Test workspace (incl. precision corpus)
+        run: cargo test --workspace --locked
+
   # ── 1. Create the GitHub Release ──────────────────────────────────────────
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-22.04
+    needs: test
     steps:
       - name: Checkout
         uses: actions/checkout@v4

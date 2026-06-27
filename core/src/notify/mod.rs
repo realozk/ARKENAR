@@ -159,6 +159,12 @@ impl ScanEventSink for CompositeSink {
             s.finish();
         }
     }
+
+    fn on_complete(&self, results: &[ScanResult], elapsed: std::time::Duration) {
+        for s in &self.sinks {
+            s.on_complete(results, elapsed);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -179,8 +185,9 @@ mod tests {
             request_body: None,
             tech_stack: vec![],
             waf_detected: None,
-            verified: false,
+            verification: crate::Verification::Unverified,
             notes: None,
+            loot: None,
         }
     }
 

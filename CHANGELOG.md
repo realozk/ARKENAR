@@ -4,6 +4,60 @@ All notable changes to Arkenar are documented here.
 
 ---
 
+## [1.3.0] — Prove the leak
+
+The release that makes the flagship *real*: secret findings stop being "a string shaped like
+a key" and start being **proof**. One matcher, an earned verification tier, and opt-in live
+key verification — every claim backed by a test.
+
+### Added
+- **Live key verification (`--verify-live`)** — the headline. Opt-in, off by default. For each
+  detected key with a supported provider (OpenAI, Anthropic, Stripe, GitHub), Arkenar makes
+  **one non-mutating** call to that provider's own auth endpoint: `200` → **VERIFIED-LIVE**,
+  `401` → dropped as dead, anything else → "potential." Keys are deduped (one probe per unique
+  key) and a key is only ever sent to its own provider. (`modules/key_verifier.rs`.)
+  - A loud legal/scope warning fires on use (CLI + README): verifying a found key authenticates
+    to a third party and may be forbidden by program rules or law.
+  - **AWS is intentionally not verified** — a leaked `AKIA…` is only the access-key ID, and
+    proving it live needs the paired secret key we never have. We don't claim what we can't do.
+- **Earned verification tier** — `ScanResult.verified: bool` replaced by a `verification`
+  strength enum: `unverified` / `reachable` / `live`. A secret is `reachable` only when it is a
+  live `200`, **not** a soft-404 sink, and content-type-sane; `live` is reserved for a key proven
+  against its provider. Injection findings stay `unverified` (active OAST confirmation is 1.5).
+- **Soft-404 detection** — the crawler probes a random nonexistent path per host before forced
+  browsing; a host that answers success to everything has its forced-browse hits downgraded.
+- **Loot capture** — a verified forced-browse hit captures the fetched artifact (the `.env` /
+  config body, capped) as evidence on the finding.
+- **Precision corpus** (`secrets/tests/precision_corpus.rs`) — a fixed set of real-shaped
+  exposures + decoys, run in CI, that asserts the false-positive/false-negative count. "Zero-FP"
+  is now a published number (7 TP, 5 TN, 0 FP, 0 FN), gated on every build.
+- **`schema_version`** on every `--json` / JSONL line, so downstream `jq` consumers can detect
+  shape changes.
+- Broadened forced-browse probe set (**5 → 37** paths): `.env.*` variants, `.git/HEAD`+`index`,
+  db dumps/backups, `wp-config.php`, CI/CD config, auth/debug artifacts.
+- **CI test workflow** (`.github/workflows/ci.yml`) — `cargo build`/`test` on push + PR
+  (previously only a tag-triggered release workflow existed).
+
+### Changed
+- **One secret matcher.** Deleted the substring detector (`detector.rs::has_sensitive_patterns`,
+  `is_sensitive_file_found`) — its FP-prone `body.contains("API_KEY=")` checks are gone. All
+  response-body secret detection now flows through the single `arkenar_secrets::scan_bytes` choke
+  point. A page that merely *mentions* `API_KEY=` in prose is no longer reported.
+- README softened to match the binary; live verification and the verification tier documented.
+- `ARCHITECTURE.md` updated: the `verification` tier, `loot`, `schema_version`, and the
+  live-verification rule (`key_verifier`).
+
+### Removed
+- **Dead `--oast-server` flag** (and the dormant `oast_token` config field). OAST is a 1.5
+  feature; the flag did nothing, so it's removed rather than left as dead surface. (It returns
+  for real in 1.5.)
+
+### Fixed
+- Rich-mode chrome no longer leaks to stdout — the "Loaded N targets" line now goes to stderr,
+  so the "findings = stdout, chrome = stderr" contract holds for clean `--json | jq` piping.
+
+---
+
 ## [1.2.0]
 
 ### Added

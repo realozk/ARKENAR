@@ -11,12 +11,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub use crate::core::engine::ScanEngine;
-pub use crate::core::result_aggregator::{ResultAggregator, ScanResult};
+pub use crate::core::result_aggregator::{
+    classify_exposure, ResultAggregator, ScanResult, Verification, SCHEMA_VERSION,
+};
 pub use crate::core::state::ScanState;
 pub use crate::core::target_manager::TargetManager;
 pub use crate::http::{HttpClient, HttpRequest};
 pub use crate::notify::{CompositeSink, TelegramNotifier, WebhookNotifier};
 pub use crate::modules::crawler_native::run_native_crawler;
+pub use crate::modules::key_verifier::{verify_live, VerifyStats};
 pub use crate::modules::dns_lookup::{resolve_domain, DnsResult};
 pub use crate::modules::port_scanner::scan_ports;
 pub use crate::modules::subfinder::run_subfinder;
@@ -64,13 +67,13 @@ pub struct ScanConfig {
     pub enable_js_analysis: bool,
     pub enable_param_fuzz: bool,
 
-    // ── OAST (Market-Killer) ──────────────────────────────────────────────
-    pub oast_server: Option<String>,
-    pub oast_token: Option<String>,
-
     // ── Evasion (Market-Killer) ───────────────────────────────────────────
     pub enable_waf_evasion: bool,
     pub waf_evasion_threshold: u32,
+
+    // ── Live verification (1.3) ───────────────────────────────────────────
+    /// Opt-in: probe each detected key against its provider's auth endpoint.
+    pub verify_live: bool,
 }
 
 impl Default for ScanConfig {
@@ -108,12 +111,11 @@ impl Default for ScanConfig {
             // Discovery
             enable_js_analysis: false,
             enable_param_fuzz: false,
-            // OAST
-            oast_server: None,
-            oast_token: None,
             // Evasion
             enable_waf_evasion: false,
             waf_evasion_threshold: 5,
+            // Live verification
+            verify_live: false,
         }
     }
 }
@@ -204,6 +206,9 @@ pub trait ScanEventSink: Send + Sync {
     /// Called once when all scanning is complete, so renderers can tear down any
     /// live progress UI before the summary prints. Default no-op for headless sinks.
     fn finish(&self) {}
+    /// Called once after all scanning completes, with the full result set, so a
+    /// renderer can print a final summary. Default no-op for headless sinks.
+    fn on_complete(&self, _results: &[ScanResult], _elapsed: std::time::Duration) {}
 }
 
 pub type SinkRef = Arc<dyn ScanEventSink>;

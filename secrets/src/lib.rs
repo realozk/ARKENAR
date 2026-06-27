@@ -64,14 +64,15 @@ fn compiled() -> &'static (RegexSet, Vec<Compiled>) {
 
 /// Scans a response/file body for secrets.
 ///
-/// `content_type` (when known) gates out binary bodies — only text-like types are
-/// scanned. Pass `None` to scan regardless. The `RegexSet` pre-filter means
-/// per-pattern matching only runs for patterns that actually appear.
+/// `content_type` gates out binary bodies. A known text-like type is always scanned; a
+/// known binary type (image/video/audio/font/pdf/archive) never is. An unknown or missing
+/// type — or `application/octet-stream`, which is how many misconfigured servers serve an
+/// exposed `.env` / `.git/config` / backup file — falls back to a byte sniff and is scanned
+/// only if the body actually looks like text. The `RegexSet` pre-filter means per-pattern
+/// matching only runs for patterns that actually appear.
 pub fn scan_bytes(body: &[u8], content_type: Option<&str>) -> Vec<Secret> {
-    if let Some(ct) = content_type {
-        if !is_text_like(ct) {
-            return Vec::new();
-        }
+    if !should_scan(content_type, body) {
+        return Vec::new();
     }
 
     let text = String::from_utf8_lossy(body);
@@ -117,6 +118,50 @@ fn is_text_like(ct: &str) -> bool {
         "x-www-form",
     ];
     OK.iter().any(|k| ct.contains(k))
+}
+
+/// Content-types that are unambiguously binary — skipped without sniffing.
+fn is_binary_like(ct: &str) -> bool {
+    let ct = ct.to_ascii_lowercase();
+    const BIN: &[&str] = &[
+        "image/", "video/", "audio/", "font/", "application/pdf", "application/zip",
+        "application/gzip", "application/x-gzip", "application/x-tar", "application/x-7z",
+        "application/x-rar", "application/wasm", "application/ogg",
+    ];
+    BIN.iter().any(|k| ct.contains(k))
+}
+
+/// Whether a body is worth scanning for secrets, given its declared content-type.
+/// Known text → yes; known binary → no; unknown / missing / `application/octet-stream`
+/// → sniff the bytes (real servers serve exposed dotfiles and backups as octet-stream,
+/// so we can't trust the label to mean "binary" there).
+fn should_scan(content_type: Option<&str>, body: &[u8]) -> bool {
+    match content_type {
+        Some(ct) if is_text_like(ct) => true,
+        Some(ct) if is_binary_like(ct) => false,
+        _ => looks_like_text(body),
+    }
+}
+
+/// Heuristic "is this text, not a binary blob?" — used when the content-type is unknown
+/// or `application/octet-stream`. Inspects a prefix only. A NUL byte, or too many C0
+/// control bytes, means binary. Bytes ≥ 0x80 are allowed (UTF-8 text). Mirrors the
+/// classic git/grep binary check.
+fn looks_like_text(body: &[u8]) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+    let sample = &body[..body.len().min(2048)];
+    if sample.contains(&0) {
+        return false; // a NUL byte is the strongest binary signal
+    }
+    // C0 control bytes that don't occur in normal text (below 0x20 except
+    // tab/LF/VT/FF/CR).
+    let bad = sample
+        .iter()
+        .filter(|&&b| b < 0x09 || (0x0E..0x20).contains(&b))
+        .count();
+    (bad * 100) / sample.len() < 5
 }
 
 /// Reject obvious example/placeholder values to keep precision high.
@@ -194,6 +239,30 @@ mod tests {
     fn skips_binary_content_type() {
         let body = b"sk-proj-AbCd012345EfGh_QwErTyUiOp6789";
         assert!(scan_bytes(body, Some("image/png")).is_empty());
+    }
+
+    #[test]
+    fn scans_octet_stream_env_file() {
+        // The common real case: a server serves an exposed `.env` as octet-stream. The
+        // body is text, so the sniff must let it through and the key must be found.
+        let body = b"OPENAI_API_KEY=sk-proj-AbCd012345EfGh_QwErTyUiOp6789\nDB_PASSWORD=hunter2\n";
+        let s = scan_bytes(body, Some("application/octet-stream"));
+        assert!(kinds(&s).contains(&"OpenAI API Key"));
+    }
+
+    #[test]
+    fn octet_stream_binary_blob_is_skipped() {
+        // octet-stream that is actually binary (NUL bytes) — even with a key-shaped string
+        // embedded, the sniff classifies it as binary and skips it.
+        let body = b"\x00\x01PK\x03\x04 sk-proj-AbCd012345EfGh_QwErTyUiOp6789 \x00\xff\xfe";
+        assert!(scan_bytes(body, Some("application/octet-stream")).is_empty());
+    }
+
+    #[test]
+    fn looks_like_text_classifies() {
+        assert!(looks_like_text(b"DB_PASSWORD=hunter2\nKEY=value\n"));
+        assert!(!looks_like_text(b"\x89PNG\r\n\x1a\n\x00\x00binary"));
+        assert!(!looks_like_text(b"")); // empty → nothing to scan
     }
 
     #[test]

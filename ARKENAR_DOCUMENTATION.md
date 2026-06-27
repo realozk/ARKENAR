@@ -119,8 +119,8 @@ The single source of truth for what a "secret" is. No I/O, no async.
 | `ScanResult::to_curl()` | Renders a copy-pasteable curl. |
 | `shell_quote()` | Shell-quotes to prevent terminal injection. |
 | `build_dedup_key()` | Dedup key from URL base + vuln type. |
-| `ResultAggregator::run()` | Reads the channel, dedups, writes JSONL, calls `sink.on_finding()`. |
-| `ResultAggregator::report_summary()` | Prints a per-severity count summary. |
+| `ResultAggregator::run()` | Reads the channel, dedups, previews each finding live via `sink.on_finding()`. |
+| `ResultAggregator::write_results_file()` | Persists the final result set to JSONL — called *after* `--verify-live`, so the file reflects final verification tiers. |
 
 #### `core/state.rs`
 | Function | Description |
@@ -166,9 +166,9 @@ The single source of truth for what a "secret" is. No I/O, no async.
 | Function | Description |
 | :--- | :--- |
 | `VulnerabilityDetector::new()` | Construct the detector. |
-| `VulnerabilityDetector::detect()` | Classifies a response: SQL errors, XSS reflection, open redirect, blind timing, path traversal, sensitive content. |
-| `is_xss_payload()` / `is_open_redirect_payload()` / `has_sensitive_patterns()` | Predicate helpers. |
-| `is_sql_vulnerable()` / `is_xss_vulnerable()` / `is_sensitive_file_found()` | Individual checks. |
+| `VulnerabilityDetector::detect()` | Classifies a response: SQL errors, XSS reflection, open redirect, blind timing, path traversal. Secret/sensitive-exposure detection is **not** here — it goes through `arkenar_secrets::scan_bytes` at the HTTP choke point. |
+| `is_xss_payload()` / `is_open_redirect_payload()` | Predicate helpers. |
+| `is_sql_vulnerable()` / `is_xss_vulnerable()` | Individual checks. |
 
 #### `utils/fingerprint.rs`
 | Function | Description |

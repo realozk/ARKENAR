@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "arkenar"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "arkenar-core",
  "assert_cmd",
@@ -134,7 +134,7 @@ dependencies = [
 
 [[package]]
 name = "arkenar-core"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "arkenar-secrets",

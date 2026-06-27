@@ -12,8 +12,8 @@ use validation::{validate_text_field, validate_webhook_url};
 
 use arkenar_core::{
     installer, read_lines, resolve_domain, run_native_crawler, run_subfinder, scan_ports,
-    CompositeSink, ConsoleSink, HttpClient, RenderMode, ResultAggregator, ScanConfig, ScanEngine,
-    ScanResult, ScanState, SinkRef, TargetManager, WebhookNotifier,
+    verify_live, CompositeSink, ConsoleSink, HttpClient, RenderMode, ResultAggregator, ScanConfig,
+    ScanEngine, ScanResult, ScanState, SinkRef, TargetManager, WebhookNotifier,
 };
 
 #[derive(Parser, Debug)]
@@ -135,10 +135,6 @@ pub struct Args {
         help = "Authentication type: none, bearer, cookie, custom")]
     pub auth_type: String,
 
-    // ── OAST (Market-Killer) ───────────────────────────────────────────────
-    #[arg(long, help = "Interactsh OAST server URL (e.g. https://oast.pro)")]
-    pub oast_server: Option<String>,
-
     // ── Discovery (v1.3) ──────────────────────────────────────────────────
     #[arg(
         long,
@@ -160,6 +156,15 @@ pub struct Args {
         help = "Enable WAF evasion mutations on 403 responses"
     )]
     pub enable_waf_evasion: bool,
+
+    // ── Live verification (1.3) ───────────────────────────────────────────
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Probe each detected key against its provider's auth endpoint (opt-in; \
+                authenticates to a third party — see the legal note in --help/README)"
+    )]
+    pub verify_live: bool,
 
     // ── Fingerprint / Smart Payloads / Scope ──────────────────────────────
     #[arg(
@@ -255,7 +260,7 @@ async fn main() {
         process::exit(0);
     }
 
-    let sink = ConsoleSink::new_ref(mode, args.verified_only);
+    let sink = ConsoleSink::new_ref(mode, args.verified_only, args.verify_live);
 
     if args.resume {
         match ScanState::load(ScanState::default_path()).await {
@@ -269,11 +274,16 @@ async fn main() {
                     ),
                 );
                 let config = state.config.clone();
+                let resume_start = std::time::Instant::now();
+                let mut resumed_results: Vec<ScanResult> = Vec::new();
                 for target in &state.pending_urls {
-                    run_scan_sequence(target, &config, &sink, mode).await;
+                    resumed_results.extend(run_scan_sequence(target, &config, &sink, mode).await);
                 }
                 ScanState::delete(ScanState::default_path()).await;
                 sink.on_log("success", "[+] Resumed scan complete.");
+                // Render the authoritative --json/--quiet stream + Rich summary once the
+                // full (post-verification) result set is known.
+                sink.on_complete(&resumed_results, resume_start.elapsed());
             }
             None => {
                 sink.on_log("error", "[!] No state file found. Nothing to resume.");
@@ -340,13 +350,13 @@ async fn main() {
         auth_token: args.auth_token.clone(),
         auth_cookies: args.auth_cookies.clone(),
         auth_type: args.auth_type.clone(),
-        // OAST
-        oast_server: args.oast_server.clone(),
         // Discovery
         enable_js_analysis: args.enable_js_analysis,
         // Evasion
         enable_waf_evasion: args.enable_waf_evasion,
         allow_insecure_tls: args.allow_insecure_tls,
+        // Live verification
+        verify_live: args.verify_live,
         ..ScanConfig::default()
     };
 
@@ -356,7 +366,7 @@ async fn main() {
         match read_lines(&config.list_file) {
             Ok(lines) => {
                 if mode == RenderMode::Rich {
-                    print!(
+                    eprint!(
                         "{}\r\n",
                         format!(
                             "[+] Loaded {} target(s) from {}",
@@ -366,7 +376,7 @@ async fn main() {
                         .green()
                         .bold()
                     );
-                    std::io::stdout().flush().ok();
+                    std::io::stderr().flush().ok();
                 }
                 targets.extend(lines);
             }
@@ -419,20 +429,18 @@ async fn main() {
     let mut all_results: Vec<ScanResult> = Vec::new();
     for (i, target) in targets.iter().enumerate() {
         if total > 1 && mode == RenderMode::Rich {
-            print!(
+            eprint!(
                 "\r\n{}\r\n",
-                format!("━━━ Target {}/{}: {} ━━━", i + 1, total, target)
-                    .bright_white()
-                    .bold()
+                format!("  target {}/{}  ·  {}", i + 1, total, target).dimmed()
             );
-            std::io::stdout().flush().ok();
+            std::io::stderr().flush().ok();
         }
         all_results.extend(run_scan_sequence(target, &config, &scan_sink, mode).await);
     }
 
-    // Make sure any live progress UI is torn down before the footer.
-    scan_sink.finish();
-    print_footer(&all_results, scan_start.elapsed(), mode);
+    // Render the end-of-scan summary (cards for verified findings + tally).
+    // The renderer tears down the live spinner first; no-op in quiet/json.
+    scan_sink.on_complete(&all_results, scan_start.elapsed());
 
     // Deliver queued alerts before exit.
     if let Some(n) = &notifier {
@@ -465,20 +473,37 @@ async fn main() {
     }
 }
 
+/// Compact human duration: `412ms` under a second, else `1.4s`.
+fn human(d: std::time::Duration) -> String {
+    let ms = d.as_millis();
+    if ms < 1000 {
+        format!("{}ms", ms)
+    } else {
+        format!("{:.1}s", d.as_secs_f64())
+    }
+}
+
+/// The ASCII-art identity, shown once at the top in rich mode (to stderr, so it
+/// never pollutes piped findings). Swap the art below to rebrand.
 fn print_banner() {
     let banner = r#"
-             :::     :::::::::  :::    ::: :::::::::: ::::    :::     :::     :::::::::
-          :+: :+:   :+:    :+: :+:   :+:  :+:        :+:+:   :+:   :+: :+:   :+:    :+:
-        +:+   +:+  +:+    +:+ +:+  +:+   +:+        :+:+:+  +:+  +:+   +:+  +:+    +:+
-      +#++:++#++: +#++:++#:  +#++:++    +#++:++#   +#+ +:+ +#+ +#++:++#++: +#++:++#:
-     +#+     +#+ +#+    +#+ +#+  +#+   +#+        +#+  +#+#+# +#+     +#+ +#+    +#+
-    #+#     #+# #+#    #+# #+#   #+#  #+#        #+#   #+#+# #+#     #+# #+#    #+#
-   ###     ### ###    ### ###    ### ########## ###    #### ###     ### ###    ###
+ █████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗ █████╗ ██████╗ 
+██╔══██╗██╔══██╗██║ ██╔╝██╔════╝████╗  ██║██╔══██╗██╔══██╗
+███████║██████╔╝█████╔╝ █████╗  ██╔██╗ ██║███████║██████╔╝
+██╔══██║██╔══██╗██╔═██╗ ██╔══╝  ██║╚██╗██║██╔══██║██╔══██╗
+██║  ██║██║  ██║██║  ██╗███████╗██║ ╚████║██║  ██║██║  ██║
+╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝
+                                                                                                                
+"#;
 
-    "#;
-    print!("{}\r\n", banner.bright_cyan().bold());
-    print!("{}\r\n", "──────".dimmed());
-    std::io::stdout().flush().ok();
+    // Brand accent – keep in sync with `ACCENT` in core/src/notify/console.rs.
+eprintln!("{}", banner.truecolor(0x0E, 0x74, 0x90).bold());
+    eprint!(
+        "     {}  {}\r\n\r\n",
+        "prove which secrets are leaking".dimmed(),
+        format!("v{}", env!("CARGO_PKG_VERSION")).dimmed()
+    );
+    std::io::stderr().flush().ok();
 }
 
 async fn run_scan_sequence(
@@ -516,19 +541,20 @@ async fn run_scan_sequence(
 
     let abort = Arc::new(AtomicBool::new(false));
 
-    // One aggregator spans both phases: it dedups, writes JSONL, and forwards every
-    // finding (crawler secrets included) to the sink.
+    // One aggregator spans both phases: it dedups and forwards every finding (crawler
+    // secrets included) to the sink as a live preview. The JSONL is written later, after
+    // optional --verify-live, so the file reflects final verification tiers.
     let (result_tx, result_rx) = mpsc::channel::<ScanResult>(100);
-    let output_path = config.output.clone();
     let agg_sink = sink.clone();
-    let aggregator =
-        tokio::spawn(
-            async move { ResultAggregator::run(result_rx, &output_path, agg_sink).await },
-        );
+    let aggregator = tokio::spawn(async move { ResultAggregator::run(result_rx, agg_sink).await });
 
     // Phase 1: native crawl + forced browse (pure Rust — no external tools).
+    // Each phase drives the spinner ("phase") and prints a `✓ … · time` ribbon
+    // line on completion ("done").
+    let mut n_discovered = 0usize;
     if config.enable_crawler {
-        sink.on_log("phase", "[*] Phase 1: Native crawl + forced browse...");
+        let t = std::time::Instant::now();
+        sink.on_log("phase", "crawling + forced browse");
         match run_native_crawler(
             target,
             config.crawler_depth,
@@ -542,9 +568,10 @@ async fn run_scan_sequence(
         .await
         {
             Ok(crawled) => {
+                n_discovered = crawled.len();
                 sink.on_log(
-                    "success",
-                    &format!("[+] Discovered {} URL(s).", crawled.len()),
+                    "done",
+                    &format!("crawl · {} urls · {}", n_discovered, human(t.elapsed())),
                 );
                 for u in crawled {
                     target_manager.add_target(u);
@@ -555,11 +582,16 @@ async fn run_scan_sequence(
             }
         }
     } else {
-        sink.on_log("phase", "[*] Phase 1: Crawling skipped (--no-crawler).");
+        sink.on_log("info", "crawl skipped (--no-crawler)");
     }
 
+    // Capture before `config` is moved into the engine — used by the post-scan
+    // live-verification pass below.
+    let do_verify_live = config.verify_live;
+
     // Phase 2: ARKENAR engine.
-    sink.on_log("phase", "[*] Phase 2: ARKENAR Engine...");
+    let t_engine = std::time::Instant::now();
+    sink.on_log("phase", "probing endpoints");
     let engine = ScanEngine::with_config(
         target_manager,
         Arc::clone(&http_client),
@@ -576,9 +608,49 @@ async fn run_scan_sequence(
 
     // Drop the last sender so the aggregator's receive loop ends, then collect.
     drop(result_tx);
-    let results = aggregator.await.unwrap_or_default();
+    let mut results = aggregator.await.unwrap_or_default();
+    sink.on_log(
+        "done",
+        &format!(
+            "probe · {} endpoints · {}",
+            n_discovered + 1,
+            human(t_engine.elapsed())
+        ),
+    );
 
-    ResultAggregator::report_summary(&results, sink);
+    // Opt-in live key verification — upgrades/drops findings before the summary renders.
+    if do_verify_live {
+        sink.on_log(
+            "warn",
+            "[!] --verify-live: probing found keys against their providers. This \
+             AUTHENTICATES to a third party — many bug-bounty programs forbid using \
+             found credentials, and it may be illegal without authorization. Check your \
+             program's rules and the law before relying on this.",
+        );
+        let t = std::time::Instant::now();
+        sink.on_log("phase", "live key verification");
+        let stats = verify_live(&mut results, std::time::Duration::from_secs(10)).await;
+        sink.on_log(
+            "done",
+            &format!(
+                "verify-live · {} probed · {} live · {} rejected · {} inconclusive · {}",
+                stats.probed,
+                stats.live,
+                stats.rejected,
+                stats.inconclusive,
+                human(t.elapsed())
+            ),
+        );
+    }
+
+    // Persist the final, post-verification result set to disk (JSONL). Done here — not
+    // mid-scan in the aggregator — so --verify-live upgrades/drops are reflected in the
+    // output file, matching the summary and --json/--quiet stdout.
+    ResultAggregator::write_results_file(&config.output, &results, sink).await;
+
+    // Per-target findings already previewed live via the sink; the global summary
+    // (cards + tally) and the authoritative --json/--quiet stream are rendered once by
+    // `on_complete` in main().
     results
 }
 
@@ -650,106 +722,39 @@ async fn run_recon_sequence(target: &str, sink: &SinkRef) {
     );
 }
 
-/// Final one-line tally: verified vs potential findings + elapsed time.
-/// Suppressed in --quiet and --json (those modes emit findings only).
-fn print_footer(results: &[ScanResult], elapsed: std::time::Duration, mode: RenderMode) {
-    if mode != RenderMode::Rich {
-        return;
-    }
-    let findings: Vec<&ScanResult> = results.iter().filter(|r| r.vuln_type != "Safe").collect();
-    let verified = findings.iter().filter(|r| r.verified).count();
-    let potential = findings.len() - verified;
-
-    let secs = elapsed.as_secs();
-    let elapsed_str = if secs >= 60 {
-        format!("{}m {}s", secs / 60, secs % 60)
-    } else {
-        format!("{}s", secs)
-    };
-
-    print!(
-        "\r\n  {}  ·  {}  ·  {}\r\n",
-        format!("{} verified", verified).green().bold(),
-        format!("{} potential", potential).bright_black(),
-        elapsed_str.dimmed()
-    );
-    std::io::stdout().flush().ok();
-}
-
+/// Compact one-glance scan config, to stderr (chrome, not data). The target on
+/// its own line, then the knobs as a dim `·`-separated strip. Only the toggles
+/// that are actually on get listed — silence is the default.
 fn print_scan_config(target: &str, config: &ScanConfig) {
-    let mode_label = if config.mode == "advanced" {
-        "Advanced (deeper)"
-    } else {
-        "Simple (fast)"
-    };
-    let verbose_label = if config.verbose { "ON" } else { "OFF" };
-
-    print!(
-        "{}\r\n",
-        format!("[+] Target:     {}", target).green().bold()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Threads:    {}", config.threads).blue()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Timeout:    {}s", config.timeout).blue()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Mode:       {}", mode_label).magenta().bold()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Verbose:    {}", verbose_label).magenta()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Output:     {}", config.output).blue()
-    );
-    print!(
-        "{}\r\n",
-        format!("[+] Rate Limit: {} req/s", config.rate_limit).blue()
-    );
-    if !config.proxy.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Proxy:      {}", config.proxy).yellow()
-        );
-    }
-    let header_list = config.header_list();
-    if !header_list.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Headers:    {} custom", header_list.len()).yellow()
-        );
-    }
+    let mut bits = vec![
+        format!("{} threads", config.threads),
+        format!("{}s timeout", config.timeout),
+        format!("{} req/s", config.rate_limit),
+        if config.mode == "advanced" { "advanced".to_string() } else { "simple".to_string() },
+    ];
     if config.scope {
-        print!("{}\r\n", "[+] Scope:      Same-domain only".yellow());
+        bits.push("same-domain".to_string());
     }
     if !config.scope_regex.is_empty() {
-        print!(
-            "{}\r\n",
-            format!("[+] Scope Regex: {}", config.scope_regex).yellow()
-        );
+        bits.push("scope-regex".to_string());
     }
     if config.enable_waf_evasion {
-        print!(
-            "{}\r\n",
-            format!(
-                "[+] WAF Evasion: ON (threshold: {})",
-                config.waf_evasion_threshold
-            )
-            .yellow()
-        );
+        bits.push(format!("waf-evasion@{}", config.waf_evasion_threshold));
+    }
+    if !config.proxy.is_empty() {
+        bits.push("proxy".to_string());
+    }
+    if !config.header_list().is_empty() {
+        bits.push(format!("{} headers", config.header_list().len()));
     }
     if !config.enable_fingerprint {
-        print!("{}\r\n", "[+] Fingerprint: DISABLED".dimmed());
+        bits.push("no-fingerprint".to_string());
     }
     if !config.enable_smart_payloads {
-        print!("{}\r\n", "[+] Smart Payloads: DISABLED".dimmed());
+        bits.push("no-smart-payloads".to_string());
     }
-    print!("{}\r\n", "──────".dimmed());
-    std::io::stdout().flush().ok();
+
+    eprint!("  {}\r\n", target.white().bold());
+    eprint!("  {}\r\n\r\n", bits.join("  ·  ").dimmed());
+    std::io::stderr().flush().ok();
 }

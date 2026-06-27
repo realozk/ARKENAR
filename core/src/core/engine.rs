@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, Semaphore};
 use url::Url;
 
 use crate::core::mutator::{self, InjectionPoint};
-use crate::core::result_aggregator::ScanResult;
+use crate::core::result_aggregator::{classify_exposure, ScanResult, Verification};
 use crate::core::target_manager::TargetManager;
 use crate::core::throttle::ThrottleController;
 use crate::core::VulnerabilityType;
@@ -165,12 +165,14 @@ impl ScanEngine {
                         Ok(cap) => {
                             throttle.record_response(cap.status);
                             let server = extract_server(&cap.headers);
+                            let content_type = extract_content_type(&cap.headers);
                             for secret in &cap.secrets {
                                 let _ = tx
                                     .send(secret_to_result(
                                         cap.final_url.as_str(),
                                         cap.status,
                                         server.clone(),
+                                        content_type.as_deref(),
                                         secret,
                                     ))
                                     .await;
@@ -196,12 +198,14 @@ impl ScanEngine {
                         if let Ok(js_cap) = client.send(&js_req).await {
                             throttle.record_response(js_cap.status);
                             let server = extract_server(&js_cap.headers);
+                            let content_type = extract_content_type(&js_cap.headers);
                             for secret in &js_cap.secrets {
                                 let _ = tx
                                     .send(secret_to_result(
                                         js_cap.final_url.as_str(),
                                         js_cap.status,
                                         server.clone(),
+                                        content_type.as_deref(),
                                         secret,
                                     ))
                                     .await;
@@ -320,6 +324,13 @@ fn extract_server(headers: &HeaderMap) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+fn extract_content_type(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
 fn headers_to_vec(headers: &HeaderMap) -> Vec<(String, String)> {
     headers
         .iter()
@@ -331,8 +342,11 @@ fn secret_to_result(
     url: &str,
     status: u16,
     server: Option<String>,
+    content_type: Option<&str>,
     secret: &arkenar_secrets::Secret,
 ) -> ScanResult {
+    // Inline secret in a served response (not forced-browse, no soft-404 context).
+    let verification = classify_exposure(status, content_type, false, false);
     ScanResult {
         url: url.to_string(),
         vuln_type: format!("Sensitive Exposure [{}]", secret.kind),
@@ -345,8 +359,9 @@ fn secret_to_result(
         request_body: None,
         tech_stack: Vec::new(),
         waf_detected: None,
-        verified: true,
+        verification,
         notes: Some(format!("secret at line {}", secret.line)),
+        loot: Some(secret.matched.clone()),
     }
 }
 
@@ -477,6 +492,7 @@ async fn scan_single_request(
                                     cap.final_url.as_str(),
                                     status_code,
                                     server.clone(),
+                                    content_type.as_deref(),
                                     secret,
                                 ))
                                 .await;
@@ -520,8 +536,10 @@ async fn scan_single_request(
                                 },
                                 tech_stack: fp_result.tech_stack.clone(),
                                 waf_detected: fp_result.waf_detected.clone(),
-                                verified: false,
+                                // Injection isn't verified until OAST confirmation (1.5).
+                                verification: Verification::Unverified,
                                 notes: None,
+                                loot: None,
                             };
                             let _ = result_tx.send(result).await;
                         }
@@ -574,6 +592,7 @@ async fn basic_scan(
                 cap.final_url.as_str(),
                 status_code,
                 server.clone(),
+                content_type.as_deref(),
                 secret,
             ))
             .await;
@@ -616,8 +635,10 @@ async fn basic_scan(
             },
             tech_stack: fp_result.tech_stack,
             waf_detected: fp_result.waf_detected,
-            verified: false,
+            // Injection isn't verified until OAST confirmation (1.5).
+            verification: Verification::Unverified,
             notes: None,
+            loot: None,
         };
         let _ = result_tx.send(result).await;
     }

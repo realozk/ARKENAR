@@ -1,6 +1,6 @@
 [package]
 name = "arkenar"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2021"
 description = "CLI frontend for the Arkenar vulnerability scanner."
 license = "MIT"

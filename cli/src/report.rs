@@ -98,8 +98,9 @@ mod tests {
             request_body: None,
             tech_stack: vec![],
             waf_detected: None,
-            verified: true,
+            verification: arkenar_core::Verification::Reachable,
             notes: None,
+            loot: None,
         }
     }
 

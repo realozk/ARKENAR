@@ -1,8 +1,8 @@
 <div align="center"> <img src="/media/603C35E3-83BA-4984-BFCF-37E9B0F0A70E.jpg" width="100%" alt="Arkenar Banner"> </div>
 
-**Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, active WAF evasion, and Zero-FP verification.
+**Arkenar is a high-performance Offensive Web Scanner (DAST), built in pure Rust.** Engineered for aggressive external perimeter mapping, active WAF evasion, and a verify-before-report discipline.
 
-Its flagship is the **Rapid Extraction Module** — a specialized engine that actively *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. **One static binary. No external tools.**
+Its flagship is the **Rapid Extraction Module** — a specialized engine that *hunts, verifies, and extracts* exposed AI keys and critical configuration files (`.env`, `.git`, source maps, backups) from live targets. Each finding carries an **earned** verification tier — `reachable` (live, non-decoy, content-sane) or, with [`--verify-live`](#live-key-verification---verify-live), `live` (proven against the provider). **One static binary. No external tools.**
 
 
 <p align="center">
@@ -16,7 +16,6 @@ Its flagship is the **Rapid Extraction Module** — a specialized engine that ac
 
 <p align="center">
   <img src="https://img.shields.io/badge/built%20with-Rust-orange?style=for-the-badge&logo=rust&logoColor=white">
-  <img src="https://img.shields.io/badge/dependencies-zero%20external%20tools-22c55e?style=for-the-badge">
   <a href="https://crates.io/crates/arkenar">
     <img src="https://img.shields.io/crates/v/arkenar.svg?style=for-the-badge&color=e65100">
   </a>
@@ -110,8 +109,25 @@ Run `arkenar --help` for everything. Common flags:
 | `--enable-param-fuzz` | Enable parameter fuzzing |
 | `--enable-js-analysis` | Enable JS endpoint analysis |
 | `--enable-waf-evasion` | Mutate payloads on 403 responses |
+| `--verify-live` | Prove found keys against their provider (opt-in — **read the warning below**) |
 | `--no-fingerprint` | Disable tech-stack fingerprinting |
 | `--no-smart-payloads` | Disable context-aware payload selection |
+
+#### Live key verification (`--verify-live`)
+
+Turns *"a string shaped like a key"* into *"a **working** key."* For each detected key
+with a supported provider (OpenAI, Anthropic, Stripe, GitHub), Arkenar makes **one
+non-mutating** read call to that provider's own auth endpoint: a `200` marks the finding
+**VERIFIED-LIVE**, a `401` drops it as dead, anything else leaves it as "potential." Keys
+are deduped — one probe per unique key — and a key is only ever sent to its own provider.
+
+> ⚠️ **Legal / scope warning.** Verifying a found key **authenticates to a third party**.
+> Many bug-bounty programs forbid using found credentials even read-only, and doing so may
+> be illegal without authorization. This is why it is **opt-in and off by default**. Check
+> your program's rules and the law before using `--verify-live`.
+>
+> *(AWS is intentionally not verified: a leaked `AKIA…` is only the access-key ID, and
+> proving it live would require the paired secret key we never have — so we don't claim to.)*
 
 ### Crawler (native, pure Rust)
 | Flag | Description | Default |
@@ -129,13 +145,12 @@ Run `arkenar --help` for everything. Common flags:
 | `--scope` | Restrict crawl to same domain |
 | `--scope-regex <REGEX>` | Restrict URLs by regex |
 
-### Auth & OAST
+### Auth
 | Flag | Description |
 | :--- | :--- |
 | `--auth-type` | `none` / `bearer` / `cookie` / `custom` |
 | `--auth-token <TOKEN>` | Bearer token |
 | `--auth-cookies <COOKIES>` | Raw cookie string |
-| `--oast-server <URL>` | Interactsh server for blind detection |
 | `--webhook-url <URL>` | HTTPS webhook for findings |
 
 ---
