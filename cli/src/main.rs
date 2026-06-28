@@ -247,7 +247,28 @@ async fn main() {
     #[cfg(windows)]
     colored::control::set_virtual_terminal(true).ok();
 
-    let args = Args::parse();
+    // Parse manually so the banner can be shown even when clap rejects the
+    // command line (e.g. bare `arkenar` with no target). `Args::parse()` would
+    // exit inside clap before we ever reach `print_banner()` below.
+    let args = match Args::try_parse() {
+        Ok(a) => a,
+        Err(e) => {
+            // Respect the quiet/json output contracts (no chrome on stderr).
+            let suppress = std::env::args().any(|a| a == "--quiet" || a == "--json");
+            // Don't double up on --help / --version, which clap renders itself.
+            let is_help_version = matches!(
+                e.kind(),
+                clap::error::ErrorKind::DisplayHelp
+                    | clap::error::ErrorKind::DisplayVersion
+                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            );
+            if !suppress && !is_help_version {
+                print_banner();
+            }
+            e.print().ok();
+            process::exit(e.exit_code());
+        }
+    };
 
     // --json wins over --quiet if both are given; otherwise rich.
     let mode = if args.json {
