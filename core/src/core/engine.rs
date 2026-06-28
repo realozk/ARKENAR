@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, Semaphore};
 use url::Url;
 
 use crate::core::mutator::{self, InjectionPoint};
-use crate::core::result_aggregator::{classify_exposure, ScanResult, Verification};
+use crate::core::result_aggregator::{ScanResult, Verification};
 use crate::core::target_manager::TargetManager;
 use crate::core::throttle::ThrottleController;
 use crate::core::VulnerabilityType;
@@ -167,6 +167,9 @@ impl ScanEngine {
                             let server = extract_server(&cap.headers);
                             let content_type = extract_content_type(&cap.headers);
                             for secret in &cap.secrets {
+                                if arkenar_secrets::is_public_by_design(&secret.kind) {
+                                    continue;
+                                }
                                 let _ = tx
                                     .send(secret_to_result(
                                         cap.final_url.as_str(),
@@ -187,8 +190,16 @@ impl ScanEngine {
                 // JS static analysis: fetch linked scripts so the global secret filter
                 // runs on their bodies (keys are routinely hardcoded in bundled JS).
                 if enable_js_analysis && !page_body.is_empty() {
+                    let base_host = Url::parse(&target_url)
+                        .ok()
+                        .and_then(|u| u.host_str().map(|h| h.to_string()));
                     let js_urls = js_analyzer.extract_js_urls(&page_body, &target_url);
                     for js_url in js_urls {
+                        // Host-lock: never fetch third-party scripts (analytics, CDNs).
+                        if !crate::utils::scope::host_in_scope(base_host.as_deref(), &js_url, false)
+                        {
+                            continue;
+                        }
                         let js_req = match create_request_from_url(&js_url) {
                             Ok(r) => r,
                             Err(_) => continue,
@@ -200,6 +211,9 @@ impl ScanEngine {
                             let server = extract_server(&js_cap.headers);
                             let content_type = extract_content_type(&js_cap.headers);
                             for secret in &js_cap.secrets {
+                                if arkenar_secrets::is_public_by_design(&secret.kind) {
+                                    continue;
+                                }
                                 let _ = tx
                                     .send(secret_to_result(
                                         js_cap.final_url.as_str(),
@@ -330,8 +344,9 @@ fn secret_to_result(
     content_type: Option<&str>,
     secret: &arkenar_secrets::Secret,
 ) -> ScanResult {
-    // Inline secret in a served response (not forced-browse, no soft-404 context).
-    let verification = classify_exposure(status, content_type, false, false);
+    // Inline page/JS secret: a lead only — a 200 page load doesn't prove the key is live.
+    let _ = content_type;
+    let verification = Verification::Unverified;
     ScanResult {
         url: url.to_string(),
         vuln_type: format!("Sensitive Exposure [{}]", secret.kind),

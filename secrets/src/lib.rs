@@ -171,6 +171,12 @@ pub fn scan_bytes(body: &[u8], content_type: Option<&str>) -> Vec<Secret> {
     out
 }
 
+/// Key classes that are public by design (e.g. the Google `AIza…` browser key). Dropped
+/// from client-delivered content; still reported in forced-browse config artifacts.
+pub fn is_public_by_design(kind: &str) -> bool {
+    matches!(kind, "Google API Key")
+}
+
 fn is_text_like(ct: &str) -> bool {
     let ct = ct.to_ascii_lowercase();
     const OK: &[&str] = &[
@@ -347,6 +353,14 @@ mod tests {
         assert!(looks_like_text(b"DB_PASSWORD=hunter2\nKEY=value\n"));
         assert!(!looks_like_text(b"\x89PNG\r\n\x1a\n\x00\x00binary"));
         assert!(!looks_like_text(b"")); // empty → nothing to scan
+    }
+
+    #[test]
+    fn google_key_is_public_by_design() {
+        // Allowlisted (public browser key) vs. a real secret that must never be allowlisted.
+        assert!(is_public_by_design("Google API Key"));
+        assert!(!is_public_by_design("AWS Access Key"));
+        assert!(!is_public_by_design("OpenAI API Key"));
     }
 
     #[test]

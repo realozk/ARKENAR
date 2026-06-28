@@ -2,6 +2,7 @@ pub mod detector;
 pub mod fingerprint;
 pub mod installer;
 pub mod payload_loader;
+pub mod scope;
 
 use std::fs::File;
 use std::io;

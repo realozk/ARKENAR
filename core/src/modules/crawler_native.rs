@@ -20,7 +20,6 @@ const CONCURRENCY: usize = 10;
 /// Files probed in every discovered directory. Wildcard classes (`*.sql`, `*.bak`,
 /// `*.zip`) use concrete names — the prober joins exact paths and can't expand globs.
 const SENSITIVE_FILES: &[&str] = &[
-    // ── Environment / dotenv variants ──
     ".env",
     ".env.local",
     ".env.dev",
@@ -32,11 +31,9 @@ const SENSITIVE_FILES: &[&str] = &[
     ".env.bak",
     ".env.save",
     ".env.old",
-    // ── Exposed git internals (full repo reconstruction is 1.4; these confirm exposure) ──
     ".git/config",
     ".git/HEAD",
     ".git/index",
-    // ── App / framework config ──
     "config.json",
     "config.php",
     "wp-config.php",
@@ -44,12 +41,10 @@ const SENSITIVE_FILES: &[&str] = &[
     "web.config",
     "appsettings.json",
     ".npmrc",
-    // ── CI/CD & container config ──
     ".gitlab-ci.yml",
     ".travis.yml",
     "docker-compose.yml",
     "Dockerfile",
-    // ── Database dumps & backups ──
     "backup.sql",
     "dump.sql",
     "database.sql",
@@ -70,7 +65,7 @@ pub async fn run_native_crawler(
     target: &str,
     max_depth: u32,
     max_urls: usize,
-    same_origin: bool,
+    strict_host: bool,
     client: Arc<HttpClient>,
     sink: SinkRef,
     result_tx: mpsc::Sender<ScanResult>,
@@ -106,7 +101,7 @@ pub async fn run_native_crawler(
                 if discovered.len() >= max_urls {
                     break;
                 }
-                if !in_scope(&link, &host, same_origin) {
+                if !in_scope(&link, &host, strict_host) {
                     continue;
                 }
                 if visited.insert(link.clone()) {
@@ -166,10 +161,17 @@ async fn fetch_links(client: &HttpClient, url: &str, tx: &mpsc::Sender<ScanResul
     );
     match client.send(&req).await {
         Ok(cap) => {
-            // Inline secret in a crawled page — not a forced-browse artifact.
-            let ct = content_type_of(&cap.headers);
-            let verification = classify_exposure(cap.status, ct.as_deref(), false, false);
-            emit_secrets(tx, url, cap.status, verification, None, &cap.secrets).await;
+            // Inline page secret: a lead only (Unverified), public keys allowlisted out.
+            emit_secrets(
+                tx,
+                url,
+                cap.status,
+                Verification::Unverified,
+                None,
+                &cap.secrets,
+                true,
+            )
+            .await;
             extract_links(&cap.body, &cap.final_url)
         }
         Err(_) => Vec::new(),
@@ -220,7 +222,8 @@ async fn fetch_probe(
     } else {
         None
     };
-    emit_secrets(tx, url, cap.status, verification, loot, &cap.secrets).await;
+    // Forced-browse config artifact: no allowlist — any key here is a real finding.
+    emit_secrets(tx, url, cap.status, verification, loot, &cap.secrets, false).await;
     if cap.status < 400 {
         Some(url.to_string())
     } else {
@@ -228,7 +231,7 @@ async fn fetch_probe(
     }
 }
 
-/// Forwards each detected secret to the aggregator with its tier and any captured loot.
+/// `allowlist_public` drops public-by-design keys (set for client-delivered content).
 async fn emit_secrets(
     tx: &mpsc::Sender<ScanResult>,
     url: &str,
@@ -236,8 +239,12 @@ async fn emit_secrets(
     verification: Verification,
     loot: Option<String>,
     secrets: &[arkenar_secrets::Secret],
+    allowlist_public: bool,
 ) {
     for secret in secrets {
+        if allowlist_public && arkenar_secrets::is_public_by_design(&secret.kind) {
+            continue;
+        }
         let _ = tx
             .send(ScanResult {
                 url: url.to_string(),
@@ -305,19 +312,9 @@ fn extract_links(body: &str, base: &Url) -> Vec<String> {
     out
 }
 
-fn in_scope(url: &str, host: &Option<String>, same_origin: bool) -> bool {
-    if !same_origin {
-        return true;
-    }
-    match (
-        Url::parse(url)
-            .ok()
-            .and_then(|u| u.host_str().map(|h| h.to_lowercase())),
-        host,
-    ) {
-        (Some(h), Some(base_host)) => &h == base_host,
-        _ => false,
-    }
+/// Always locked to the target's site. `strict_host` (`--scope`) → exact host only.
+fn in_scope(url: &str, host: &Option<String>, strict_host: bool) -> bool {
+    crate::utils::scope::host_in_scope(host.as_deref(), url, strict_host)
 }
 
 /// Builds the forced-browse probe set: sensitive files per discovered directory,
@@ -386,6 +383,19 @@ mod tests {
         fn on_log(&self, _l: &str, _m: &str) {}
         fn on_finding(&self, _r: &ScanResult) {}
         fn on_progress(&self, _p: &str, _c: usize, _t: usize) {}
+    }
+
+    #[test]
+    fn crawler_is_host_locked() {
+        let host = Some("flynas.com".to_string());
+        // Default (non-strict): same-site subdomains stay in scope, third parties are dropped.
+        assert!(in_scope("https://www.flynas.com/path", &host, false));
+        assert!(in_scope("https://booking.flynas.com/path", &host, false));
+        assert!(!in_scope("https://www.google.com/", &host, false));
+        assert!(!in_scope("https://www.googletagmanager.com/gtag/js", &host, false));
+        // Strict (--scope): only the exact host.
+        assert!(!in_scope("https://www.flynas.com/path", &host, true));
+        assert!(in_scope("https://flynas.com/path", &host, true));
     }
 
     #[test]
@@ -611,5 +621,98 @@ mod tests {
         assert_eq!(env.verification, Verification::Unverified);
         assert!(!env.is_verified());
         assert!(env.loot.is_none());
+    }
+
+    fn respond_inline(path: &str) -> String {
+        let (ct, body) = match path {
+            "/" => ("text/html", "<a href=\"/leak\">x</a>".to_string()),
+            "/leak" => (
+                "text/html",
+                "<script>var o=\"sk-proj-AbCd012345EfGh_QwErTyUiOp6789\";\
+                 var g=\"AIzaSyB3kQ7mN2pXrT9wZ1aE4dF6gH8jK0lO5cV\";</script>"
+                    .to_string(),
+            ),
+            _ => ("text/plain", String::new()),
+        };
+        let status = if body.is_empty() { "404 Not Found" } else { "200 OK" };
+        format!(
+            "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            status,
+            ct,
+            body.len(),
+            body
+        )
+    }
+
+    #[tokio::test]
+    async fn inline_secret_is_unverified_and_google_key_allowlisted() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            loop {
+                if let Ok((mut sock, _)) = listener.accept().await {
+                    tokio::spawn(async move {
+                        let mut buf = Vec::new();
+                        let mut chunk = [0u8; 1024];
+                        loop {
+                            match sock.read(&mut chunk).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => {
+                                    buf.extend_from_slice(&chunk[..n]);
+                                    if buf.contains(&b'\n') {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        let req = String::from_utf8_lossy(&buf);
+                        let path = req
+                            .lines()
+                            .next()
+                            .and_then(|l| l.split_whitespace().nth(1))
+                            .unwrap_or("/")
+                            .to_string();
+                        let _ = sock.write_all(respond_inline(&path).as_bytes()).await;
+                        let _ = sock.flush().await;
+                    });
+                }
+            }
+        });
+
+        let client = Arc::new(HttpClient::new(5, None, &[], false).unwrap());
+        let sink = Arc::new(CaptureSink);
+        let (tx, mut rx) = mpsc::channel::<ScanResult>(100);
+        let target = format!("http://{}/", addr);
+
+        run_native_crawler(
+            &target,
+            1,
+            50,
+            false,
+            client,
+            sink.clone(),
+            tx,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+
+        let mut findings = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            findings.push(f);
+        }
+
+        let openai = findings
+            .iter()
+            .find(|f| f.vuln_type.contains("OpenAI") && f.url.ends_with("/leak"))
+            .expect("the inline OpenAI key should be reported as a lead");
+        assert_eq!(openai.verification, Verification::Unverified);
+        assert!(!openai.is_verified());
+
+        assert!(
+            !findings.iter().any(|f| f.vuln_type.contains("Google")),
+            "public Google browser key must not be reported as a leak"
+        );
     }
 }
